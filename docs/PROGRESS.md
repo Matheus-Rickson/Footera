@@ -478,3 +478,7 @@ transferência e folha **e autonomia da diretoria para barrar negociações cara
   oferta de 120.000/mês a um livre de valor 472 mil barrada pelo teto da folha.
 - Ajuste visual (8D.1): jogadores sem clube mostram "—" na coluna Contrato e "pretensão salarial … · sem contrato" na proposta e na ficha (antes aparecia o contrato antigo, vencido).
 - Não exercitados pelo usuário nesta rodada (cobertos por testes automatizados e pelo teste na cópia do save): demissão/modo sem clube, propostas de emprego, pedidos de orçamento e aprovação de obras.
+
+## v0.8.0 — Fase 8 completa (8A ciclo de carreira, 8B olheiros/base, 8C treino/comissão/médico/infra, 8D diretoria/empregos)
+- Versão do `package.json` (exibida no rodapé do app) subiu de 0.7.1 para 0.8.0; o branch `main` foi avançado até esta versão.
+- Próximo: fase de lapidação (sem funcionalidades novas), com prioridades a definir com o usuário.

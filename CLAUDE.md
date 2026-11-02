@@ -2,7 +2,7 @@
 
 Jogo de gerenciamento de futebol offline (estilo Football Manager/Brasfoot), **em português do Brasil**.
 Stack: Electron + React + TypeScript + Vite + SQLite (`node:sqlite`, fallback `better-sqlite3`) + Zod. Alvo: Windows.
-Motor separado da UI. Versão atual: ver `package.json` (0.7.1).
+Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa: 8A–8D).
 
 ## Comandos
 - `npm test` — testes (`node:test`, não Vitest). Rode sempre antes de dizer que algo funciona.
