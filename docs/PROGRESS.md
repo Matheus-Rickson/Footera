@@ -438,3 +438,43 @@ profissionais contratáveis; obras com custo e prazo; prevenção + recuperaçã
   "Equilibrado"; agora o foco efetivo é sempre o do preparador.
 - Zagueiros recebiam a sugestão "Finalização" (cabeceio e compostura contam para eles); os focos sugeridos agora dependem do setor
   (defensores: defesa/físico/criação; meias: criação/defesa/técnica/físico; atacantes: finalização/técnica/físico/criação). Ambas com teste e mutação detectada.
+
+## Fase 8D — Diretoria, objetivos e propostas de emprego (estado: regras, persistência e integração testadas; telas AINDA NÃO verificadas no Electron)
+
+Decisões do usuário: objetivos de liga + finanças + base; demissão com a carreira continuando; propostas a qualquer momento com troca imediata; orçamentos de
+transferência e folha **e autonomia da diretoria para barrar negociações caras demais para o clube**. Regras: `docs/BOARD_JOBS.md`.
+
+### Funcional e testado (147 testes; `typecheck` completo limpo; builds do renderer e do Electron ok)
+- **Objetivos** pela posição esperada (título, top 4, vaga continental, metade de cima, evitar rebaixamento; acesso / brigar pelo acesso na 2ª divisão) e secundários
+  (caixa no azul, promover jovens). **Confiança** por partida e pelo fechamento do mês; aviso abaixo de 25; demissão em 10 (após 6 jogos); **avaliação na virada** com
+  reflexo na reputação do treinador.
+- **Orçamentos** de transferência e teto da folha; **veto** dos termos finais (orçamento, teto, taxa > 2× o valor, salário > 2,2× o justo) em compras, livres e renovações;
+  aprovação de obras grandes; pedidos de aumento (um por tipo por temporada, confiança 65+).
+- **Empregos:** vagas na IA (clubes muito abaixo do esperado, rebaixados, o clube deixado), propostas conforme a reputação, troca de clube imediata, demissão com a carreira
+  continuando **sem clube** (calendário, partidas e virada seguem; telas de clube bloqueadas), propostas de reserva para o desempregado.
+- Migração 010 (recria `career` com clube anulável) aplicada numa **cópia** do save do usuário pela camada de serviços: diretoria criada; demissão simulada; abertura sem clube;
+  transferências bloqueadas com mensagem; tabela e avanço funcionando.
+- Mutação: **16 defeitos injetados, todos detectados** (2 sobreviveram na primeira rodada — veto de orçamento mascarado pelo veto de taxa no teste; nenhum caso de
+  rebaixamento avaliado — testes reforçados).
+
+### Descobertas durante a fase
+- O veto checado **antes** da negociação barrava até propostas que o vendedor recusaria; passou a avaliar os **termos finais** (como na renovação).
+- O teste antigo de jogadores livres contratava o livre mais valioso, agora barrado pelo teto da folha — passou a usar o mais barato (o veto tem testes próprios).
+- Soak de 4 temporadas: confiança 100 → 80 → 45 e demissão do treinador passivo na virada de 2029; desempregado depois; contabilidade íntegra.
+
+### Escrito, mas NÃO executado (precisa do seu `npm run dev`)
+- Aba **Diretoria** (medidor de confiança, objetivo e status, secundários, orçamentos e pedidos de aumento, propostas de emprego com confirmação, carreira do treinador);
+  painel **sem clube** (menu restrito, cartão "Sem clube" na visão geral); avaliação da diretoria no relatório da virada; recusa "board_rejected" nas propostas.
+
+### Roteiro de teste manual da Fase 8D (pode usar o save atual)
+1. **Diretoria:** confira objetivo, meta, confiança, orçamentos. Simule algumas rodadas: a confiança sobe/desce com os resultados e no dia 1º.
+2. **Veto:** em Transferências, tente pagar mais de 2× o valor de mercado por um jogador (a diretoria veta) ou estourar o orçamento; numa renovação, ofereça um salário absurdo.
+3. **Pedidos:** peça mais orçamento (com confiança abaixo de 65 é negado; só um pedido de cada por temporada).
+4. **Obras:** encomende uma obra acima de 30% do caixa com confiança baixa (negada).
+5. **Empregos:** acompanhe Notícias/Diretoria para propostas; aceite uma (confirmação) e veja o painel mudar de clube. Se for demitido, o menu fica restrito e chegam propostas.
+
+### Verificado pelo usuário (prints de 02/11/2026)
+- Aba Diretoria (objetivo "metade de cima", meta 10º, confiança 60 → 52 com o time em 12º "perto da meta", orçamentos, secundários, carreira do treinador) e **veto**:
+  oferta de 120.000/mês a um livre de valor 472 mil barrada pelo teto da folha.
+- Ajuste visual (8D.1): jogadores sem clube mostram "—" na coluna Contrato e "pretensão salarial … · sem contrato" na proposta e na ficha (antes aparecia o contrato antigo, vencido).
+- Não exercitados pelo usuário nesta rodada (cobertos por testes automatizados e pelo teste na cópia do save): demissão/modo sem clube, propostas de emprego, pedidos de orçamento e aprovação de obras.

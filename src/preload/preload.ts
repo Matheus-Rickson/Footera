@@ -56,6 +56,9 @@ const api: GameApi = {
   getMedical: (profileId, careerId) => ipcRenderer.invoke('medical:get', { profileId, careerId }),
   getInfrastructure: (profileId, careerId) => ipcRenderer.invoke('infra:get', { profileId, careerId }),
   startUpgrade: (profileId, careerId, kind) => ipcRenderer.invoke('infra:upgrade', { profileId, careerId, kind }),
+  getBoard: (profileId, careerId) => ipcRenderer.invoke('board:get', { profileId, careerId }),
+  respondJobOffer: (profileId, careerId, offerId, accept) => ipcRenderer.invoke('board:job', { profileId, careerId, offerId, accept }),
+  requestBudget: (profileId, careerId, kind) => ipcRenderer.invoke('board:budget', { profileId, careerId, kind }),
   quit: () => ipcRenderer.invoke('app:quit'),
 };
 contextBridge.exposeInMainWorld('api', api);

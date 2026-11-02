@@ -11,6 +11,7 @@ import { getCareerState } from './careerRepository.ts';
 import { loadClubEcon, makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { facilitiesOf } from './staffRepository.ts';
+import { boardApprovesConstruction } from './boardRepository.ts';
 
 export class InfrastructureError extends UserError {}
 
@@ -69,6 +70,8 @@ export function startUpgrade(db: SqlDb, kind: FacilityKind): void {
   const cost = upgradeCost(kind, level, loadClubEcon(db, st.clubId).econ);
   const balance = N(db.prepare('SELECT balance FROM clubs WHERE id = ?').get(st.clubId)!.balance);
   if (balance < cost) throw new InfrastructureError(`Caixa insuficiente: a obra custa ${fmt(cost)} e o clube tem ${fmt(balance)}.`);
+  const denied = boardApprovesConstruction(db, cost);
+  if (denied) throw new InfrastructureError(denied);
   const end = addDays(st.gameDate, upgradeDays(kind, level));
   withTransaction(db, () => {
     makePoster(db, st.clubId)(st.clubId, st.gameDate, 'infrastructure', -cost, `Obra: ${FACILITY_LABEL[kind]} (nível ${level} → ${level + 1})`);

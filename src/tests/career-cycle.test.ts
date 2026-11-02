@@ -176,7 +176,7 @@ test('Jogadores livres: aparecem no mercado sem clube, contratação sem taxa (t
   assert.ok(searchMarket(db, {}).every((p) => !retiredIds.has(p.id)) && free.every((p) => !retiredIds.has(p.id)));
   assert.throws(() => makeOffer(db, { playerId: [...retiredIds][0]!, fee: 0, wage: 10_000, years: 1 }), /aposentado/);
   db.prepare("UPDATE career SET game_date = '2027-10-10' WHERE id = 1").run(); // janela fechada
-  const target = free[0]!;
+  const target = free.at(-1)!; // o mais barato: o teto de folha da diretoria (Fase 8D) barraria os mais caros
   assert.throws(() => makeOffer(db, { playerId: target.id, fee: 1000, wage: 10_000, years: 1 }), TransferError);
   const low = makeOffer(db, { playerId: target.id, fee: 0, wage: 100, years: 1 });
   assert.equal(low.outcome, 'player_rejected');

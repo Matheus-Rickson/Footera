@@ -6,6 +6,7 @@ import { ensureSeason } from '../database/repositories/competitionRepository.ts'
 import { ensureSchemes } from '../database/repositories/tacticsRepository.ts';
 import { ensureFinance, prevMonth } from '../database/repositories/financeRepository.ts';
 import { ensureYouthAcademies } from '../database/repositories/youthRepository.ts';
+import { ensureBoard } from '../database/repositories/boardRepository.ts';
 import { ageOn, isValidIso } from '../shared/date.ts';
 import type { Coach, World } from '../shared/types.ts';
 
@@ -41,4 +42,5 @@ export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: stri
   db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('finance_last_month', prevMonth(world.startDate.slice(0, 7)));
   ensureFinance(db);
   ensureYouthAcademies(db);
+  ensureBoard(db);
 }

@@ -50,7 +50,7 @@ test('Saves: cria carreira com foto, lista e abre com dados reais do banco', asy
   const ov = await openCareer(base, prof.id, created.id);
   assert.equal(ov.coach.age, 46);
   assert.equal(ov.squad.length, 25);
-  assert.equal(ov.club.id, clubId);
+  assert.equal(ov.club!.id, clubId); assert.equal(ov.employed, true);
   assert.ok(ov.photoDataUrl?.startsWith('data:image/png;base64,'));
   assert.deepEqual(ov.warnings, []);
   assert.ok(ov.squad.every((p, i, a) => i === 0 || a[i - 1]!.position !== 'ST' || p.position === 'ST'));

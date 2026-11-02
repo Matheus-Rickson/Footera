@@ -21,7 +21,11 @@ import { ensureYouthAcademies, getYouthOverview, promoteYouth, releaseYouth } fr
 import { getMedicalOverview, getTrainingOverview, setDelegated, setFocus, setIntensity } from '../database/repositories/trainingRepository.ts';
 import { fireStaff, getStaffOverview, hireStaff } from '../database/repositories/staffRepository.ts';
 import { getInfrastructureOverview, startUpgrade } from '../database/repositories/infrastructureRepository.ts';
+import { ensureBoard, getBoardOverview, requestBudget, respondJobOffer } from '../database/repositories/boardRepository.ts';
+import { isEmployed } from '../database/repositories/careerRepository.ts';
+import { UserError } from '../shared/errors.ts';
 import type { SqlDb } from '../database/types.ts';
+import { withTransaction } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
 import { generateWorld } from '../game/world/generator.ts';
@@ -29,7 +33,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology } from '../shared/types.ts';
 import type {
-  FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
+  BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
@@ -95,12 +99,12 @@ function summaryFromDb(db: SqlDb, profileId: string, careerId: string): CareerSu
   const row = db.prepare(
     `SELECT c.coach_json, c.club_id, c.game_date, c.season, c.created_at, c.updated_at, c.play_seconds, cl.name AS club_name,
             (SELECT value FROM meta WHERE key = 'world_seed') AS world_seed
-       FROM career c JOIN clubs cl ON cl.id = c.club_id WHERE c.id = 1`).get();
+       FROM career c LEFT JOIN clubs cl ON cl.id = c.club_id WHERE c.id = 1`).get();
   if (!row) throw new Error('Registro de carreira ausente.');
   const coach = JSON.parse(String(row.coach_json)) as Coach;
   return {
-    id: careerId, profileId, coachName: `${coach.firstName} ${coach.lastName}`, clubId: String(row.club_id),
-    clubName: String(row.club_name), gameDate: String(row.game_date), season: Number(row.season),
+    id: careerId, profileId, coachName: `${coach.firstName} ${coach.lastName}`, clubId: row.club_id == null ? '' : String(row.club_id),
+    clubName: row.club_name == null ? 'Sem clube' : String(row.club_name), gameDate: String(row.game_date), season: Number(row.season),
     createdAt: String(row.created_at), updatedAt: String(row.updated_at), playSeconds: Number(row.play_seconds),
     worldSeed: String(row.world_seed),
   };
@@ -138,13 +142,14 @@ export async function openCareer(base: string, profileId: string, careerId: stri
     ensureSchemes(db); // cria os esquemas táticos em saves anteriores à Fase 5
     ensureFinance(db); // patrocínios e ponto de partida financeiro em saves anteriores à Fase 6
     ensureYouthAcademies(db); // categorias de base em saves anteriores à Fase 8B
+    ensureBoard(db); // diretoria em saves anteriores à Fase 8D
     const summary = summaryFromDb(db, profileId, careerId);
     const coach = JSON.parse(String((db.prepare('SELECT coach_json FROM career WHERE id = 1').get() as { coach_json: string }).coach_json)) as Coach;
     const c = db.prepare(
       `SELECT cl.*, l.name AS league_name, co.name AS country_name, st.name AS stadium_name, st.capacity
          FROM clubs cl JOIN leagues l ON l.id = cl.league_id JOIN countries co ON co.id = cl.country_id
          JOIN stadiums st ON st.id = cl.stadium_id WHERE cl.id = ?`).get(summary.clubId);
-    if (!c) throw new Error('Clube da carreira não encontrado no save.');
+    if (!c && summary.clubId) throw new Error('Clube da carreira não encontrado no save.');
     const squad = db.prepare('SELECT * FROM players WHERE club_id = ?').all(summary.clubId).map(rowToPlayer)
       .sort((a, b) => POS_ORDER.indexOf(a.position) - POS_ORDER.indexOf(b.position) || b.overall - a.overall)
       .map((p) => ({
@@ -182,13 +187,22 @@ export async function openCareer(base: string, profileId: string, careerId: stri
         const turnover = turnoverDate(summary.season);
         return { complete, turnoverDate: turnover, canStart: complete && summary.gameDate >= turnover };
       })(),
-      club: {
+      employed: !!c,
+      club: c ? {
         id: String(c.id), name: String(c.name), city: String(c.city), league: String(c.league_name),
         country: String(c.country_name), reputation: Number(c.reputation), balance: Number(c.balance),
         fans: Number(c.fans), stadium: String(c.stadium_name), capacity: Number(c.capacity),
-      },
+      } : null,
       squad,
     };
+  });
+}
+
+/** Como `withPreparedCareer`, mas só com clube: bloqueado quando o treinador está desempregado. */
+function withClubCareer<T>(base: string, profileId: string, careerId: string, fn: (db: SqlDb) => T): Promise<T> {
+  return withPreparedCareer(base, profileId, careerId, (db) => {
+    if (!isEmployed(db)) throw new UserError('Você está sem clube: aceite uma proposta de emprego na aba Diretoria.');
+    return fn(db);
   });
 }
 
@@ -203,6 +217,7 @@ async function withPreparedCareer<T>(base: string, profileId: string, careerId: 
     ensureSchemes(db);
     ensureFinance(db);
     ensureYouthAcademies(db);
+    ensureBoard(db);
     return fn(db);
   });
 }
@@ -229,47 +244,51 @@ export const getRound = (base: string, profileId: string, careerId: string, comp
   withPreparedCareer(base, profileId, careerId, (db) => listRound(db, competitionId, round));
 
 type Ref = [string, string, string];
-export const getTactics = (b: string, p: string, c: string): Promise<TacticsOverviewDto> => withPreparedCareer(b, p, c, (db) => getTacticsOverview(db));
-export const saveTacticScheme = (b: string, p: string, c: string, scheme: SchemeInput): Promise<SchemeDto> => withPreparedCareer(b, p, c, (db) => saveScheme(db, scheme));
-export const duplicateTacticScheme = (b: string, p: string, c: string, id: string): Promise<SchemeDto> => withPreparedCareer(b, p, c, (db) => duplicateScheme(db, id));
-export const deleteTacticScheme = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { deleteScheme(db, id); return true as const; });
-export const activateTacticScheme = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { activateScheme(db, id); return true as const; });
-export const getAutoLineup = (b: string, p: string, c: string, formation: string): Promise<string[]> => withPreparedCareer(b, p, c, (db) => autoLineup(db, formation));
+export const getTactics = (b: string, p: string, c: string): Promise<TacticsOverviewDto> => withClubCareer(b, p, c, (db) => getTacticsOverview(db));
+export const saveTacticScheme = (b: string, p: string, c: string, scheme: SchemeInput): Promise<SchemeDto> => withClubCareer(b, p, c, (db) => saveScheme(db, scheme));
+export const duplicateTacticScheme = (b: string, p: string, c: string, id: string): Promise<SchemeDto> => withClubCareer(b, p, c, (db) => duplicateScheme(db, id));
+export const deleteTacticScheme = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { deleteScheme(db, id); return true as const; });
+export const activateTacticScheme = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { activateScheme(db, id); return true as const; });
+export const getAutoLineup = (b: string, p: string, c: string, formation: string): Promise<string[]> => withClubCareer(b, p, c, (db) => autoLineup(db, formation));
 export type { Ref };
 
-export const getFinance = (b: string, p: string, c: string): Promise<FinanceOverviewDto> => withPreparedCareer(b, p, c, (db) => getFinanceOverview(db));
+export const getFinance = (b: string, p: string, c: string): Promise<FinanceOverviewDto> => withClubCareer(b, p, c, (db) => getFinanceOverview(db));
 
-export const getTransfers = (b: string, p: string, c: string): Promise<TransfersOverviewDto> => withPreparedCareer(b, p, c, (db) => getTransfersOverview(db));
-export const searchTransferMarket = (b: string, p: string, c: string, f: MarketFilter): Promise<MarketPlayerDto[]> => withPreparedCareer(b, p, c, (db) => searchMarket(db, f));
-export const sendTransferOffer = (b: string, p: string, c: string, o: OfferInput): Promise<OfferResultDto> => withPreparedCareer(b, p, c, (db) => makeOffer(db, o));
-export const answerTransferOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { respondOffer(db, id, accept); return true as const; });
-export const listPlayerForSale = (b: string, p: string, c: string, playerId: string, listed: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setListed(db, playerId, listed); return true as const; });
+export const getTransfers = (b: string, p: string, c: string): Promise<TransfersOverviewDto> => withClubCareer(b, p, c, (db) => getTransfersOverview(db));
+export const searchTransferMarket = (b: string, p: string, c: string, f: MarketFilter): Promise<MarketPlayerDto[]> => withClubCareer(b, p, c, (db) => searchMarket(db, f));
+export const sendTransferOffer = (b: string, p: string, c: string, o: OfferInput): Promise<OfferResultDto> => withClubCareer(b, p, c, (db) => makeOffer(db, o));
+export const answerTransferOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { respondOffer(db, id, accept); return true as const; });
+export const listPlayerForSale = (b: string, p: string, c: string, playerId: string, listed: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setListed(db, playerId, listed); return true as const; });
 
 export const getSeason = (b: string, p: string, c: string): Promise<SeasonStatusDto> => withPreparedCareer(b, p, c, (db) => getSeasonStatus(db));
 export const beginNextSeason = (b: string, p: string, c: string): Promise<NewSeasonReportDto> => withPreparedCareer(b, p, c, (db) => startNextSeason(db));
-export const listContracts = (b: string, p: string, c: string): Promise<ContractRowDto[]> => withPreparedCareer(b, p, c, (db) => getContracts(db));
-export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withPreparedCareer(b, p, c, (db) => renewContract(db, input));
+export const listContracts = (b: string, p: string, c: string): Promise<ContractRowDto[]> => withClubCareer(b, p, c, (db) => getContracts(db));
+export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withClubCareer(b, p, c, (db) => renewContract(db, input));
 export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));
 export const careerHistory = (b: string, p: string, c: string): Promise<HistoryRowDto[]> => withPreparedCareer(b, p, c, (db) => getHistory(db));
 export const trophyRoom = (b: string, p: string, c: string): Promise<TrophyRoomDto> => withPreparedCareer(b, p, c, (db) => getTrophies(db));
 
-export const getScouting = (b: string, p: string, c: string): Promise<ScoutingOverviewDto> => withPreparedCareer(b, p, c, (db) => getScoutingOverview(db));
-export const hireScoutFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { hireScout(db, id); return true as const; });
-export const fireScoutFor = (b: string, p: string, c: string, id: string): Promise<number> => withPreparedCareer(b, p, c, (db) => fireScout(db, id));
-export const assignScoutFor = (b: string, p: string, c: string, id: string, a: ScoutAssignment): Promise<true> => withPreparedCareer(b, p, c, (db) => { assignScout(db, id, a); return true as const; });
-export const shortlistFor = (b: string, p: string, c: string, id: string, on: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setShortlisted(db, id, on); return true as const; });
-export const getYouth = (b: string, p: string, c: string): Promise<YouthOverviewDto> => withPreparedCareer(b, p, c, (db) => getYouthOverview(db));
-export const promoteYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { promoteYouth(db, id); return true as const; });
-export const releaseYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { releaseYouth(db, id); return true as const; });
-export const playerProfile = (b: string, p: string, c: string, id: string): Promise<PlayerProfileDto> => withPreparedCareer(b, p, c, (db) => getPlayerProfile(db, id));
+export const getScouting = (b: string, p: string, c: string): Promise<ScoutingOverviewDto> => withClubCareer(b, p, c, (db) => getScoutingOverview(db));
+export const hireScoutFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { hireScout(db, id); return true as const; });
+export const fireScoutFor = (b: string, p: string, c: string, id: string): Promise<number> => withClubCareer(b, p, c, (db) => fireScout(db, id));
+export const assignScoutFor = (b: string, p: string, c: string, id: string, a: ScoutAssignment): Promise<true> => withClubCareer(b, p, c, (db) => { assignScout(db, id, a); return true as const; });
+export const shortlistFor = (b: string, p: string, c: string, id: string, on: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setShortlisted(db, id, on); return true as const; });
+export const getYouth = (b: string, p: string, c: string): Promise<YouthOverviewDto> => withClubCareer(b, p, c, (db) => getYouthOverview(db));
+export const promoteYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { promoteYouth(db, id); return true as const; });
+export const releaseYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { releaseYouth(db, id); return true as const; });
+export const playerProfile = (b: string, p: string, c: string, id: string): Promise<PlayerProfileDto> => withClubCareer(b, p, c, (db) => getPlayerProfile(db, id));
 
-export const getTraining = (b: string, p: string, c: string): Promise<TrainingOverviewDto> => withPreparedCareer(b, p, c, (db) => getTrainingOverview(db));
-export const setTrainingIntensity = (b: string, p: string, c: string, v: Intensity): Promise<true> => withPreparedCareer(b, p, c, (db) => { setIntensity(db, v); return true as const; });
-export const setTrainingDelegated = (b: string, p: string, c: string, on: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setDelegated(db, on); return true as const; });
-export const setTrainingFocus = (b: string, p: string, c: string, id: string, f: TrainingFocus): Promise<true> => withPreparedCareer(b, p, c, (db) => { setFocus(db, id, f); return true as const; });
-export const getStaff = (b: string, p: string, c: string): Promise<StaffOverviewDto> => withPreparedCareer(b, p, c, (db) => getStaffOverview(db));
-export const hireStaffFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { hireStaff(db, id); return true as const; });
-export const fireStaffFor = (b: string, p: string, c: string, id: string): Promise<number> => withPreparedCareer(b, p, c, (db) => fireStaff(db, id));
-export const getMedical = (b: string, p: string, c: string): Promise<MedicalOverviewDto> => withPreparedCareer(b, p, c, (db) => getMedicalOverview(db));
-export const getInfrastructure = (b: string, p: string, c: string): Promise<InfrastructureOverviewDto> => withPreparedCareer(b, p, c, (db) => getInfrastructureOverview(db));
-export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind): Promise<true> => withPreparedCareer(b, p, c, (db) => { startUpgrade(db, k); return true as const; });
+export const getTraining = (b: string, p: string, c: string): Promise<TrainingOverviewDto> => withClubCareer(b, p, c, (db) => getTrainingOverview(db));
+export const setTrainingIntensity = (b: string, p: string, c: string, v: Intensity): Promise<true> => withClubCareer(b, p, c, (db) => { setIntensity(db, v); return true as const; });
+export const setTrainingDelegated = (b: string, p: string, c: string, on: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setDelegated(db, on); return true as const; });
+export const setTrainingFocus = (b: string, p: string, c: string, id: string, f: TrainingFocus): Promise<true> => withClubCareer(b, p, c, (db) => { setFocus(db, id, f); return true as const; });
+export const getStaff = (b: string, p: string, c: string): Promise<StaffOverviewDto> => withClubCareer(b, p, c, (db) => getStaffOverview(db));
+export const hireStaffFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { hireStaff(db, id); return true as const; });
+export const fireStaffFor = (b: string, p: string, c: string, id: string): Promise<number> => withClubCareer(b, p, c, (db) => fireStaff(db, id));
+export const getMedical = (b: string, p: string, c: string): Promise<MedicalOverviewDto> => withClubCareer(b, p, c, (db) => getMedicalOverview(db));
+export const getInfrastructure = (b: string, p: string, c: string): Promise<InfrastructureOverviewDto> => withClubCareer(b, p, c, (db) => getInfrastructureOverview(db));
+export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind): Promise<true> => withClubCareer(b, p, c, (db) => { startUpgrade(db, k); return true as const; });
+
+export const getBoard = (b: string, p: string, c: string): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => getBoardOverview(db));
+export const answerJobOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { respondJobOffer(db, id, accept); return true as const; });
+export const askBudget = (b: string, p: string, c: string, kind: 'transfer' | 'wage'): Promise<{ approved: boolean; message: string }> => withClubCareer(b, p, c, (db) => withTransaction(db, () => requestBudget(db, kind)));

@@ -14,6 +14,7 @@ import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { playerInserter, rowToPlayer } from './worldRepository.ts';
 import { resetToFreeAgentWage } from './transferRepository.ts';
+import { recordYouthPromotionForBoard } from './boardRepository.ts';
 
 export class YouthError extends UserError {}
 
@@ -115,6 +116,7 @@ export function promoteYouth(db: SqlDb, playerId: string): void {
   const p = rowToPlayer(row);
   withTransaction(db, () => {
     promoteFromYouth(db, p, st.clubId, st.gameDate);
+    recordYouthPromotionForBoard(db);
     addNews(db, st.gameDate, 'youth', `Promovido: ${nameOf(p)} sobe ao elenco principal`, `Contrato profissional até ${br(contractEndFor(st.gameDate, 3))}.`);
   });
 }

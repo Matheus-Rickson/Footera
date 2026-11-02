@@ -96,7 +96,8 @@ function SeasonReport({ r, onClose }: { r: NewSeasonReportDto; onClose: () => vo
         <p><strong>{r.previous.position}º lugar</strong> de {r.previous.teamCount} na {r.previous.competitionName}
           {r.previous.outcome && <> · <strong>{OUTCOME_LABEL[r.previous.outcome]}</strong></>} · premiação de {fmtNum(r.previous.prize)}</p>
       )}
-      <p className="muted">Nesta temporada o clube disputa a <strong>{r.newLeague}</strong>.</p>
+      {r.board && <div className={r.board.sacked ? 'error' : r.board.met ? 'ok' : 'notice'}><strong>Avaliação da diretoria:</strong> {r.board.lines.join(' ')}{r.board.sacked ? ' O treinador foi DEMITIDO.' : ''}</div>}
+      {r.newLeague ? <p className="muted">Nesta temporada o clube disputa a <strong>{r.newLeague}</strong>.</p> : <p className="muted">O treinador está sem clube: veja as propostas na aba Diretoria.</p>}
       <div className="grid2">
         <div>
           <h3>Campeões</h3>

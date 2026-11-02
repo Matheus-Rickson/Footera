@@ -13,6 +13,7 @@ import type {
 import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
+import { boardVeto, recordTransferForBoard } from './boardRepository.ts';
 import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
@@ -53,6 +54,7 @@ export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; to
   post(a.toClubId, a.date, 'transfer_out', -a.fee, `Compra de ${name}`);
   if (from) post(from, a.date, 'transfer_in', a.fee, `Venda de ${name}`);
   const until = `Contrato até ${end.split('-').reverse().join('/')}, salário de ${fmt(a.wage)} por mês.`;
+  if (a.kind === 'purchase' || a.kind === 'sale') recordTransferForBoard(db, a.kind, a.fee);
   if (a.kind === 'purchase') addNews(db, a.date, 'transfer', from ? `Reforço: ${name} contratado por ${fmt(a.fee)}` : `Reforço: ${name} chega sem custo de transferência`, until);
   if (a.kind === 'sale') addNews(db, a.date, 'transfer', `Venda: ${name} deixa o clube por ${fmt(a.fee)}`, `Destino: ${S(clubRow(db, a.toClubId).name)}.`);
   return id;
@@ -128,6 +130,9 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
 
+  // a diretoria avalia os termos finais (orçamento, teto da folha e valores fora da realidade do clube)
+  const veto = boardVeto(db, { fee: input.fee, wage: input.wage, marketValue: p.marketValue });
+  if (veto) return { outcome: 'board_rejected', message: veto };
   withTransaction(db, () => executeTransfer(db, makePoster(db, st.clubId), { player: p, toClubId: st.clubId, fee: input.fee, wage: input.wage, years: input.years, date: st.gameDate, kind: 'purchase' }));
   return { outcome: 'completed', message: `Transferência concluída: ${p.firstName} ${p.lastName} é o novo reforço do clube por ${fmt(input.fee)}.` };
 }
@@ -139,6 +144,8 @@ function signFreeAgent(db: SqlDb, st: { clubId: string; gameDate: string }, p: P
   const pd = playerDecision(input.wage, demand);
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
+  const veto = boardVeto(db, { fee: 0, wage: input.wage, marketValue: p.marketValue });
+  if (veto) return { outcome: 'board_rejected', message: veto };
   withTransaction(db, () => executeTransfer(db, makePoster(db, st.clubId), { player: p, toClubId: st.clubId, fee: 0, wage: input.wage, years: input.years, date: st.gameDate, kind: 'purchase' }));
   return { outcome: 'completed', message: `${p.firstName} ${p.lastName} assinou com o clube (jogador livre, sem taxa de transferência).` };
 }
@@ -173,6 +180,7 @@ export function respondOffer(db: SqlDb, offerId: number, accept: boolean): void 
 
 // ---------------------------------------------------------------- processamento diário (chamado por advanceTime, dentro da transação dele)
 function offersToUser(db: SqlDb, rng: Rng, date: string, userClub: string): void {
+  if (!userClub) return; // treinador sem clube
   if (N(db.prepare("SELECT COUNT(*) AS n FROM transfer_offers WHERE status = 'pending'").get()!.n) >= 5) return;
   const me = clubRow(db, userClub);
   const all = squadOf(db, userClub).sort((a, b) => b.marketValue - a.marketValue);

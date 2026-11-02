@@ -40,7 +40,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
         <div>
           <h2>{p.name}</h2>
           <p className="muted">{p.position}{p.secondaryPositions.length ? ` (também ${p.secondaryPositions.join(', ')})` : ''} · {p.age} anos · {p.nationality} · pé {FOOT_LABEL[p.foot] ?? p.foot} · {p.heightCm} cm, {p.weightKg} kg</p>
-          <p className="muted">{p.own ? (p.youth ? 'Suas categorias de base' : 'Seu elenco') : p.clubName ?? 'Sem clube (livre)'} · valor {fmtNum(p.marketValue)} · salário {fmtNum(p.salary)}/mês · contrato até {fmtDate(p.contractEnd)}</p>
+          <p className="muted">{p.own ? (p.youth ? 'Suas categorias de base' : 'Seu elenco') : p.clubName ?? 'Sem clube (livre)'} · valor {fmtNum(p.marketValue)} · {p.clubId || p.youth ? `salário ${fmtNum(p.salary)}/mês · contrato até ${fmtDate(p.contractEnd)}` : `pretensão salarial ~${fmtNum(p.salary)}/mês · sem contrato`}</p>
         </div>
         <div className="row">
           {p.market && <button className="secondary" disabled={busy} onClick={() => void toggleShortlist()}>{p.market.shortlisted ? 'Tirar da lista de observação' : 'Observar'}</button>}

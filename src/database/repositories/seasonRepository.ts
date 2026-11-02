@@ -23,6 +23,7 @@ import { processScoutingDay } from './scoutRepository.ts';
 import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
+import { boardVeto, reviewSeason, startBoardSeason } from './boardRepository.ts';
 
 export class SeasonError extends UserError {}
 
@@ -106,6 +107,8 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
   if (d.kind === 'too_long') return { outcome: 'rejected', message: `Aos ${age} anos, ${nameOf(p)} aceita assinar por no máximo ${d.maxYears} temporada(s).` };
   if (d.kind === 'reject') return { outcome: 'rejected', message: `${nameOf(p)} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (d.kind === 'counter') return { outcome: 'counter', counterWage: d.wage, message: `${nameOf(p)} renova se o salário for de ${fmt(d.wage)} por mês.` };
+  const veto = boardVeto(db, { fee: 0, wage: input.wage, marketValue: p.marketValue, replacesSalary: p.salary });
+  if (veto) return { outcome: 'rejected', message: veto };
   const end = `${contractBaseYear(p.contractEnd) + input.years}-06-30`;
   withTransaction(db, () => {
     db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(input.wage, end, p.id);
@@ -151,7 +154,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
     const report: NewSeasonReportDto = {
       season: newSeason, label: seasonLabel(newSeason), previous: null, newLeague: '', champions: [], movements: [],
-      retiredUser: [], retiredTotal: 0, releasedUser: [], youthReleased: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0,
+      retiredUser: [], retiredTotal: 0, releasedUser: [], youthReleased: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0, board: null,
     };
 
     // 1. resultados finais (derivados das partidas) e trocas de divisão por país
@@ -275,7 +278,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     // elenco do usuário abaixo do mínimo para jogar: promove o melhor jovem da base no setor (ou gera um, se a base não tiver), avisando nas notícias
     const mine = squadOf(db, st.clubId);
     const autoRng = rng.fork('auto-user');
-    for (let g = userShortage(mine), guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
+    for (let g = st.clubId ? userShortage(mine) : null, guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
       const p = promoteBestOfGroup(db, st.clubId, g, date) ?? generate(autoRng, st.clubId, autoRng.pick(GROUP_POSITIONS[g]), autoRng.int(17, 18), false);
       mine.push(p);
       report.autoPromoted.push(`${nameOf(p)} (${p.position})`);
@@ -285,14 +288,22 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     // 8. suspensões e cartões não passam de uma temporada para a outra (lesões continuam)
     db.exec('UPDATE player_status SET suspension_matches = 0, yellow_cards = 0');
 
+    // avaliação da diretoria (pode demitir o treinador) e vagas em clubes rebaixados da IA
+    const userRow = st.clubId ? [...tables.values()].flat().find((r) => r.clubId === st.clubId) : undefined;
+    const review = reviewSeason(db, date, userRow ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : null,
+      [...direction].filter(([, d]) => d === 'relegated').map(([id]) => id));
+    if (review) report.board = { met: review.verdict.met, lines: review.verdict.lines, sacked: review.sacked };
+
     // 9. temporada nova, calendário, e o dia 1º/jul (mercado de verão abre; cobrança de julho)
     db.prepare('UPDATE career SET season = ?, updated_at = ? WHERE id = 1').run(newSeason, now.toISOString());
     createSeason(db, newSeason);
+    startBoardSeason(db); // objetivos e orçamentos da temporada nova
     processMarketDay(db, date);
     processScoutingDay(db, date);
     settleFinances(db, date);
-    report.newLeague = S(db.prepare('SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(newSeason, st.clubId)?.name ?? '');
-    addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, `${clubName(st.clubId)} disputa a ${report.newLeague}. A janela de transferências de verão está aberta.`);
+    const coachClub = getCareerState(db).clubId; // vazio se o treinador foi demitido na avaliação
+    report.newLeague = coachClub ? S(db.prepare('SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(newSeason, coachClub)?.name ?? '') : '';
+    addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, coachClub ? `${clubName(coachClub)} disputa a ${report.newLeague}. A janela de transferências de verão está aberta.` : 'O treinador está sem clube: aguarde propostas de emprego.');
     return report;
   });
 }

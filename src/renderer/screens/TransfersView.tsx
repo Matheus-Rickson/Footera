@@ -109,7 +109,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
           {sel && (
             <section className="card offer">
               <h2>Proposta por <button className="link" onClick={() => onOpenPlayer(sel.id)}>{sel.name}</button></h2>
-              <p className="muted small">{sel.position} · {sel.age} anos · {sel.clubName ?? 'Sem clube (livre: sem taxa, contratável fora da janela)'} · valor de mercado {fmtNum(sel.marketValue)} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)}</p>
+              <p className="muted small">{sel.position} · {sel.age} anos · {sel.clubName ?? 'Sem clube (livre: sem taxa, contratável fora da janela)'} · valor de mercado {fmtNum(sel.marketValue)} · {sel.clubId ? `salário atual ${fmtNum(sel.salary)}/mês · contrato até ${fmtDate(sel.contractEnd)}` : `pretensão salarial ~${fmtNum(sel.salary)}/mês · sem contrato`}</p>
               <div className="row">
                 <label>Taxa ao clube (valor total, uma vez)<input type="number" min={0} value={sel.clubId ? fee : 0} disabled={!sel.clubId} onChange={(e) => setFee(Number(e.target.value))} /></label>
                 <label>Salário do jogador (por mês)<input type="number" min={1} value={wage} onChange={(e) => setWage(Number(e.target.value))} /></label>
@@ -133,7 +133,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                 <tbody>{results.map((p) => (
                   <tr key={p.id} className={sel?.id === p.id ? 'mine' : ''}>
                     <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td>
-                    <td>{fmtDate(p.contractEnd)}</td><td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td><td><KnowledgeBar value={p.knowledge} /></td>
+                    <td>{p.clubId ? fmtDate(p.contractEnd) : <span className="muted">—</span>}</td><td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td><td><KnowledgeBar value={p.knowledge} /></td>
                     <td className="row">
                       <button className="secondary" disabled={!w.open && p.clubId !== null} onClick={() => choose(p)}>Negociar</button>
                       <button className="secondary" disabled={busy} title="Lista de observação dos olheiros" onClick={() => void toggleShortlist(p)}>{p.shortlisted ? 'Não observar' : 'Observar'}</button>

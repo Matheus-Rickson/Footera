@@ -81,3 +81,5 @@ tr.expiring { background:#3a2a20; } .notice button.link { color:#ffe9a8; text-de
 .profile { outline:1px solid #4aa3ff; } .attrs { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; } .attrs td { padding:3px 6px; }
 h2 button.link { font-size:inherit; font-weight:inherit; }
 .progress { height:8px; background:#0f1620; border-radius:4px; overflow:hidden; margin-top:6px; } .progress i { display:block; height:100%; background:var(--accent); }
+.meter { height:14px; background:#0f1620; border-radius:7px; overflow:hidden; margin:8px 0; } .meter i { display:block; height:100%; background:var(--accent); } .meter i.mid { background:#ffd24a; } .meter i.low { background:#ff6b6b; }
+.notice-text { color:#ffe9a8; }

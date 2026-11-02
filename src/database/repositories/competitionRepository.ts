@@ -14,6 +14,7 @@ import { youthIntake } from './youthRepository.ts';
 import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
+import { processBoardDay } from './boardRepository.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type {
   AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionTableDto, FixtureDto, StandingRowDto, TableZone,
@@ -190,6 +191,7 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
     processScoutingDay(db, d); // olheiros observam jogadores
     youthIntake(db, d);        // peneira anual (15/mar)
     settleFinances(db, d);     // salários, patrocínios, TV etc. dos meses que começaram até este dia
+    processBoardDay(db, d);    // diretoria: confiança, aviso/demissão, vagas e propostas de emprego
   }
   return days;
 }

@@ -14,6 +14,7 @@ import { rowToPlayer } from './worldRepository.ts';
 import { applyResult, getCareerState } from './competitionRepository.ts';
 import { loadSquad, type Squad, type Status } from './squadRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
+import { applyMatchesToBoard } from './boardRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -149,7 +150,9 @@ export function simulateMatchday(db: SqlDb): SimulationSummaryDto {
   const scheme = getActiveScheme(db), notes: string[] = [];
   const results = withTransaction(db, () => {
     const post = makePoster(db, st.clubId);
-    return rows.map((f) => simulateOne(db, f, { seed, userClub: st.clubId, coach, scheme, notes, post }));
+    const out = rows.map((f) => simulateOne(db, f, { seed, userClub: st.clubId, coach, scheme, notes, post }));
+    applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
+    return out;
   });
   return { date: st.gameDate, simulated: results.length, userMatch: results.find((r) => r.involvesUser) ?? null, results, notes };
 }

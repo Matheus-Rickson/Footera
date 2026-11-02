@@ -10,6 +10,7 @@ import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
+  getBoard, answerJobOffer, askBudget,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -153,6 +154,9 @@ function registerHandlers(): void {
   handle('medical:get', ref, (i) => getMedical(dataDir(), i.profileId, i.careerId));
   handle('infra:get', ref, (i) => getInfrastructure(dataDir(), i.profileId, i.careerId));
   handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
+  handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
+  handle('board:job', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerJobOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
+  handle('board:budget', ref.extend({ kind: z.enum(['transfer', 'wage']) }), (i) => askBudget(dataDir(), i.profileId, i.careerId, i.kind));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });
 }
 

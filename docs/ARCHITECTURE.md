@@ -80,3 +80,12 @@ Toda aleatoriedade passa por `createRng(seed)`; `fork(label)` cria fluxos indepe
   (comissão, `staffQuality`, `medicalFactor`), `infrastructureRepository` (obras, `processConstructionDay`). Todos chamados por `moveClock` na ordem:
   comissão → treino → obras → evolução mensal → mercado → olheiros → peneira → fechamento mensal.
 - Migração `009_training_staff_infra`: `players.season_start_overall`, `staff`, `training_settings`, `player_training`, `construction_projects`.
+
+## Diretoria e empregos (Fase 8D) — regras em `docs/BOARD_JOBS.md`
+- `game/board-engine/board.ts`: posição esperada, objetivos, deltas de confiança, avaliação da temporada, orçamentos, veto, elegibilidade, demissões da IA.
+- `boardRepository`: objetivos/orçamentos (`setBoardForSeason`, `ensureBoard`), reações (`applyMatchesToBoard` dentro da rodada, `recordTransferForBoard` em
+  `executeTransfer`), autorização (`boardVeto`, `boardApprovesConstruction`), `processBoardDay` (no fim do dia em `moveClock`), `reviewSeason`/`startBoardSeason` na virada,
+  demissão (`fireCoach`) e troca de clube (`respondJobOffer`).
+- **Treinador sem clube:** `career.club_id` NULL; `getCareerState` devolve `clubId = ''`, de modo que nenhum clube casa com o "clube do usuário" e todas as rotinas o tratam
+  como IA. A camada de serviços bloqueia as ações de clube (`withClubCareer`).
+- Migração `010_board_jobs`: recria `career` (club_id anulável), `board_state`, `coach_spells`, `job_vacancies`, `job_offers`.

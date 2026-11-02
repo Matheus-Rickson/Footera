@@ -19,18 +19,21 @@ import { TrainingView } from './TrainingView.tsx';
 import { StaffView } from './StaffView.tsx';
 import { MedicalView } from './MedicalView.tsx';
 import { InfrastructureView } from './InfrastructureView.tsx';
+import { BoardView } from './BoardView.tsx';
 
-type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure';
+type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure' | 'board';
 const TITLES: Record<View, string> = {
   overview: 'Visão geral', squad: 'Elenco', tactics: 'Táticas', calendar: 'Calendário', matches: 'Partidas', competitions: 'Competições', finance: 'Finanças', transfers: 'Transferências',
-  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base', staff: 'Comissão técnica', training: 'Treinamento', medical: 'Departamento médico', infrastructure: 'Infraestrutura',
+  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base', staff: 'Comissão técnica', training: 'Treinamento', medical: 'Departamento médico', infrastructure: 'Infraestrutura', board: 'Diretoria',
 };
+/** Sem clube (demitido) só fazem sentido as telas que não dependem de um elenco. */
+const UNEMPLOYED_VIEWS: View[] = ['overview', 'season', 'competitions', 'matches', 'board', 'trophies', 'news', 'history'];
 const SECTIONS: Array<{ id: View | null; label: string }> = [
   { id: 'overview', label: 'Visão geral' }, { id: 'season', label: 'Temporada' }, { id: 'squad', label: 'Elenco' }, { id: 'contracts', label: 'Contratos' }, { id: 'tactics', label: 'Táticas' },
   { id: 'calendar', label: 'Calendário' }, { id: 'matches', label: 'Partidas' }, { id: 'competitions', label: 'Competições' },
   { id: 'transfers', label: 'Transferências' }, { id: 'scouting', label: 'Olheiros' }, { id: 'youth', label: 'Categorias de base' },
   { id: 'staff', label: 'Comissão técnica' }, { id: 'training', label: 'Treinamento' }, { id: 'medical', label: 'Departamento médico' },
-  { id: 'finance', label: 'Finanças' }, { id: 'infrastructure', label: 'Infraestrutura' }, { id: null, label: 'Diretoria' },
+  { id: 'finance', label: 'Finanças' }, { id: 'infrastructure', label: 'Infraestrutura' }, { id: 'board', label: 'Diretoria' },
   { id: 'trophies', label: 'Sala de troféus' }, { id: 'news', label: 'Notícias' }, { id: 'history', label: 'Histórico da carreira' },
   { id: null, label: 'Configurações e salvamento' },
 ];
@@ -78,9 +81,10 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   return (
     <div className="dash">
       <nav className="side" aria-label="Seções do jogo">
-        <div className="brand">{club.name}</div>
+        <div className="brand">{club ? club.name : 'Sem clube'}</div>
         {SECTIONS.map((s) => s.id ? (
-          <button key={s.label} className={`nav ${view === s.id ? 'active' : ''}`} onClick={() => { setNote(null); setView(s.id as View); }}>{s.label}</button>
+          <button key={s.label} className={`nav ${view === s.id ? 'active' : ''}`} disabled={!club && !UNEMPLOYED_VIEWS.includes(s.id)} title={!club && !UNEMPLOYED_VIEWS.includes(s.id) ? 'Sem clube: aceite uma proposta na Diretoria' : ''}
+            onClick={() => { setNote(null); setPlayer(null); setView(s.id as View); }}>{s.label}</button>
         ) : (
           <button key={s.label} className="nav" disabled title="Ainda não implementado">{s.label}</button>
         ))}
@@ -132,14 +136,22 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
                 </div>
               </div>
             </section>
-            <section className="card">
-              <h2>Clube</h2>
-              <p><strong>{club.name}</strong> — {club.city}</p>
-              <p className="muted">{club.country} · {club.league}</p>
-              <p className="muted">Estádio: {club.stadium} ({fmtNum(club.capacity)} lugares)</p>
-              <p className="muted">Reputação {club.reputation} · Torcida {fmtNum(club.fans)}</p>
-              <p className="muted">Saldo: {fmtNum(club.balance)}</p>
-            </section>
+            {club ? (
+              <section className="card">
+                <h2>Clube</h2>
+                <p><strong>{club.name}</strong> — {club.city}</p>
+                <p className="muted">{club.country} · {club.league}</p>
+                <p className="muted">Estádio: {club.stadium} ({fmtNum(club.capacity)} lugares)</p>
+                <p className="muted">Reputação {club.reputation} · Torcida {fmtNum(club.fans)}</p>
+                <p className="muted">Saldo: {fmtNum(club.balance)}</p>
+              </section>
+            ) : (
+              <section className="card">
+                <h2>Sem clube</h2>
+                <p>O treinador está desempregado. O calendário continua e clubes com vaga fazem propostas conforme a sua reputação.</p>
+                <button onClick={() => go('board')}>Ver propostas de emprego</button>
+              </section>
+            )}
             <section className="card">
               <h2>Elenco</h2>
               <p>{squad.length} jogadores · força média {avg}</p>
@@ -149,8 +161,8 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
               <h2>Próxima partida</h2>
               {next ? (
                 <>
-                  <p><strong>{next.homeId === club.id ? `${club.name} × ${next.awayName}` : `${next.homeName} × ${club.name}`}</strong></p>
-                  <p className="muted">{fmtWeekday(next.date)} {fmtDate(next.date)} · rodada {next.round} · {next.homeId === club.id ? 'em casa' : 'fora'}</p>
+                  <p><strong>{next.homeId === club?.id ? `${club?.name} × ${next.awayName}` : `${next.homeName} × ${club?.name}`}</strong></p>
+                  <p className="muted">{fmtWeekday(next.date)} {fmtDate(next.date)} · rodada {next.round} · {next.homeId === club?.id ? 'em casa' : 'fora'}</p>
                   <p className="muted small">{next.competitionName}</p>
                 </>
               ) : <p className="muted">Nenhuma partida agendada.</p>}
@@ -178,7 +190,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
             )}
             <section className="card">
               <h2>Estado do desenvolvimento</h2>
-              <p className="muted">Diretoria, objetivos e propostas de emprego ainda não foram implementados. Os jogadores evoluem todo dia 1º do mês conforme o treino (aba Treinamento). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
+              <p className="muted">A diretoria cobra objetivos e controla orçamentos (aba Diretoria). Os jogadores evoluem todo dia 1º do mês conforme o treino (aba Treinamento). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
             </section>
           </div>
         )}
@@ -194,6 +206,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && view === 'training' && <TrainingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
         {!match && !player && view === 'medical' && <MedicalView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
         {!match && !player && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && view === 'board' && <BoardView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && view === 'news' && <NewsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}

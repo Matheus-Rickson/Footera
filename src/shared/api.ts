@@ -82,7 +82,7 @@ export interface MarketPlayerDto {
 }
 export interface OfferInput { playerId: string; fee: number; wage: number; years: number }
 export interface OfferResultDto {
-  outcome: 'completed' | 'club_counter' | 'club_rejected' | 'player_counter' | 'player_rejected';
+  outcome: 'completed' | 'club_counter' | 'club_rejected' | 'player_counter' | 'player_rejected' | 'board_rejected';
   message: string; counterFee?: number; counterWage?: number;
 }
 export interface IncomingOfferDto { id: number; date: string; expires: string; playerId: string; playerName: string; position: Position; age: number; marketValue: number; buyerClubName: string; fee: number }
@@ -141,12 +141,14 @@ export interface CareerOverviewDto {
   pendingMatches: number;
   leaguePosition: { competitionId: string; position: number; total: number; points: number; played: number } | null;
   warnings: string[];
+  /** false = treinador sem clube (demitido): `club` é null e o elenco vem vazio. */
+  employed: boolean;
   /** Virada de temporada: `canStart` = todas as partidas disputadas e a data chegou a 1º/jul. */
   seasonStatus: { complete: boolean; turnoverDate: string; canStart: boolean };
   club: {
     id: string; name: string; city: string; league: string; country: string;
     reputation: number; balance: number; fans: number; stadium: string; capacity: number;
-  };
+  } | null;
   squad: SquadRow[];
 }
 
@@ -174,6 +176,7 @@ export interface NewSeasonReportDto {
   retiredUser: string[]; retiredTotal: number; releasedUser: string[];
   /** jovens de 19 anos que deixaram a sua base sem ser promovidos */ youthReleased: string[];
   autoPromoted: string[]; aiRenewed: number; aiReleased: number;
+  /** avaliação da diretoria (null se o treinador estava sem clube) */ board: { met: boolean; lines: string[]; sacked: boolean } | null;
 }
 export interface HistoryRowDto {
   season: number; current: boolean; competitionName: string; tier: number; position: number; teamCount: number;
@@ -235,6 +238,21 @@ export interface InfrastructureOverviewDto {
   facilities: Array<{ kind: FacilityKind; label: string; level: number; maxed: boolean; effect: string; nextEffect: string | null; cost: number | null; days: number | null; extraMonthly: number | null; extraSeats: number | null }>;
 }
 
+// ---------------------------------------------------------------- diretoria e empregos (Fase 8D)
+export type BoardStatus = 'pending' | 'on_track' | 'close' | 'off_track';
+export interface BoardOverviewDto {
+  employed: boolean; coachReputation: number;
+  spells: Array<{ clubName: string; start: string; end: string | null; reason: 'sacked' | 'left' | null }>;
+  offers: Array<{ id: number; clubName: string; league: string; reputation: number; date: string; expires: string }>;
+  club: {
+    name: string; confidence: number; warning: boolean;
+    objective: { label: string; target: number; expected: number; position: number | null; played: number; status: BoardStatus };
+    secondary: Array<{ label: string; status: BoardStatus; detail: string }>;
+    budgets: { transfer: number; spent: number; remaining: number; wageCeiling: number; payroll: number };
+    requests: { transfer: boolean; wage: boolean };
+  } | null;
+}
+
 export interface GameApi {
   appInfo(): Promise<IpcResult<AppInfo>>;
   listProfiles(): Promise<IpcResult<ProfileDto[]>>;
@@ -290,6 +308,9 @@ export interface GameApi {
   getMedical(profileId: string, careerId: string): Promise<IpcResult<MedicalOverviewDto>>;
   getInfrastructure(profileId: string, careerId: string): Promise<IpcResult<InfrastructureOverviewDto>>;
   startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
+  getBoard(profileId: string, careerId: string): Promise<IpcResult<BoardOverviewDto>>;
+  respondJobOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;
+  requestBudget(profileId: string, careerId: string, kind: 'transfer' | 'wage'): Promise<IpcResult<{ approved: boolean; message: string }>>;
   quit(): Promise<IpcResult<true>>;
 }
 declare global { interface Window { api: GameApi } }
