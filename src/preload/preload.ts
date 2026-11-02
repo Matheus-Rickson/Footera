@@ -1,0 +1,35 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { GameApi } from '../shared/api.ts';
+
+const api: GameApi = {
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  listProfiles: () => ipcRenderer.invoke('profile:list'),
+  createProfile: (name) => ipcRenderer.invoke('profile:create', { name }),
+  listClubs: (seed) => ipcRenderer.invoke('world:clubs', { seed }),
+  pickPhoto: () => ipcRenderer.invoke('photo:pick'),
+  discardPhoto: (token) => ipcRenderer.invoke('photo:discard', { token }),
+  createCareer: (input) => ipcRenderer.invoke('career:create', input),
+  listCareers: (profileId) => ipcRenderer.invoke('career:list', { profileId }),
+  openCareer: (profileId, careerId) => ipcRenderer.invoke('career:open', { profileId, careerId }),
+  getCalendar: (profileId, careerId) => ipcRenderer.invoke('career:calendar', { profileId, careerId }),
+  listCompetitions: (profileId, careerId) => ipcRenderer.invoke('career:competitions', { profileId, careerId }),
+  getCompetitionTable: (profileId, careerId, competitionId) => ipcRenderer.invoke('career:table', { profileId, careerId, competitionId }),
+  advance: (profileId, careerId, mode) => ipcRenderer.invoke('career:advance', { profileId, careerId, mode }),
+  getTransfers: (profileId, careerId) => ipcRenderer.invoke('transfers:get', { profileId, careerId }),
+  searchMarket: (profileId, careerId, filter) => ipcRenderer.invoke('transfers:search', { profileId, careerId, filter }),
+  makeOffer: (profileId, careerId, offer) => ipcRenderer.invoke('transfers:offer', { profileId, careerId, offer }),
+  respondOffer: (profileId, careerId, offerId, accept) => ipcRenderer.invoke('transfers:respond', { profileId, careerId, offerId, accept }),
+  setListed: (profileId, careerId, playerId, listed) => ipcRenderer.invoke('transfers:list', { profileId, careerId, playerId, listed }),
+  getFinance: (profileId, careerId) => ipcRenderer.invoke('finance:get', { profileId, careerId }),
+  getTactics: (profileId, careerId) => ipcRenderer.invoke('tactics:get', { profileId, careerId }),
+  saveScheme: (profileId, careerId, scheme) => ipcRenderer.invoke('tactics:save', { profileId, careerId, scheme }),
+  duplicateScheme: (profileId, careerId, schemeId) => ipcRenderer.invoke('tactics:duplicate', { profileId, careerId, schemeId }),
+  deleteScheme: (profileId, careerId, schemeId) => ipcRenderer.invoke('tactics:delete', { profileId, careerId, schemeId }),
+  activateScheme: (profileId, careerId, schemeId) => ipcRenderer.invoke('tactics:activate', { profileId, careerId, schemeId }),
+  autoLineup: (profileId, careerId, formation) => ipcRenderer.invoke('tactics:auto', { profileId, careerId, formation }),
+  simulateMatchday: (profileId, careerId) => ipcRenderer.invoke('career:simulate', { profileId, careerId }),
+  getMatchReport: (profileId, careerId, fixtureId) => ipcRenderer.invoke('career:match', { profileId, careerId, fixtureId }),
+  listRound: (profileId, careerId, competitionId, round) => ipcRenderer.invoke('career:round', { profileId, careerId, competitionId, round }),
+  quit: () => ipcRenderer.invoke('app:quit'),
+};
+contextBridge.exposeInMainWorld('api', api);
