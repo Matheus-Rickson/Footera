@@ -16,7 +16,7 @@
    jogadores **sem clube** têm +10 p.p. (até 23 anos), +30 p.p. (24–29) e +50 p.p. (30+), o que mantém o número de livres estável (~320 no universo completo).
 5. **Contratos que vencem** (`contract_end ≤ 1º/jul`): a IA renova 90% dos 14 mais fortes do elenco e 55% dos demais (1–3 temporadas, limitado pela idade);
    os outros ficam livres. **O usuário não renova automaticamente:** quem não foi renovado sai de graça.
-6. **Desenvolvimento** (uma vez por temporada, `developPlayer`): até 27 anos cresce em direção ao potencial oculto — `margem × taxa(idade) + 0,3`, com taxa de 30% (≤18)
+6. **Desenvolvimento** — desde a Fase 8C é **mensal** (dia 1º, pelo treino; ver `docs/TRAINING_STAFF.md`); a virada só registra o saldo da temporada. Regras de crescimento (`developPlayer`): até 27 anos cresce em direção ao potencial oculto — `margem × taxa(idade) + 0,3`, com taxa de 30% (≤18)
    a 12% (27), × (0,85 + 0,3 × fração de minutos jogados) × (0,85 + 0,3 × profissionalismo/20), mais ruído; **antes dos 28 nunca passa do potencial oculto**
    (atributos cortados até caber). 28–29: estável. A partir dos 30 declina (−0,3, −1, −1,5 … −3 aos 35, −3,5 e mais a partir de 36), com o físico caindo 1,5× mais rápido;
    profissionais declinam mais devagar. Valor de mercado recalculado. Snapshot em `player_development`.

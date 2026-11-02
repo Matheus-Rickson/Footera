@@ -10,6 +10,7 @@ import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
+  getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
@@ -141,6 +142,17 @@ function registerHandlers(): void {
   handle('youth:get', ref, (i) => getYouth(dataDir(), i.profileId, i.careerId));
   handle('youth:promote', ref.extend({ playerId: id60 }), (i) => promoteYouthFor(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('youth:release', ref.extend({ playerId: id60 }), (i) => releaseYouthFor(dataDir(), i.profileId, i.careerId, i.playerId));
+  handle('training:get', ref, (i) => getTraining(dataDir(), i.profileId, i.careerId));
+  handle('training:intensity', ref.extend({ intensity: z.enum(['light', 'normal', 'hard']) }), (i) => setTrainingIntensity(dataDir(), i.profileId, i.careerId, i.intensity));
+  handle('training:delegate', ref.extend({ on: z.boolean() }), (i) => setTrainingDelegated(dataDir(), i.profileId, i.careerId, i.on));
+  handle('training:focus', ref.extend({ playerId: id60, focus: z.enum(['balanced', 'finishing', 'creation', 'defense', 'physical', 'technical', 'goalkeeping']) }),
+    (i) => setTrainingFocus(dataDir(), i.profileId, i.careerId, i.playerId, i.focus));
+  handle('staff:get', ref, (i) => getStaff(dataDir(), i.profileId, i.careerId));
+  handle('staff:hire', ref.extend({ candidateId: id60 }), (i) => hireStaffFor(dataDir(), i.profileId, i.careerId, i.candidateId));
+  handle('staff:fire', ref.extend({ staffId: id60 }), (i) => fireStaffFor(dataDir(), i.profileId, i.careerId, i.staffId));
+  handle('medical:get', ref, (i) => getMedical(dataDir(), i.profileId, i.careerId));
+  handle('infra:get', ref, (i) => getInfrastructure(dataDir(), i.profileId, i.careerId));
+  handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });
 }
 

@@ -24,6 +24,7 @@ A 1ª calibração deixava a 2ª divisão em −22% (todos quebrando); custos fi
 a `economia × (reputação/65)^2,35`, e as receitas foram ancoradas na mesma estrutura.
 
 ## Limitações conhecidas
+- Categorias de despesa `coaching` (comissão contratada, só o usuário; o fixo `staff` do usuário virou só estrutura) e `infrastructure` (obras) — Fase 8C.
 - Categorias de despesa `youth` (salários da base, todos os clubes) e `scouting` (olheiros e multas, só o usuário) — Fase 8B.
 - Premiação da liga (categoria `prize`) é paga na virada de temporada — fórmula e efeito na margem em `docs/CAREER_CYCLE.md`.
 - Sem empréstimos, juros, impostos nem regras de fair play; saldo negativo não gera consequências ainda.

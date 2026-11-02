@@ -62,8 +62,8 @@ export interface FinanceOverviewDto {
   balance: number; lastSettledMonth: string | null;
   /** `items`: lançamentos do mês por categoria (positivo = receita, negativo = despesa). `settled`: false = mês sem a cobrança mensal (save anterior às finanças). */
   last12: Array<{ month: string; income: number; expense: number; net: number; settled: boolean; items: Array<{ category: string; amount: number }> }>;
-  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out' | 'prize' | 'youth' | 'scouting'; amount: number }>;
-  projection: { income: number; expense: number; net: number; wageBill: number; youthBill: number; scoutBill: number; gate: number; gateEstimated: boolean };
+  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out' | 'prize' | 'youth' | 'scouting' | 'coaching' | 'infrastructure'; amount: number }>;
+  projection: { income: number; expense: number; net: number; wageBill: number; youthBill: number; scoutBill: number; coachingBill: number; staffFixed: number; gate: number; gateEstimated: boolean };
   runwayMonths: number | null;
   sponsors: Array<{ id: string; kind: 'shirt' | 'kit' | 'stadium'; sponsor: string; monthly: number; start: string; end: string }>;
   gates: Array<{ fixtureId: string; date: string; opponent: string; attendance: number; capacity: number; revenue: number }>;
@@ -209,6 +209,32 @@ export interface YouthOverviewDto {
   players: YouthPlayerDto[]; academyLevel: number; nextIntake: string; lastIntake: { date: string; names: string[] } | null; cap: number; seniorSize: number; seniorMax: number;
 }
 
+// ---------------------------------------------------------------- treino, comissão técnica, médico e infraestrutura (Fase 8C)
+export type Intensity = 'light' | 'normal' | 'hard';
+export type TrainingFocus = 'balanced' | 'finishing' | 'creation' | 'defense' | 'physical' | 'technical' | 'goalkeeping';
+export type StaffRole = 'assistant' | 'fitness' | 'goalkeeping' | 'doctor';
+export interface TrainingOverviewDto {
+  intensity: Intensity; delegated: boolean; hasFitnessCoach: boolean; focuses: TrainingFocus[];
+  intensityEffects: Record<Intensity, { growth: number; recovery: number; injury: number }>;
+  players: Array<{ id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; condition: number; focus: TrainingFocus; suggestedFocus: TrainingFocus; seasonChange: number; injuredUntil: string | null }>;
+}
+export interface StaffMemberDto { id: string; name: string; nationality: string; ability: number; salary: number; contractEnd: string }
+export interface StaffOverviewDto {
+  monthlyCost: number; unstaffedQuality: number;
+  roles: Array<{ role: StaffRole; label: string; effect: string; member: StaffMemberDto | null; candidates: Array<{ id: string; name: string; nationality: string; ability: number; salary: number }> }>;
+}
+export interface MedicalOverviewDto {
+  doctor: { name: string; ability: number } | null; medicalLevel: number; recoveryFactor: number; intensity: Intensity;
+  injured: Array<{ id: string; name: string; position: Position; until: string; daysLeft: number; note: string }>;
+  atRisk: Array<{ id: string; name: string; position: Position; condition: number; dailyRisk: number }>;
+}
+export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium';
+export interface InfrastructureOverviewDto {
+  balance: number; capacity: number;
+  project: { kind: FacilityKind; label: string; toLevel: number; cost: number; start: string; end: string; progress: number } | null;
+  facilities: Array<{ kind: FacilityKind; label: string; level: number; maxed: boolean; effect: string; nextEffect: string | null; cost: number | null; days: number | null; extraMonthly: number | null; extraSeats: number | null }>;
+}
+
 export interface GameApi {
   appInfo(): Promise<IpcResult<AppInfo>>;
   listProfiles(): Promise<IpcResult<ProfileDto[]>>;
@@ -254,6 +280,16 @@ export interface GameApi {
   promoteYouth(profileId: string, careerId: string, playerId: string): Promise<IpcResult<true>>;
   releaseYouth(profileId: string, careerId: string, playerId: string): Promise<IpcResult<true>>;
   getPlayerProfile(profileId: string, careerId: string, playerId: string): Promise<IpcResult<PlayerProfileDto>>;
+  getTraining(profileId: string, careerId: string): Promise<IpcResult<TrainingOverviewDto>>;
+  setIntensity(profileId: string, careerId: string, intensity: Intensity): Promise<IpcResult<true>>;
+  setDelegated(profileId: string, careerId: string, on: boolean): Promise<IpcResult<true>>;
+  setFocus(profileId: string, careerId: string, playerId: string, focus: TrainingFocus): Promise<IpcResult<true>>;
+  getStaff(profileId: string, careerId: string): Promise<IpcResult<StaffOverviewDto>>;
+  hireStaff(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
+  fireStaff(profileId: string, careerId: string, staffId: string): Promise<IpcResult<number>>;
+  getMedical(profileId: string, careerId: string): Promise<IpcResult<MedicalOverviewDto>>;
+  getInfrastructure(profileId: string, careerId: string): Promise<IpcResult<InfrastructureOverviewDto>>;
+  startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
   quit(): Promise<IpcResult<true>>;
 }
 declare global { interface Window { api: GameApi } }

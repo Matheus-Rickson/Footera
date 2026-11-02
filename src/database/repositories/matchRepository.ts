@@ -13,6 +13,7 @@ import { makePoster, recordGate, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { applyResult, getCareerState } from './competitionRepository.ts';
 import { loadSquad, type Squad, type Status } from './squadRepository.ts';
+import { medicalFactor } from './staffRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -102,6 +103,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
     VALUES (?,?,?,1,?,?,?,?,?,?) ON CONFLICT(player_id, competition_id) DO UPDATE SET appearances = appearances + 1, minutes = minutes + excluded.minutes,
     goals = goals + excluded.goals, assists = assists + excluded.assists, yellow_cards = yellow_cards + excluded.yellow_cards, red_cards = red_cards + excluded.red_cards, rating_sum = rating_sum + excluded.rating_sum`);
 
+  const medical = new Map([[f.homeId, medicalFactor(db, f.homeId)], [f.awayId, medicalFactor(db, f.awayId)]]);
   for (const r of out.players) {
     const p = byId.get(r.id)!;
     const sq = r.team === 0 ? home : away, clubId = r.team === 0 ? f.homeId : f.awayId;
@@ -118,9 +120,10 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
     if (y >= 5) { susp += 1; y -= 5; }
     // quem estava suspenso e jogou (escalação de emergência) cumpre a suspensão
     if (st.suspension > 0 && sq.suspendedOut.indexOf(p.id) < 0) susp = Math.max(0, susp - 1);
-    const injuryUntil = r.injuredDays > 0 ? addDays(f.date, r.injuredDays) : st.injuryUntil;
+    const injuredDays = r.injuredDays > 0 ? Math.max(1, Math.round(r.injuredDays * medical.get(clubId)!)) : 0; // médico e departamento médico encurtam
+    const injuryUntil = injuredDays > 0 ? addDays(f.date, injuredDays) : st.injuryUntil;
     if (y !== st.yellows || susp !== st.suspension || injuryUntil !== st.injuryUntil) {
-      upStatus.run(p.id, injuryUntil, r.injuredDays > 0 ? `Lesão (${r.injuredDays} dias)` : null, susp, y);
+      upStatus.run(p.id, injuryUntil, injuredDays > 0 ? `Lesão (${injuredDays} dias)` : null, susp, y);
     }
   }
   for (const [sq, id] of [[home, f.homeId], [away, f.awayId]] as const) {

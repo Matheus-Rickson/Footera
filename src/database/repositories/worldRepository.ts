@@ -33,13 +33,13 @@ export function playerInserter(db: SqlDb): (p: Player) => void {
   const ins = db.prepare(
     `INSERT INTO players (id, club_id, first_name, last_name, birth_date, nationality, extra_nationalities_json, position,
       secondary_positions_json, foot, height_cm, weight_kg, attributes_json, personality_json, potential_estimated,
-      potential_hidden, condition_pct, fatigue, morale, form, market_value, salary, contract_end, overall)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      potential_hidden, condition_pct, fatigue, morale, form, market_value, salary, contract_end, overall, season_start_overall)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   return (p) => {
     ins.run(p.id, p.clubId, p.firstName, p.lastName, p.birthDate, p.nationality, JSON.stringify(p.extraNationalities),
       p.position, JSON.stringify(p.secondaryPositions), p.foot, p.heightCm, p.weightKg, JSON.stringify(p.attributes),
       JSON.stringify(p.personality), p.potentialEstimated, p.potentialHidden, p.condition, p.fatigue, p.morale, p.form,
-      p.marketValue, p.salary, p.contractEnd, p.overall);
+      p.marketValue, p.salary, p.contractEnd, p.overall, p.overall);
   };
 }
 

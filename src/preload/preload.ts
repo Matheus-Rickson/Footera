@@ -46,6 +46,16 @@ const api: GameApi = {
   promoteYouth: (profileId, careerId, playerId) => ipcRenderer.invoke('youth:promote', { profileId, careerId, playerId }),
   releaseYouth: (profileId, careerId, playerId) => ipcRenderer.invoke('youth:release', { profileId, careerId, playerId }),
   getPlayerProfile: (profileId, careerId, playerId) => ipcRenderer.invoke('player:profile', { profileId, careerId, playerId }),
+  getTraining: (profileId, careerId) => ipcRenderer.invoke('training:get', { profileId, careerId }),
+  setIntensity: (profileId, careerId, intensity) => ipcRenderer.invoke('training:intensity', { profileId, careerId, intensity }),
+  setDelegated: (profileId, careerId, on) => ipcRenderer.invoke('training:delegate', { profileId, careerId, on }),
+  setFocus: (profileId, careerId, playerId, focus) => ipcRenderer.invoke('training:focus', { profileId, careerId, playerId, focus }),
+  getStaff: (profileId, careerId) => ipcRenderer.invoke('staff:get', { profileId, careerId }),
+  hireStaff: (profileId, careerId, candidateId) => ipcRenderer.invoke('staff:hire', { profileId, careerId, candidateId }),
+  fireStaff: (profileId, careerId, staffId) => ipcRenderer.invoke('staff:fire', { profileId, careerId, staffId }),
+  getMedical: (profileId, careerId) => ipcRenderer.invoke('medical:get', { profileId, careerId }),
+  getInfrastructure: (profileId, careerId) => ipcRenderer.invoke('infra:get', { profileId, careerId }),
+  startUpgrade: (profileId, careerId, kind) => ipcRenderer.invoke('infra:upgrade', { profileId, careerId, kind }),
   quit: () => ipcRenderer.invoke('app:quit'),
 };
 contextBridge.exposeInMainWorld('api', api);

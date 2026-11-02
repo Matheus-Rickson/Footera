@@ -80,3 +80,4 @@ tr.expiring { background:#3a2a20; } .notice button.link { color:#ffe9a8; text-de
 .knowledge i { position:absolute; inset:0 auto 0 0; background:#2f6f57; } .knowledge b { position:relative; display:block; text-align:center; font-size:.75rem; line-height:16px; }
 .profile { outline:1px solid #4aa3ff; } .attrs { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; } .attrs td { padding:3px 6px; }
 h2 button.link { font-size:inherit; font-weight:inherit; }
+.progress { height:8px; background:#0f1620; border-radius:4px; overflow:hidden; margin-top:6px; } .progress i { display:block; height:100%; background:var(--accent); }

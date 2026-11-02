@@ -18,6 +18,9 @@ import { getNews } from '../database/repositories/newsRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
 import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, setShortlisted } from '../database/repositories/scoutRepository.ts';
 import { ensureYouthAcademies, getYouthOverview, promoteYouth, releaseYouth } from '../database/repositories/youthRepository.ts';
+import { getMedicalOverview, getTrainingOverview, setDelegated, setFocus, setIntensity } from '../database/repositories/trainingRepository.ts';
+import { fireStaff, getStaffOverview, hireStaff } from '../database/repositories/staffRepository.ts';
+import { getInfrastructureOverview, startUpgrade } from '../database/repositories/infrastructureRepository.ts';
 import type { SqlDb } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
@@ -26,6 +29,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology } from '../shared/types.ts';
 import type {
+  FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
@@ -258,3 +262,14 @@ export const getYouth = (b: string, p: string, c: string): Promise<YouthOverview
 export const promoteYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { promoteYouth(db, id); return true as const; });
 export const releaseYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { releaseYouth(db, id); return true as const; });
 export const playerProfile = (b: string, p: string, c: string, id: string): Promise<PlayerProfileDto> => withPreparedCareer(b, p, c, (db) => getPlayerProfile(db, id));
+
+export const getTraining = (b: string, p: string, c: string): Promise<TrainingOverviewDto> => withPreparedCareer(b, p, c, (db) => getTrainingOverview(db));
+export const setTrainingIntensity = (b: string, p: string, c: string, v: Intensity): Promise<true> => withPreparedCareer(b, p, c, (db) => { setIntensity(db, v); return true as const; });
+export const setTrainingDelegated = (b: string, p: string, c: string, on: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setDelegated(db, on); return true as const; });
+export const setTrainingFocus = (b: string, p: string, c: string, id: string, f: TrainingFocus): Promise<true> => withPreparedCareer(b, p, c, (db) => { setFocus(db, id, f); return true as const; });
+export const getStaff = (b: string, p: string, c: string): Promise<StaffOverviewDto> => withPreparedCareer(b, p, c, (db) => getStaffOverview(db));
+export const hireStaffFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { hireStaff(db, id); return true as const; });
+export const fireStaffFor = (b: string, p: string, c: string, id: string): Promise<number> => withPreparedCareer(b, p, c, (db) => fireStaff(db, id));
+export const getMedical = (b: string, p: string, c: string): Promise<MedicalOverviewDto> => withPreparedCareer(b, p, c, (db) => getMedicalOverview(db));
+export const getInfrastructure = (b: string, p: string, c: string): Promise<InfrastructureOverviewDto> => withPreparedCareer(b, p, c, (db) => getInfrastructureOverview(db));
+export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind): Promise<true> => withPreparedCareer(b, p, c, (db) => { startUpgrade(db, k); return true as const; });

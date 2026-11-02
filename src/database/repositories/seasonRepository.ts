@@ -3,11 +3,10 @@ import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import { ageOn } from '../../shared/date.ts';
-import { developPlayer, prizeMoney, retirementChance } from '../../game/career-engine/development.ts';
+import { prizeMoney, retirementChance, reviseEstimate } from '../../game/career-engine/development.ts';
 import {
   AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, expiresAt, maxContractYears, renewalDecision, renewalDemand, turnoverDate,
 } from '../../game/career-engine/contracts.ts';
-import { marketValue } from '../../game/world/generator.ts';
 import { groupOf, SQUAD_MAX, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { LeagueRules, Player, Position } from '../../shared/types.ts';
 import type {
@@ -21,6 +20,9 @@ import { aiSignFreeAgents, neededGroup, processMarketDay, releasePlayer } from '
 import { rowToPlayer } from './worldRepository.ts';
 import { GROUP_POSITIONS, playerFactory, promoteBestOfGroup, youthTurnover } from './youthRepository.ts';
 import { processScoutingDay } from './scoutRepository.ts';
+import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
+import { processStaffDay } from './staffRepository.ts';
+import { processConstructionDay } from './infrastructureRepository.ts';
 
 export class SeasonError extends UserError {}
 
@@ -141,6 +143,11 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
 
   return withTransaction(db, () => {
     const post: Poster = makePoster(db, st.clubId);
+    // o dia 1º/jul começa pelo treino (a evolução de junho pertence à temporada que termina), antes do balanço da temporada
+    processStaffDay(db, date);
+    processTrainingDay(db, date);
+    processConstructionDay(db, date);
+    processTrainingMonth(db, date);
     const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
     const report: NewSeasonReportDto = {
       season: newSeason, label: seasonLabel(newSeason), previous: null, newLeague: '', champions: [], movements: [],
@@ -223,22 +230,15 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     }
     if (report.releasedUser.length) addNews(db, date, 'contract', `Fim de contrato: ${report.releasedUser.join(', ')}`, 'Saíram de graça porque o contrato não foi renovado.');
 
-    // 5. desenvolvimento (uma vez por temporada) e snapshot
+    // 5. balanço da temporada (a evolução agora é mensal, pelo treino) e revisão anual do potencial estimado visível
     const minutes = new Map(db.prepare('SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE c.season = ? GROUP BY pss.player_id')
       .all(st.season).map((r) => [S(r.player_id), N(r.m)]));
-    const games = new Map(db.prepare(`SELECT club, COUNT(*) AS n FROM (SELECT f.home_club_id AS club FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ?
-      UNION ALL SELECT f.away_club_id FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ?) GROUP BY club`).all(st.season, st.season).map((r) => [S(r.club), N(r.n)]));
-    const economy = new Map(db.prepare('SELECT code, economy FROM countries').all().map((r) => [S(r.code), N(r.economy)]));
-    const upDev = db.prepare('UPDATE players SET attributes_json = ?, overall = ?, potential_hidden = ?, potential_estimated = ?, market_value = ? WHERE id = ?');
     const insDev = db.prepare('INSERT INTO player_development (player_id, season, club_id, age, overall_before, overall_after, minutes) VALUES (?,?,?,?,?,?,?)');
+    const upEst = db.prepare('UPDATE players SET potential_estimated = ?, season_start_overall = overall WHERE id = ?');
     for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
       const p = rowToPlayer(r);
-      const age = ageOn(p.birthDate, date);
-      const played = minutes.get(p.id) ?? 0;
-      const possible = 90 * (p.clubId ? games.get(p.clubId) ?? 0 : 0);
-      const d = developPlayer(p, age, possible > 0 ? played / possible : 0, rng.fork(`dev:${p.id}`));
-      upDev.run(JSON.stringify(d.attributes), d.overall, d.potentialHidden, d.potentialEstimated, marketValue(d.overall, age, d.potentialHidden, economy.get(p.nationality) ?? 1), p.id);
-      insDev.run(p.id, st.season, p.clubId, age, p.overall, d.overall, played);
+      insDev.run(p.id, st.season, p.clubId, ageOn(p.birthDate, date), N(r.season_start_overall ?? p.overall), p.overall, minutes.get(p.id) ?? 0);
+      upEst.run(reviseEstimate(p.potentialEstimated, p.potentialHidden, p.overall, rng.fork(`est:${p.id}`)), p.id);
     }
 
     // 6. categorias de base: a IA promove os jovens prontos; quem chega aos 19 sem ser promovido deixa a base

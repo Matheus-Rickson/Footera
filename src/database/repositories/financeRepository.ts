@@ -2,7 +2,7 @@ import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import {
-  attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, SPONSOR_SHARE, sponsorTotalMonthly, staffMonthly, tvMonthly,
+  attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, SPONSOR_SHARE, sponsorTotalMonthly, staffMonthly, staffUserMonthly, tvMonthly,
   type ClubEcon, type FinanceCategory, type SponsorKind, type Weather,
 } from '../../game/finance-engine/finance.ts';
 import { addDays } from '../../shared/date.ts';
@@ -107,6 +107,7 @@ export function settleFinances(db: SqlDb, upTo: string): number {
     const wages = new Map(db.prepare('SELECT club_id, SUM(salary) AS w FROM players WHERE club_id IS NOT NULL GROUP BY club_id').all().map((r) => [S(r.club_id), N(r.w)]));
     const youth = new Map(db.prepare('SELECT youth_club_id, SUM(salary) AS w FROM players WHERE youth_club_id IS NOT NULL GROUP BY youth_club_id').all().map((r) => [S(r.youth_club_id), N(r.w)]));
     const scouts = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM scouts').get()!.w); // só o clube do usuário tem olheiros
+    const coaching = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM staff').get()!.w); // e comissão técnica contratada
     for (const c of db.prepare(ECON_SQL).all().map(toClub)) {
       const label = c.id === st.clubId;
       post(c.id, date, 'tv', tvMonthly(c.econ), 'Direitos de transmissão (TV)');
@@ -120,7 +121,10 @@ export function settleFinances(db: SqlDb, upTo: string): number {
         post(c.id, date, 'sponsorship', N(deal.monthly_amount), label ? `${KIND_LABEL[kind]}: ${S(deal.sponsor_name)}` : '');
       }
       post(c.id, date, 'wages', -(wages.get(c.id) ?? 0), 'Salários dos jogadores');
-      post(c.id, date, 'staff', -staffMonthly(c.econ), 'Comissão técnica e categorias de base');
+      if (label) {
+        post(c.id, date, 'staff', -staffUserMonthly(c.econ), 'Estrutura: categorias de base e instalações');
+        post(c.id, date, 'coaching', -coaching, 'Salários da comissão técnica');
+      } else post(c.id, date, 'staff', -staffMonthly(c.econ), 'Comissão técnica e categorias de base');
       post(c.id, date, 'youth', -(youth.get(c.id) ?? 0), 'Salários das categorias de base');
       if (label) post(c.id, date, 'scouting', -scouts, 'Salários dos olheiros');
       post(c.id, date, 'maintenance', -maintenanceMonthly(c.econ), 'Estádio e instalações');
@@ -168,6 +172,8 @@ export function getFinanceOverview(db: SqlDb): FinanceOverviewDto {
   const wageBill = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM players WHERE club_id = ?').get(st.clubId)!.w);
   const youthBill = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM players WHERE youth_club_id = ?').get(st.clubId)!.w);
   const scoutBill = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM scouts').get()!.w);
+  const coachingBill = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM staff').get()!.w);
+  const staffFixed = staffUserMonthly(econ);
   const deals = db.prepare('SELECT * FROM sponsor_deals WHERE club_id = ? AND end_date >= ? AND start_date <= ? ORDER BY kind').all(st.clubId, st.gameDate, st.gameDate);
   const sponsorsMonthly = deals.reduce((s, d) => s + N(d.monthly_amount), 0);
   // Bilheteria: média dos últimos jogos em casa (se houver ao menos 3) ou estimativa pela fórmula; anualizada pelos jogos em casa da temporada.
@@ -177,11 +183,11 @@ export function getFinanceOverview(db: SqlDb): FinanceOverviewDto {
   const avgGate = gateEstimated ? gateRevenue(Math.round(econ.capacity * expectedFill(econ.reputation, 50, 'clear')), econ) : gateRows.reduce((a, r) => a + N(r.gate_revenue), 0) / gateRows.length;
   const gateMonthly = Math.round((avgGate * homeGames) / 12);
   const income = tvMonthly(econ) + merchMonthly(econ) + sponsorsMonthly + gateMonthly;
-  const expense = wageBill + youthBill + scoutBill + staffMonthly(econ) + maintenanceMonthly(econ) + operationsMonthly(econ);
+  const expense = wageBill + youthBill + scoutBill + coachingBill + staffFixed + maintenanceMonthly(econ) + operationsMonthly(econ);
   const net = income - expense;
   return {
     balance, lastSettledMonth: lastMonth, last12, lastMonth: breakdown,
-    projection: { income, expense, net, wageBill, youthBill, scoutBill, gate: gateMonthly, gateEstimated },
+    projection: { income, expense, net, wageBill, youthBill, scoutBill, coachingBill, staffFixed, gate: gateMonthly, gateEstimated },
     runwayMonths: net < 0 && balance > 0 ? Math.floor(balance / -net) : null,
     sponsors: deals.map((d) => ({ id: S(d.id), kind: S(d.kind) as SponsorKind, sponsor: S(d.sponsor_name), monthly: N(d.monthly_amount), start: S(d.start_date), end: S(d.end_date) })),
     gates: db.prepare(`SELECT m.fixture_id, f.match_date, a.name AS away, m.attendance, st.capacity, m.gate_revenue FROM matches m JOIN fixtures f ON f.id = m.fixture_id

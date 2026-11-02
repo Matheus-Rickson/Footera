@@ -74,18 +74,24 @@ test('Consequências: condição física, forma, estatísticas da temporada e en
     assert.ok(Number(p.condition_pct) < 100, 'quem jogou perdeu condição');
     assert.ok(Number(r.minutes) > 0);
   }
-  const unused = db.prepare("SELECT COUNT(*) AS n FROM players WHERE club_id = ? AND condition_pct = 100").get(clubId)!;
-  assert.ok(Number(unused.n) >= 9, 'quem não jogou segue descansado');
+  // quem não jogou e não está lesionado (lesões de treino limitam a condição) segue descansado
+  const unused = db.prepare(`SELECT COUNT(*) AS n FROM players p WHERE p.club_id = ? AND p.id NOT IN (SELECT player_id FROM player_season_stats)
+    AND p.id NOT IN (SELECT player_id FROM player_status WHERE injury_until > '2026-08-01')`).get(clubId)!;
+  const rested = db.prepare(`SELECT COUNT(*) AS n FROM players p WHERE p.club_id = ? AND p.condition_pct = 100 AND p.id NOT IN (SELECT player_id FROM player_season_stats)`).get(clubId)!;
+  assert.ok(Number(unused.n) >= 8 && Number(rested.n) === Number(unused.n), 'quem não jogou segue descansado');
   const goalsInMatches = n(db, 'SELECT SUM(home_goals + away_goals) AS n FROM fixtures WHERE status = ?', 'played');
   assert.equal(n(db, 'SELECT SUM(goals) AS n FROM player_season_stats'), goalsInMatches, 'gols dos jogadores = gols das partidas');
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM club_state'), 32);
   const lineup = JSON.parse(String(db.prepare('SELECT last_lineup_json FROM club_state WHERE club_id = ?').get(clubId)!.last_lineup_json)) as string[];
   assert.equal(lineup.length, 11);
-  // recuperação diária: +6 por dia, limitada a 100
-  const c0 = Number(db.prepare('SELECT MIN(condition_pct) AS n FROM players').get()!.n);
+  // recuperação diária (não lesionados): +6 por dia nos clubes da IA; no seu clube, 6 + preparador físico (sem preparador = qualidade 5 → +0,375), limitada a 100
+  const healthy = `p.id NOT IN (SELECT player_id FROM player_status WHERE injury_until > '2026-08-01')`; // sem lesão em nenhum dos dias avançados
+  const ai0 = db.prepare(`SELECT id, condition_pct FROM players p WHERE club_id <> ? AND ${healthy} ORDER BY condition_pct, id LIMIT 1`).get(clubId)!;
+  const me0 = db.prepare(`SELECT id, condition_pct FROM players p WHERE club_id = ? AND ${healthy} ORDER BY condition_pct, id LIMIT 1`).get(clubId)!;
   advanceTime(db, 'day'); advanceTime(db, 'day');
-  const c1 = Number(db.prepare('SELECT MIN(condition_pct) AS n FROM players').get()!.n);
-  assert.ok(Math.abs(c1 - Math.min(100, c0 + 12)) < 0.001, `recuperação: ${c0} -> ${c1}`);
+  const cond = (id: unknown) => Number(db.prepare('SELECT condition_pct AS n FROM players WHERE id = ?').get(id)!.n);
+  assert.ok(Math.abs(cond(ai0.id) - Math.min(100, Number(ai0.condition_pct) + 12)) < 0.001, `recuperação IA: ${ai0.condition_pct} -> ${cond(ai0.id)}`);
+  assert.ok(Math.abs(cond(me0.id) - Math.min(100, Number(me0.condition_pct) + 2 * 6.375)) < 0.001, `recuperação usuário: ${me0.condition_pct} -> ${cond(me0.id)}`);
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE condition_pct > 100'), 0);
 });
 

@@ -72,3 +72,11 @@ Toda aleatoriedade passa por `createRng(seed)`; `fork(label)` cria fluxos indepe
   decisões da virada (`youthTurnover`, `promoteBestOfGroup`).
 - Jogador da base = `club_id` nulo + `youth_club_id`; todas as consultas de elenco continuam usando `club_id`. Consultas de livres excluem `youth_club_id`.
 - Migração `008_scouting_youth`: `players.youth_club_id`, `scouts`, `scout_knowledge`, `scout_shortlist`; recria `news` para aceitar o tipo `staff` (dados preservados).
+
+## Treino, comissão técnica, médico e infraestrutura (Fase 8C) — regras em `docs/TRAINING_STAFF.md`
+- `game/training-engine/training.ts`: focos, intensidades, melhor foco, intensidade do preparador, risco/duração de lesões, candidatos da comissão, custos e prazos de obras.
+  `developPlayer` aceita fração do ano, foco e multiplicadores (sem opções = evolução anual de antes).
+- `trainingRepository` (rotina, `processTrainingDay`: recuperação/lesões/revisão do preparador; `processTrainingMonth`: evolução do dia 1º), `staffRepository`
+  (comissão, `staffQuality`, `medicalFactor`), `infrastructureRepository` (obras, `processConstructionDay`). Todos chamados por `moveClock` na ordem:
+  comissão → treino → obras → evolução mensal → mercado → olheiros → peneira → fechamento mensal.
+- Migração `009_training_staff_infra`: `players.season_start_overall`, `staff`, `training_settings`, `player_training`, `construction_projects`.

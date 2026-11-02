@@ -15,18 +15,22 @@ import { HistoryView, NewsView, TrophiesView } from './CareerRecordsView.tsx';
 import { ScoutingView } from './ScoutingView.tsx';
 import { YouthView } from './YouthView.tsx';
 import { PlayerProfile } from './PlayerProfile.tsx';
+import { TrainingView } from './TrainingView.tsx';
+import { StaffView } from './StaffView.tsx';
+import { MedicalView } from './MedicalView.tsx';
+import { InfrastructureView } from './InfrastructureView.tsx';
 
-type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth';
+type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure';
 const TITLES: Record<View, string> = {
   overview: 'Visão geral', squad: 'Elenco', tactics: 'Táticas', calendar: 'Calendário', matches: 'Partidas', competitions: 'Competições', finance: 'Finanças', transfers: 'Transferências',
-  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base',
+  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base', staff: 'Comissão técnica', training: 'Treinamento', medical: 'Departamento médico', infrastructure: 'Infraestrutura',
 };
 const SECTIONS: Array<{ id: View | null; label: string }> = [
   { id: 'overview', label: 'Visão geral' }, { id: 'season', label: 'Temporada' }, { id: 'squad', label: 'Elenco' }, { id: 'contracts', label: 'Contratos' }, { id: 'tactics', label: 'Táticas' },
   { id: 'calendar', label: 'Calendário' }, { id: 'matches', label: 'Partidas' }, { id: 'competitions', label: 'Competições' },
   { id: 'transfers', label: 'Transferências' }, { id: 'scouting', label: 'Olheiros' }, { id: 'youth', label: 'Categorias de base' },
-  { id: null, label: 'Comissão técnica' }, { id: null, label: 'Treinamento' }, { id: null, label: 'Departamento médico' },
-  { id: 'finance', label: 'Finanças' }, { id: null, label: 'Infraestrutura' }, { id: null, label: 'Diretoria' },
+  { id: 'staff', label: 'Comissão técnica' }, { id: 'training', label: 'Treinamento' }, { id: 'medical', label: 'Departamento médico' },
+  { id: 'finance', label: 'Finanças' }, { id: 'infrastructure', label: 'Infraestrutura' }, { id: null, label: 'Diretoria' },
   { id: 'trophies', label: 'Sala de troféus' }, { id: 'news', label: 'Notícias' }, { id: 'history', label: 'Histórico da carreira' },
   { id: null, label: 'Configurações e salvamento' },
 ];
@@ -174,7 +178,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
             )}
             <section className="card">
               <h2>Estado do desenvolvimento</h2>
-              <p className="muted">Treino, comissão técnica, departamento médico, infraestrutura e diretoria ainda não foram implementados. Os jogadores evoluem uma vez por temporada, na virada (aba Temporada). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
+              <p className="muted">Diretoria, objetivos e propostas de emprego ainda não foram implementados. Os jogadores evoluem todo dia 1º do mês conforme o treino (aba Treinamento). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
             </section>
           </div>
         )}
@@ -186,6 +190,10 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && view === 'scouting' && <ScoutingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenPlayer={setPlayer} onNegotiate={negotiate} />}
         {!match && !player && view === 'youth' && <YouthView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && view === 'staff' && <StaffView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && view === 'training' && <TrainingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
+        {!match && !player && view === 'medical' && <MedicalView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
+        {!match && !player && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && view === 'news' && <NewsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}

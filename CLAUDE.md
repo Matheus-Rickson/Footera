@@ -32,7 +32,7 @@ Motor separado da UI. Versão atual: ver `package.json` (0.7.1).
 
 ## Método de trabalho
 Implementar → testar → **teste de mutação** (injetar defeito e confirmar que o teste falha) → documentar em `docs/PROGRESS.md` (funcional / pendente / não executado).
-Calibrações: `docs/MATCH_ENGINE.md`, `docs/FINANCE.md` (margem anual mediana ~+2%), `docs/TRANSFERS.md`, `docs/CAREER_CYCLE.md` e `docs/SCOUTING_YOUTH.md` (estabilidade em várias temporadas).
+Calibrações: `docs/MATCH_ENGINE.md`, `docs/FINANCE.md` (margem anual mediana ~+2%), `docs/TRANSFERS.md`, `docs/CAREER_CYCLE.md`, `docs/SCOUTING_YOUTH.md` e `docs/TRAINING_STAFF.md` (estabilidade em várias temporadas).
 Telas React só são "verificadas" depois que o usuário roda `npm run dev`; até lá, declarar como não verificadas.
 
 ## Estado e roadmap
@@ -40,5 +40,6 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
 - 8A (ciclo de carreira) implementada e testada; telas não verificadas no Electron. Decisão pendente do usuário: prêmios × margem financeira (ver PROGRESS.md).
 - Plano acordado com o usuário: **8A ciclo de carreira → 8B olheiros/base → 8C treino/staff/médico/infra → 8D diretoria/objetivos/propostas de emprego → fase de lapidação (SEM funcionalidades novas) → Fase 9 (universo: outros países, competições continentais, dados reais importáveis por schema) → Fase 10 (export/import de saves, backups, migrações, build Windows).**
 - 8A e 8B commitadas (branches `fase-8a-ciclo-de-carreira` e `fase-8b-olheiros-base`) e verificadas pelo usuário.
-- Próximo passo imediato: Fase 8C (treino/staff/médico/infra) — decisões de desenho a combinar com o usuário.
+- 8C (treino/comissão/médico/infra) commitada no branch `fase-8c-treino-staff-medico-infra` e verificada pelo usuário.
+- Próximo passo imediato: Fase 8D (diretoria/objetivos/propostas de emprego) — decisões de desenho a combinar com o usuário.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

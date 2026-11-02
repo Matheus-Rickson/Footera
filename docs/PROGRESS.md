@@ -392,3 +392,49 @@ Treino individual, comissão técnica, departamento médico e investimento em in
 - **Verificado pelo usuário:** ficha abre ao clicar no jogador (Declan Wright e Otávio Costa a 100%: atributos em faixas de ±1, parecer "seria o melhor do elenco"),
   Negociar abre a proposta (caixa insuficiente avisada corretamente) e a compra de Otávio Souza foi concluída a partir do fluxo de olheiros.
   Ajuste visual: nome do jogador no título da proposta agora usa o tamanho do título.
+
+## Fase 8C — Treino, comissão técnica, departamento médico e infraestrutura (estado: regras, persistência e integração testadas; telas AINDA NÃO verificadas no Electron)
+
+Decisões do usuário: foco + evolução mensal, com opção de **delegar a rotina ao preparador físico** (contratável), que escolhe o melhor treino de cada jogador;
+profissionais contratáveis; obras com custo e prazo; prevenção + recuperação. Regras e calibração: `docs/TRAINING_STAFF.md`.
+
+### Funcional e testado (139 testes; `typecheck` completo limpo; builds do renderer e do Electron ok)
+- **Evolução mensal** (dia 1º) para todos os jogadores, com intensidade, foco individual, comissão técnica e instalações; a virada só registra o saldo da temporada.
+- **Rotina do técnico ou do preparador:** intensidade (leve/normal/forte) e foco por jogador; delegar exige preparador físico, que aplica o melhor foco e ajusta a
+  intensidade às segundas; sem preparador, o controle volta ao técnico.
+- **Comissão técnica:** 4 funções, 3 candidatos por função por mês, um por função, salário (`coaching`) e multa pela porta única de dinheiro, contrato de 2 anos.
+- **Departamento médico:** lesões de treino (cansaço, intensidade, preparador), duração de lesões de treino **e de jogo** ajustada por médico e departamento,
+  volta sem ritmo (condição ≤ 60%), tela de lesionados e de jogadores em risco.
+- **Infraestrutura:** obras de +1 nível pagas à vista (`infrastructure`), uma por vez, com prazo; ao concluir a manutenção sobe e o estádio ganha 5% de lugares.
+- Migração 009 aplicada numa **cópia** do save do usuário (esquema 8 → 9): telas novas carregam com os dados do save.
+- Mutação: **16 defeitos injetados, todos detectados**.
+
+### Descobertas durante a fase
+- **Foco desequilibrado:** com ×1,6/×0,85 a força crescia 42% mais rápido quando o foco coincidia com a posição (o preparador delegado sempre escolhe um foco
+  relevante: vantagem enorme sobre a IA). Ajustado para ×1,35/×0,9 (pontos conservados; ganho efetivo ~15–20%).
+- **Ordem da virada:** a evolução de 1º/jul rodava depois de reiniciar a referência da temporada (o saldo ficaria errado); agora roda no começo da virada.
+- Testes antigos ajustados à mecânica nova: lesões de treino limitam a condição (o teste "quem não jogou segue descansado" exclui lesionados) e a recuperação do
+  clube do usuário depende da intensidade e do preparador; o fixo `staff` do usuário passou a ser só a estrutura.
+- Soak de 5 viradas: força, folhas e margem estáveis (tabela no documento da fase).
+
+### Escrito, mas NÃO executado (precisa do seu `npm run dev`)
+- Abas **Comissão técnica** (função, efeito, contratado ou candidatos, demitir), **Treinamento** (quem decide, intensidade, foco por jogador, sugestão do preparador,
+  evolução na temporada), **Departamento médico** (médico, nível, lesionados, em risco) e **Infraestrutura** (níveis, efeitos atual/próximo, custo, prazo,
+  manutenção extra, confirmação, barra de progresso da obra). Nomes clicáveis abrem a ficha do jogador.
+
+### Roteiro de teste manual da Fase 8C (pode usar o save atual)
+1. **Comissão técnica:** contrate um preparador físico e um médico; confira o custo mensal. Demita um (multa no extrato de Finanças).
+2. **Treinamento:** com "Eu (técnico)", mude a intensidade e o foco de alguns jogadores. Depois clique "Preparador físico": os focos passam a ser os sugeridos e ficam travados.
+3. Avance até o dia 1º do mês seguinte: a coluna "Na temporada" muda (evolução mensal). Finanças mostra "Comissão técnica (salários)".
+4. **Departamento médico:** acompanhe lesionados e previsão de retorno ao longo de algumas semanas; jogadores abaixo de 70% aparecem "Em risco".
+5. **Infraestrutura:** encomende uma obra (confirmação; o caixa cai na hora); a barra de progresso avança; ao terminar, o nível sobe e chega a notícia.
+
+### Verificado pelo usuário (prints de 02/11/2026)
+- Departamento médico (médico 17/20, nível 13, tempo de lesão −7%, lesionado com previsão de retorno), Treinamento como técnico e delegado ao preparador (focos
+  aplicados, intensidade escolhida pelo preparador: forte na entressafra), evolução mensal na coluna "Na temporada", virada 2029 com promoção da base por carência.
+
+### Correções após a verificação (8C.1)
+- Com o treino delegado, jogadores que entraram no elenco depois da última revisão (ex.: os 3 zagueiros promovidos às pressas na virada) apareciam com foco
+  "Equilibrado"; agora o foco efetivo é sempre o do preparador.
+- Zagueiros recebiam a sugestão "Finalização" (cabeceio e compostura contam para eles); os focos sugeridos agora dependem do setor
+  (defensores: defesa/físico/criação; meias: criação/defesa/técnica/físico; atacantes: finalização/técnica/físico/criação). Ambas com teste e mutação detectada.

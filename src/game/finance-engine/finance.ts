@@ -13,10 +13,10 @@ export interface ClubEcon {
 }
 
 export type IncomeCategory = 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'transfer_in' | 'prize';
-export type ExpenseCategory = 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_out' | 'youth' | 'scouting';
+export type ExpenseCategory = 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_out' | 'youth' | 'scouting' | 'coaching' | 'infrastructure';
 export type FinanceCategory = IncomeCategory | ExpenseCategory;
 export const INCOME_CATEGORIES: IncomeCategory[] = ['gate', 'tv', 'sponsorship', 'merchandising', 'transfer_in', 'prize'];
-export const EXPENSE_CATEGORIES: ExpenseCategory[] = ['wages', 'staff', 'maintenance', 'operations', 'transfer_out', 'youth', 'scouting'];
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = ['wages', 'staff', 'maintenance', 'operations', 'transfer_out', 'youth', 'scouting', 'coaching', 'infrastructure'];
 
 /** Calibração (ver teste de calibração e docs/FINANCE.md). */
 export const F = {
@@ -40,6 +40,12 @@ export const merchMonthly = (c: ClubEcon): number => Math.round(c.fans * F.merch
 export const sponsorTotalMonthly = (c: ClubEcon): number => Math.round(c.econ * F.sponsorBase * rep65(c.reputation, F.sponsorExp));
 export const staffMonthly = (c: ClubEcon): number =>
   Math.round(c.econ * (F.staffBase + F.staffPerLevel * (c.facilities.training + c.facilities.medical + c.facilities.youth)));
+/**
+ * Clube do usuário (Fase 8C): a comissão técnica é contratada à parte (categoria `coaching`); aqui fica só a estrutura — categorias de base,
+ * administração do futebol e a manutenção do centro de treinamento e do departamento médico (metade do peso que esses níveis têm em `staffMonthly`).
+ */
+export const staffUserMonthly = (c: ClubEcon): number =>
+  Math.round(c.econ * (F.staffBase + F.staffPerLevel * c.facilities.youth + (F.staffPerLevel / 2) * (c.facilities.training + c.facilities.medical)));
 export const maintenanceMonthly = (c: ClubEcon): number =>
   Math.round(c.econ * (c.capacity * F.maintPerSeat + c.facilities.stadium * F.maintPerLevel + F.maintBase));
 export const operationsMonthly = (c: ClubEcon): number => Math.round(c.econ * F.opsBase * rep65(c.reputation, F.opsExp));

@@ -11,6 +11,9 @@ import { settleFinances } from './financeRepository.ts';
 import { processMarketDay } from './transferRepository.ts';
 import { processScoutingDay } from './scoutRepository.ts';
 import { youthIntake } from './youthRepository.ts';
+import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
+import { processStaffDay } from './staffRepository.ts';
+import { processConstructionDay } from './infrastructureRepository.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type {
   AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionTableDto, FixtureDto, StandingRowDto, TableZone,
@@ -175,11 +178,14 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
   const st = getCareerState(db);
   const days = daysBetween(from, to);
   db.prepare('UPDATE career SET game_date = ?, updated_at = ? WHERE id = 1').run(to, now.toISOString());
-  db.prepare('UPDATE players SET condition_pct = MIN(100, condition_pct + ?) WHERE condition_pct < 100').run(6 * days); // recuperação diária
   const turnover = turnoverDate(st.season);
   for (let i = 1; i <= days; i++) {
     const d = addDays(from, i);
     if (d >= turnover) break; // o dia da virada é processado por startNextSeason
+    processStaffDay(db, d);    // contratos da comissão técnica
+    processTrainingDay(db, d); // recuperação de condição, lesões de treino, rotina do preparador
+    processConstructionDay(db, d); // obras concluídas
+    processTrainingMonth(db, d);   // evolução mensal dos jogadores (dia 1º)
     processMarketDay(db, d);   // propostas expiram; a IA negocia dentro das janelas
     processScoutingDay(db, d); // olheiros observam jogadores
     youthIntake(db, d);        // peneira anual (15/mar)

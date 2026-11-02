@@ -8,7 +8,7 @@ import { advanceTime, getCareerState } from '../database/repositories/competitio
 import { getMatchReport, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { ensureFinance, getFinanceOverview, loadClubEcon, settleFinancesTx } from '../database/repositories/financeRepository.ts';
 import {
-  annualEstimate, attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, sponsorTotalMonthly, staffMonthly, ticketPrice, tvMonthly,
+  annualEstimate, attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, sponsorTotalMonthly, staffMonthly, staffUserMonthly, ticketPrice, tvMonthly,
   type ClubEcon,
 } from '../game/finance-engine/finance.ts';
 import { composeBar } from '../shared/financeChart.ts';
@@ -96,7 +96,8 @@ test('Liquidação: cada mês é cobrado uma só vez e os valores batem com as f
   assert.equal(get('tv'), tvMonthly(e)); assert.equal(get('merchandising'), merchMonthly(e));
   assert.equal(get('sponsorship'), n(db, 'SELECT SUM(monthly_amount) AS n FROM sponsor_deals WHERE club_id = ?', clubId));
   assert.equal(get('wages'), -n(db, 'SELECT SUM(salary) AS n FROM players WHERE club_id = ?', clubId));
-  assert.equal(get('staff'), -staffMonthly(e)); assert.equal(get('maintenance'), -maintenanceMonthly(e)); assert.equal(get('operations'), -operationsMonthly(e));
+  assert.equal(get('staff'), -staffUserMonthly(e), 'usuário: só a estrutura (a comissão é contratada à parte)');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM finance_months WHERE category = 'coaching'"), 0, 'sem comissão contratada: nada a pagar'); assert.equal(get('maintenance'), -maintenanceMonthly(e)); assert.equal(get('operations'), -operationsMonthly(e));
   assert.equal(get('youth'), -n(db, 'SELECT SUM(salary) AS n FROM players WHERE youth_club_id = ?', clubId), 'salários da base');
   assertBooksBalance(db, initial);
   // extrato detalhado só do clube do usuário, somando exatamente a variação do saldo
@@ -243,7 +244,7 @@ test('Projeção mensal inclui a bilheteria (estimada antes de 3 jogos em casa, 
   const deals = n(db, 'SELECT SUM(monthly_amount) AS n FROM sponsor_deals WHERE club_id = ?', clubId);
   assert.equal(before.projection.income, tvMonthly(e) + merchMonthly(e) + deals + before.projection.gate, 'receita projetada = TV + produtos + patrocínios + bilheteria');
   assert.equal(before.projection.youthBill, n(db, 'SELECT SUM(salary) AS n FROM players WHERE youth_club_id = ?', clubId));
-  assert.equal(before.projection.expense, before.projection.wageBill + before.projection.youthBill + before.projection.scoutBill + staffMonthly(e) + maintenanceMonthly(e) + operationsMonthly(e));
+  assert.equal(before.projection.expense, before.projection.wageBill + before.projection.youthBill + before.projection.scoutBill + before.projection.coachingBill + staffUserMonthly(e) + maintenanceMonthly(e) + operationsMonthly(e));
   assert.equal(before.projection.net, before.projection.income - before.projection.expense);
   for (let i = 0; i < 40 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
   const after = getFinanceOverview(db);
