@@ -3,7 +3,7 @@ import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import {
-  askingPrice, clubDecision, estimateRange, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
+  askingPrice, clubDecision, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
 import type { Player } from '../../shared/types.ts';
@@ -12,6 +12,7 @@ import type {
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
+import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
 import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
@@ -58,11 +59,20 @@ export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; to
 }
 
 /**
+ * Sem clube, o "salário" do jogador passa a ser a pretensão pelo valor ATUAL (1,2% do valor de mercado). Sem isso, livres levavam o salário
+ * antigo como piso (×1,05 no pedido): ingleses dispensados assinavam no Brasil com salário inglês e as folhas subiam em cascata.
+ */
+export function resetToFreeAgentWage(db: SqlDb, playerId: string): void {
+  db.prepare('UPDATE players SET salary = MAX(1500, CAST(ROUND(market_value * 0.012 / 100.0) AS INTEGER) * 100) WHERE id = ?').run(playerId);
+}
+
+/**
  * Saída sem destino (fim de contrato ou aposentadoria): o jogador fica sem clube. Não envolve dinheiro.
  * NÃO abre transação.
  */
 export function releasePlayer(db: SqlDb, playerId: string, date: string, retire: boolean): void {
   db.prepare('UPDATE players SET club_id = NULL, retired = ? WHERE id = ?').run(retire ? 1 : 0, playerId);
+  if (!retire) resetToFreeAgentWage(db, playerId);
   db.prepare('DELETE FROM transfer_list WHERE player_id = ?').run(playerId);
   db.prepare("UPDATE transfer_offers SET status = 'expired', response_date = ? WHERE status = 'pending' AND player_id = ?").run(date, playerId);
 }
@@ -70,8 +80,9 @@ export function releasePlayer(db: SqlDb, playerId: string, date: string, retire:
 // ---------------------------------------------------------------- mercado e propostas
 export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
   const st = getCareerState(db);
-  const seed = seedOf(db);
-  const where = ['p.retired = 0', f.freeOnly ? 'p.club_id IS NULL' : '(p.club_id IS NULL OR p.club_id <> ?)'], args: unknown[] = f.freeOnly ? [] : [st.clubId];
+  const know = knowledgeMap(db);
+  const shortlisted = new Set(db.prepare('SELECT player_id FROM scout_shortlist').all().map((r) => S(r.player_id)));
+  const where = ['p.retired = 0', 'p.youth_club_id IS NULL', f.freeOnly ? 'p.club_id IS NULL' : '(p.club_id IS NULL OR p.club_id <> ?)'], args: unknown[] = f.freeOnly ? [] : [st.clubId];
   if (f.maxValue !== undefined) { where.push('p.market_value <= ?'); args.push(Math.max(0, Math.floor(f.maxValue))); }
   if (f.name && f.name.trim()) { where.push("(p.first_name || ' ' || p.last_name) LIKE ?"); args.push(`%${f.name.trim().replace(/[%_]/g, '')}%`); }
   const rows = db.prepare(`SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
@@ -81,11 +92,7 @@ export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
     if (f.position && (f.position === 'GK' || f.position === 'DEF' || f.position === 'MID' || f.position === 'ATT' ? groupOf(p.position) !== f.position : p.position !== f.position)) continue;
     if (f.minAge !== undefined && age < f.minAge) continue;
     if (f.maxAge !== undefined && age > f.maxAge) continue;
-    const est = estimateRange(p.overall, p.potentialEstimated, seed, p.id);
-    out.push({
-      id: p.id, name: `${p.firstName} ${p.lastName}`, age, nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions, foot: p.foot,
-      clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, estOverall: est.overall, estPotential: est.potential,
-    });
+    out.push(toScoutedDto(db, r, st.gameDate, know.get(p.id) ?? 0, shortlisted.has(p.id)));
     if (out.length >= 100) break;
   }
   return out;
@@ -97,6 +104,7 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
   const row = db.prepare('SELECT * FROM players WHERE id = ?').get(input.playerId);
   if (!row) throw new TransferError('Jogador não encontrado.');
   if (N(row.retired) === 1) throw new TransferError('Este jogador está aposentado.');
+  if (row.youth_club_id != null) throw new TransferError('Jogadores das categorias de base não estão à venda.');
   const p = rowToPlayer(row);
   if (p.clubId === st.clubId) throw new TransferError('Este jogador já é do seu clube.');
   const mine = squadOf(db, st.clubId);
@@ -223,20 +231,22 @@ export function neededGroup(squad: ReadonlyArray<{ position: Player['position'] 
  */
 export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string, fill: boolean): Array<{ clubId: string; group: PositionGroup }> {
   const unmet: Array<{ clubId: string; group: PositionGroup }> = [];
-  const pool = db.prepare('SELECT * FROM players WHERE club_id IS NULL AND retired = 0 ORDER BY overall DESC, id').all().map(rowToPlayer);
+  const pool = db.prepare('SELECT * FROM players WHERE club_id IS NULL AND youth_club_id IS NULL AND retired = 0 ORDER BY overall DESC, id').all().map(rowToPlayer);
   if (!fill && pool.length === 0) return unmet;
   const taken = new Set<string>();
   for (const c of db.prepare('SELECT id, reputation FROM clubs WHERE id <> ? ORDER BY rowid').all(userClub)) {
     if (!fill && !rng.chance(0.15)) continue;
     const squad = squadOf(db, S(c.id));
     const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível
+    const budget = 1.5 * (squad.reduce((s, p) => s + p.salary, 0) / Math.max(1, squad.length)); // nem salários fora da realidade da folha
     for (let guard = 0; guard < (fill ? 12 : 1); guard++) {
       const g = neededGroup(squad);
       if (!g) break;
-      const p = pool.find((x) => !taken.has(x.id) && groupOf(x.position) === g && x.overall <= ceiling);
+      const demandOf = (x: Player) => wageDemand({ marketValue: x.marketValue, salary: x.salary, ambition: x.personality.ambition }, N(c.reputation), N(c.reputation));
+      const p = pool.find((x) => !taken.has(x.id) && groupOf(x.position) === g && x.overall <= ceiling && demandOf(x) <= budget);
       if (!p) { unmet.push({ clubId: S(c.id), group: g }); break; }
       taken.add(p.id);
-      const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation));
+      const wage = demandOf(p);
       executeTransfer(db, post, { player: p, toClubId: S(c.id), fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
       squad.push({ ...p, clubId: S(c.id) });
     }

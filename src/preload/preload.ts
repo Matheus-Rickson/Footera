@@ -37,6 +37,15 @@ const api: GameApi = {
   getNews: (profileId, careerId) => ipcRenderer.invoke('news:list', { profileId, careerId }),
   getHistory: (profileId, careerId) => ipcRenderer.invoke('career:history', { profileId, careerId }),
   getTrophies: (profileId, careerId) => ipcRenderer.invoke('career:trophies', { profileId, careerId }),
+  getScouting: (profileId, careerId) => ipcRenderer.invoke('scouting:get', { profileId, careerId }),
+  hireScout: (profileId, careerId, candidateId) => ipcRenderer.invoke('scouting:hire', { profileId, careerId, candidateId }),
+  fireScout: (profileId, careerId, scoutId) => ipcRenderer.invoke('scouting:fire', { profileId, careerId, scoutId }),
+  assignScout: (profileId, careerId, scoutId, assignment) => ipcRenderer.invoke('scouting:assign', { profileId, careerId, scoutId, assignment }),
+  setShortlisted: (profileId, careerId, playerId, on) => ipcRenderer.invoke('scouting:shortlist', { profileId, careerId, playerId, on }),
+  getYouth: (profileId, careerId) => ipcRenderer.invoke('youth:get', { profileId, careerId }),
+  promoteYouth: (profileId, careerId, playerId) => ipcRenderer.invoke('youth:promote', { profileId, careerId, playerId }),
+  releaseYouth: (profileId, careerId, playerId) => ipcRenderer.invoke('youth:release', { profileId, careerId, playerId }),
+  getPlayerProfile: (profileId, careerId, playerId) => ipcRenderer.invoke('player:profile', { profileId, careerId, playerId }),
   quit: () => ipcRenderer.invoke('app:quit'),
 };
 contextBridge.exposeInMainWorld('api', api);

@@ -16,6 +16,8 @@ import {
 import { getContracts, getHistory, getSeasonStatus, getTrophies, renewContract, startNextSeason } from '../database/repositories/seasonRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
+import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, setShortlisted } from '../database/repositories/scoutRepository.ts';
+import { ensureYouthAcademies, getYouthOverview, promoteYouth, releaseYouth } from '../database/repositories/youthRepository.ts';
 import type { SqlDb } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
@@ -24,6 +26,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology } from '../shared/types.ts';
 import type {
+  PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
 } from '../shared/api.ts';
@@ -130,6 +133,7 @@ export async function openCareer(base: string, profileId: string, careerId: stri
     ensureSeason(db, getCareerState(db).season); // cria o calendário em saves anteriores à Fase 3
     ensureSchemes(db); // cria os esquemas táticos em saves anteriores à Fase 5
     ensureFinance(db); // patrocínios e ponto de partida financeiro em saves anteriores à Fase 6
+    ensureYouthAcademies(db); // categorias de base em saves anteriores à Fase 8B
     const summary = summaryFromDb(db, profileId, careerId);
     const coach = JSON.parse(String((db.prepare('SELECT coach_json FROM career WHERE id = 1').get() as { coach_json: string }).coach_json)) as Coach;
     const c = db.prepare(
@@ -194,6 +198,7 @@ async function withPreparedCareer<T>(base: string, profileId: string, careerId: 
     ensureSeason(db, getCareerState(db).season);
     ensureSchemes(db);
     ensureFinance(db);
+    ensureYouthAcademies(db);
     return fn(db);
   });
 }
@@ -243,3 +248,13 @@ export const offerRenewal = (b: string, p: string, c: string, input: RenewInput)
 export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));
 export const careerHistory = (b: string, p: string, c: string): Promise<HistoryRowDto[]> => withPreparedCareer(b, p, c, (db) => getHistory(db));
 export const trophyRoom = (b: string, p: string, c: string): Promise<TrophyRoomDto> => withPreparedCareer(b, p, c, (db) => getTrophies(db));
+
+export const getScouting = (b: string, p: string, c: string): Promise<ScoutingOverviewDto> => withPreparedCareer(b, p, c, (db) => getScoutingOverview(db));
+export const hireScoutFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { hireScout(db, id); return true as const; });
+export const fireScoutFor = (b: string, p: string, c: string, id: string): Promise<number> => withPreparedCareer(b, p, c, (db) => fireScout(db, id));
+export const assignScoutFor = (b: string, p: string, c: string, id: string, a: ScoutAssignment): Promise<true> => withPreparedCareer(b, p, c, (db) => { assignScout(db, id, a); return true as const; });
+export const shortlistFor = (b: string, p: string, c: string, id: string, on: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setShortlisted(db, id, on); return true as const; });
+export const getYouth = (b: string, p: string, c: string): Promise<YouthOverviewDto> => withPreparedCareer(b, p, c, (db) => getYouthOverview(db));
+export const promoteYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { promoteYouth(db, id); return true as const; });
+export const releaseYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withPreparedCareer(b, p, c, (db) => { releaseYouth(db, id); return true as const; });
+export const playerProfile = (b: string, p: string, c: string, id: string): Promise<PlayerProfileDto> => withPreparedCareer(b, p, c, (db) => getPlayerProfile(db, id));

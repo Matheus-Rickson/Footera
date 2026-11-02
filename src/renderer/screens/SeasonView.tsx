@@ -40,7 +40,7 @@ export function SeasonView({ profileId, careerId, refreshKey, onChanged, onOpenC
         {st.canStart && (
           <div className="notice">
             <p><strong>Chegou o dia {fmtDate(st.turnoverDate)}.</strong> Ao iniciar a nova temporada: prêmios da liga são pagos, clubes sobem e descem, jogadores se aposentam,
-              contratos que vencem hoje terminam (os seus só continuam se você renovou), todos evoluem um ano, jovens da base chegam, suspensões e cartões zeram e o novo calendário é sorteado.
+              contratos que vencem hoje terminam (os seus só continuam se você renovou), todos evoluem um ano, a IA promove jovens da base e quem completou 19 anos sem promoção sai da base, suspensões e cartões zeram e o novo calendário é sorteado.
               A janela de transferências de verão abre no mesmo dia.</p>
             {st.expiring.length > 0 && <p className="error">{st.expiring.length} jogador(es) do seu elenco ficarão livres se o contrato não for renovado antes.</p>}
             {!confirm
@@ -107,10 +107,10 @@ function SeasonReport({ r, onClose }: { r: NewSeasonReportDto; onClose: () => vo
         <div>
           <h3>Seu elenco</h3>
           <ul className="plain small">
-            <li>Jovens da base: {r.youth.length ? r.youth.map((y) => `${y.name} (${y.position}, ${y.age} anos, pot. est. ${y.potentialEstimated})`).join('; ') : 'nenhum (elenco cheio)'}</li>
+            <li>Deixaram a base (19 anos, sem promoção): {r.youthReleased.length ? r.youthReleased.join(', ') : 'ninguém'}</li>
             <li>Fim de contrato: {r.releasedUser.length ? r.releasedUser.join(', ') : 'ninguém'}</li>
             <li>Aposentadorias: {r.retiredUser.length ? r.retiredUser.join(', ') : 'ninguém'}</li>
-            {r.autoPromoted.length > 0 && <li className="neg">Promovidos às pressas para completar o elenco: {r.autoPromoted.join(', ')}</li>}
+            {r.autoPromoted.length > 0 && <li className="neg">Promovidos às pressas para completar o elenco (da base, ou gerados se a base não tinha o setor): {r.autoPromoted.join(', ')}</li>}
           </ul>
           <h3>Mercado</h3>
           <p className="small muted">Outros clubes renovaram {r.aiRenewed} contrato(s) e liberaram {r.aiReleased} jogador(es); {r.retiredTotal} jogador(es) se aposentaram no total. Os sem clube aparecem no mercado (filtro “Só jogadores livres”).</p>

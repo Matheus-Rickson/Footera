@@ -2,13 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import type { MarketFilter, MarketPlayerDto, OfferResultDto, TransfersOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
 import { YearsPicker } from './YearsPicker.tsx';
+import { KnowledgeBar } from './ScoutingView.tsx';
 
 type Tab = 'market' | 'incoming' | 'mine' | 'history';
-interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
+interface Props {
+  profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>;
+  /** Jogador escolhido na ficha ou nos olheiros: abre direto o painel de proposta. */ preselect?: MarketPlayerDto | null; onOpenPlayer: (id: string) => void;
+}
 const KIND_LABEL = { purchase: 'Compra', sale: 'Venda', ai: 'Outros clubes' } as const;
 const range = (r: { low: number; high: number }) => `${r.low}–${r.high}`;
 
-export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Props) {
+export function TransfersView({ profileId, careerId, refreshKey, onChanged, preselect, onOpenPlayer }: Props) {
   const [tab, setTab] = useState<Tab>('market');
   const [ov, setOv] = useState<TransfersOverviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +28,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
   const [answer, setAnswer] = useState<OfferResultDto | null>(null);
 
   const load = useCallback(async () => { setOv(await unwrap(window.api.getTransfers(profileId, careerId))); }, [profileId, careerId]);
+  useEffect(() => { if (preselect) { setTab('market'); choose(preselect); } }, [preselect]);
   useEffect(() => { load().catch((e) => setError(errMsg(e))); }, [load, refreshKey]);
 
   async function run(fn: () => Promise<void>) { setBusy(true); setError(null); try { await fn(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); } }
@@ -59,6 +64,10 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
     setNotice(accept ? 'Venda concluída.' : 'Proposta recusada.');
     await onChanged(); await load();
   });
+  const toggleShortlist = (p: MarketPlayerDto) => run(async () => {
+    await unwrap(window.api.setShortlisted(profileId, careerId, p.id, !p.shortlisted));
+    setResults((cur) => cur?.map((x) => (x.id === p.id ? { ...x, shortlisted: !p.shortlisted } : x)) ?? null);
+  });
   const toggleListed = (id: string, listed: boolean) => run(async () => { await unwrap(window.api.setListed(profileId, careerId, id, listed)); await load(); });
 
   if (!ov) return error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando transferências…</p>;
@@ -72,7 +81,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
           <span className="muted">Caixa: <strong>{fmtNum(ov.balance)}</strong></span>
           <span className="muted">Elenco: <strong>{ov.squadSize}</strong> (mín. {ov.squadMin}, máx. {ov.squadMax})</span>
         </div>
-        <p className="muted small">Os atributos reais dos jogadores de outros clubes não são conhecidos: o mercado mostra <strong>estimativas com margem de erro</strong> (a rede de olheiros chega numa fase futura). Jogadores <strong>sem clube</strong> (contrato encerrado) não custam taxa e podem ser contratados mesmo com a janela fechada.</p>
+        <p className="muted small">Os atributos reais dos jogadores de outros clubes não são conhecidos: o mercado mostra <strong>estimativas com margem de erro</strong> (contrate olheiros e use “Observar” para estreitar as faixas). Jogadores <strong>sem clube</strong> (contrato encerrado) não custam taxa e podem ser contratados mesmo com a janela fechada.</p>
         {notice && <p className="ok" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row">
@@ -99,7 +108,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
           </section>
           {sel && (
             <section className="card offer">
-              <h2>Proposta por {sel.name}</h2>
+              <h2>Proposta por <button className="link" onClick={() => onOpenPlayer(sel.id)}>{sel.name}</button></h2>
               <p className="muted small">{sel.position} · {sel.age} anos · {sel.clubName ?? 'Sem clube (livre: sem taxa, contratável fora da janela)'} · valor de mercado {fmtNum(sel.marketValue)} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)}</p>
               <div className="row">
                 <label>Taxa ao clube (valor total, uma vez)<input type="number" min={0} value={sel.clubId ? fee : 0} disabled={!sel.clubId} onChange={(e) => setFee(Number(e.target.value))} /></label>
@@ -120,12 +129,15 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
           <section className="card scroll tall">
             {!results ? <p className="muted">Use os filtros e clique em Buscar (mostra até 100 jogadores, dos mais valiosos aos menos).</p> : results.length === 0 ? <p className="muted">Nenhum jogador encontrado.</p> : (
               <table>
-                <thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Clube</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Força (est.)</th><th>Potencial (est.)</th><th /></tr></thead>
+                <thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Clube</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Força (est.)</th><th>Potencial (est.)</th><th>Olheiros</th><th /></tr></thead>
                 <tbody>{results.map((p) => (
                   <tr key={p.id} className={sel?.id === p.id ? 'mine' : ''}>
-                    <td>{p.name}</td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td>
-                    <td>{fmtDate(p.contractEnd)}</td><td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td>
-                    <td><button className="secondary" disabled={!w.open && p.clubId !== null} onClick={() => choose(p)}>Negociar</button></td>
+                    <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td>
+                    <td>{fmtDate(p.contractEnd)}</td><td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td><td><KnowledgeBar value={p.knowledge} /></td>
+                    <td className="row">
+                      <button className="secondary" disabled={!w.open && p.clubId !== null} onClick={() => choose(p)}>Negociar</button>
+                      <button className="secondary" disabled={busy} title="Lista de observação dos olheiros" onClick={() => void toggleShortlist(p)}>{p.shortlisted ? 'Não observar' : 'Observar'}</button>
+                    </td>
                   </tr>))}</tbody>
               </table>
             )}

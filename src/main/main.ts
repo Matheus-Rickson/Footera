@@ -10,6 +10,7 @@ import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
+  playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
 import { UserError } from '../shared/errors.ts';
@@ -128,6 +129,18 @@ function registerHandlers(): void {
   handle('news:list', ref, (i) => listNews(dataDir(), i.profileId, i.careerId));
   handle('career:history', ref, (i) => careerHistory(dataDir(), i.profileId, i.careerId));
   handle('career:trophies', ref, (i) => trophyRoom(dataDir(), i.profileId, i.careerId));
+  const id60 = z.string().min(1).max(60);
+  handle('scouting:get', ref, (i) => getScouting(dataDir(), i.profileId, i.careerId));
+  handle('scouting:hire', ref.extend({ candidateId: id60 }), (i) => hireScoutFor(dataDir(), i.profileId, i.careerId, i.candidateId));
+  handle('scouting:fire', ref.extend({ scoutId: id60 }), (i) => fireScoutFor(dataDir(), i.profileId, i.careerId, i.scoutId));
+  handle('scouting:assign', ref.extend({ scoutId: id60, assignment: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('shortlist') }), z.object({ kind: z.literal('country'), countryCode: z.string().regex(/^[A-Z]{3}$/) }),
+  ]) }), (i) => assignScoutFor(dataDir(), i.profileId, i.careerId, i.scoutId, i.assignment));
+  handle('scouting:shortlist', ref.extend({ playerId: id60, on: z.boolean() }), (i) => shortlistFor(dataDir(), i.profileId, i.careerId, i.playerId, i.on));
+  handle('player:profile', ref.extend({ playerId: id60 }), (i) => playerProfile(dataDir(), i.profileId, i.careerId, i.playerId));
+  handle('youth:get', ref, (i) => getYouth(dataDir(), i.profileId, i.careerId));
+  handle('youth:promote', ref.extend({ playerId: id60 }), (i) => promoteYouthFor(dataDir(), i.profileId, i.careerId, i.playerId));
+  handle('youth:release', ref.extend({ playerId: id60 }), (i) => releaseYouthFor(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });
 }
 

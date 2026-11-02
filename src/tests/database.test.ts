@@ -36,7 +36,11 @@ test('Migrações: falha em uma migração faz rollback completo e mantém a ver
 test('Carreira: universo gravado e relido é idêntico ao original', async () => {
   const db = await openDatabase(':memory:');
   createCareer(db, world, coach, world.clubs[0]!.id);
-  assert.deepEqual(loadWorld(db), world);
+  // além do universo, a carreira nasce com as academias de base (estado da carreira, não do universo)
+  const youth = new Set(db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL').all().map((r) => String(r.id)));
+  assert.ok(youth.size >= world.clubs.length * 6);
+  const loaded = loadWorld(db);
+  assert.deepEqual({ ...loaded, players: loaded.players.filter((p) => !youth.has(p.id)) }, world);
   const row = db.prepare('SELECT * FROM career').get()!;
   assert.equal(row.club_id, world.clubs[0]!.id);
   assert.equal(row.game_date, world.startDate);

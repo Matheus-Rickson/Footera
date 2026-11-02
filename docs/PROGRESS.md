@@ -337,3 +337,58 @@ O caminho mais rápido é uma **carreira nova**; para chegar ao fim da temporada
   Os dois erros caíram exatamente na última opção do seletor — o efeito da roda do mouse sobre um `<select>` com foco no Windows. O seletor de temporadas foi trocado por
   **botões 1–5** (`YearsPicker`) em Contratos e Transferências; em Contratos, opções acima do máximo aceito pela idade ficam desativadas. Ainda não verificado no Electron.
   Os contratos já gravados (Murilo até 2032, Davi até 2033) não foram alterados no save.
+
+## Fase 8B — Olheiros e categorias de base (estado: regras, persistência e integração testadas; telas AINDA NÃO verificadas no Electron)
+
+Decisões do usuário: olheiros contratáveis; elenco sub-20 separado; peneira em março. Regras e calibração: `docs/SCOUTING_YOUTH.md`.
+
+### Funcional e testado (127 testes no total; `typecheck` completo limpo; builds do renderer e do Electron ok)
+- **Olheiros:** candidatos mensais, contratação (até 4), salário mensal e multa de demissão pela porta única de dinheiro, contrato de 2 anos; designação a um país ou à
+  lista de observação; conhecimento diário que estreita as faixas do mercado (idênticas às de antes quando o conhecimento é 0) e leva o potencial estimado ao real.
+- **Categorias de base:** academias em todos os clubes, fora do elenco/mercado/propostas, salários na categoria `youth`; peneira em 15/mar (uma vez por temporada);
+  promover (limite de 30) e dispensar; na virada a IA promove os prontos, jovens de 19 saem, carências do elenco são cobertas primeiro pela base.
+- Saves antigos: a migração 008 foi aplicada numa **cópia** do save do usuário (esquema 7 → 8): 8 notícias preservadas, base criada, candidatos disponíveis.
+- Mutação: **13 defeitos injetados, todos detectados**. Dois sobreviveram na primeira rodada e revelaram testes fracos (olheiro designado a país diferente do
+  usuário; peneira nunca chamada duas vezes) — testes reforçados, ambos detectados depois.
+
+### Descobertas durante a fase (simulação de 5 viradas)
+- A primeira versão inflava força (+2,5) e salários e derrubava a margem mediana para −12,6%. Causas e correções: livres carregavam o salário antigo como piso
+  (agora pretensão pelo valor); a IA contratava livres caros (agora cabe na folha); a base formava jogadores no nível do clube e a seleção empurrava a média para cima
+  (agora o formado típico fica ~5 pontos abaixo; os raros viram titulares); a IA promovia pouco e completava elencos com livres (agora promove também para completar).
+- A métrica "força média do elenco" da 8A era puxada para baixo pelos jovens de 16–17 que entravam direto; passou-se a acompanhar a média dos 14 melhores e a folha.
+
+### Escrito, mas NÃO executado (precisa do seu `npm run dev`)
+- Aba **Olheiros** (custo, olheiros com botões de designação, candidatos, lista de observação, relatórios com barra de conhecimento) e aba **Categorias de base**
+  (jovens com promover/dispensar com confirmação, aviso dos que saem aos 19, próxima peneira); coluna **Olheiros** e botão **Observar** no mercado; relatório da virada
+  com "deixaram a base"; notícias do tipo Comissão.
+
+### Pendente
+Treino individual, comissão técnica, departamento médico e investimento em instalações (8C, inclusive nível da base); empréstimo de jovens; olheiros da IA.
+
+### Roteiro de teste manual da Fase 8B (pode usar o save atual: a migração cria as bases ao abrir)
+1. **Categorias de base:** veja os 6–8 jovens; promova um (ele aparece em Elenco e Contratos); dispense outro (confirmação; ele aparece em Transferências → Só jogadores livres).
+2. **Olheiros:** contrate um candidato; designe-o para a "Lista de observação". Em Transferências → Mercado, clique **Observar** em 2–3 jogadores. Avance alguns dias:
+   a coluna Olheiros sobe até 100% e as faixas de força/potencial ficam estreitas. Designe outro olheiro para um país e confira os Relatórios depois de algumas semanas.
+3. Finanças: no dia 1º aparecem "Olheiros" e "Categorias de base (salários)"; demitir um olheiro lança a multa no extrato.
+4. Avance até 15/03: notícia "Peneira" e novos jovens de 15–16 anos na base. Na virada (01/07), quem tem 19 anos e não foi promovido sai (relatório e notícias).
+
+### Verificado pelo usuário (prints de 02/11/2026)
+- Olheiros (contratar, designar por botões), Categorias de base (promover 3, dispensar 2 com confirmação, aviso dos que saem aos 19), peneira de 15/03/2028
+  (6 jovens, próxima em 2029), virada 2028 com "Deixaram a base", elenco com os promovidos.
+
+### Correção após a verificação (8B.1)
+- **Olheiro de país espalhava o esforço demais:** no save do usuário, após uma temporada com 2 olheiros em países, 1.655 jogadores observados, só 7 acima de 50% e
+  nenhum completo (Relatórios vazios). Agora acompanha 5 jogadores até 100% (os iniciados primeiro; novos sorteados entre os mais valiosos). Numa cópia do save:
+  30 dias → 31 relatórios completos. Teste reforçado (detecta o comportamento antigo).
+
+### Verificado pelo usuário e correção 8B.2 — ficha do jogador
+- **Verificado:** lista de observação (3 jogadores chegaram a 100% e as faixas estreitaram) e Relatórios cheios depois do ajuste 8B.1.
+- **Problema apontado pelo usuário:** observar era inútil — não havia como ver o jogador (atributos) nem contratá-lo a partir dos olheiros.
+- **Corrigido:** **ficha do jogador** (clique no nome no mercado, na proposta e nas listas de olheiros): dados públicos, estatísticas da temporada, força/potencial
+  estimados, **atributos estimados** (a partir de 25% de conhecimento; faixas de ±3 a ±1 que sempre contêm o real e nunca o revelam exatamente — regra 7) e
+  **parecer do olheiro** (melhor do elenco / briga por vaga de titular / reforço para o banco / não melhora; destaca promessas e relatórios pouco precisos).
+  Botões **Negociar** (abre a proposta em Transferências; o servidor diz se a janela permite) e Observar na ficha; **Negociar** também nas listas de olheiros.
+  Jogadores do próprio clube mostram os valores reais na ficha. 130 testes; 6 mutações novas, todas detectadas. Tela ainda não verificada no Electron.
+- **Verificado pelo usuário:** ficha abre ao clicar no jogador (Declan Wright e Otávio Costa a 100%: atributos em faixas de ±1, parecer "seria o melhor do elenco"),
+  Negociar abre a proposta (caixa insuficiente avisada corretamente) e a compra de Otávio Souza foi concluída a partir do fluxo de olheiros.
+  Ajuste visual: nome do jogador no título da proposta agora usa o tamanho do título.

@@ -5,7 +5,7 @@ import { composeBar } from '../../shared/financeChart.ts';
 
 export const CATEGORY_LABEL: Record<string, string> = {
   gate: 'Bilheteria', tv: 'Direitos de TV', sponsorship: 'Patrocínios', merchandising: 'Produtos oficiais',
-  prize: 'Premiação da liga', transfer_in: 'Venda de jogadores', transfer_out: 'Compra de jogadores', wages: 'Salários dos jogadores', staff: 'Comissão técnica e base', maintenance: 'Estádio e instalações', operations: 'Administração e viagens',
+  prize: 'Premiação da liga', youth: 'Categorias de base (salários)', scouting: 'Olheiros', transfer_in: 'Venda de jogadores', transfer_out: 'Compra de jogadores', wages: 'Salários dos jogadores', staff: 'Comissão técnica e base', maintenance: 'Estádio e instalações', operations: 'Administração e viagens',
 };
 const KIND_LABEL: Record<string, string> = { shirt: 'Camisa (master)', kit: 'Material esportivo', stadium: 'Naming rights' };
 const money = (n: number) => `${n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;

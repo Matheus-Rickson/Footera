@@ -62,8 +62,8 @@ export interface FinanceOverviewDto {
   balance: number; lastSettledMonth: string | null;
   /** `items`: lançamentos do mês por categoria (positivo = receita, negativo = despesa). `settled`: false = mês sem a cobrança mensal (save anterior às finanças). */
   last12: Array<{ month: string; income: number; expense: number; net: number; settled: boolean; items: Array<{ category: string; amount: number }> }>;
-  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out' | 'prize'; amount: number }>;
-  projection: { income: number; expense: number; net: number; wageBill: number; gate: number; gateEstimated: boolean };
+  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out' | 'prize' | 'youth' | 'scouting'; amount: number }>;
+  projection: { income: number; expense: number; net: number; wageBill: number; youthBill: number; scoutBill: number; gate: number; gateEstimated: boolean };
   runwayMonths: number | null;
   sponsors: Array<{ id: string; kind: 'shirt' | 'kit' | 'stadium'; sponsor: string; monthly: number; start: string; end: string }>;
   gates: Array<{ fixtureId: string; date: string; opponent: string; attendance: number; capacity: number; revenue: number }>;
@@ -77,6 +77,8 @@ export interface MarketPlayerDto {
   clubId: string | null; clubName: string | null; marketValue: number; salary: number; contractEnd: string;
   /** Estimativas com margem de erro (os atributos reais só aparecem depois de contratado). */
   estOverall: Range; estPotential: Range;
+  /** Conhecimento da rede de olheiros (0..100): quanto maior, mais estreitas as faixas. */
+  knowledge: number; shortlisted: boolean;
 }
 export interface OfferInput { playerId: string; fee: number; wage: number; years: number }
 export interface OfferResultDto {
@@ -149,7 +151,7 @@ export interface CareerOverviewDto {
 }
 
 // ---------------------------------------------------------------- ciclo de carreira (Fase 8A)
-export interface NewsDto { id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer'; title: string; body: string }
+export interface NewsDto { id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer' | 'staff'; title: string; body: string }
 export interface ContractRowDto {
   id: string; name: string; position: Position; age: number; overall: number; salary: number; contractEnd: string;
   monthsLeft: number; /** vence na próxima virada (1º/jul) */ expiresThisSeason: boolean; canRenew: boolean; maxYears: number;
@@ -170,7 +172,7 @@ export interface NewSeasonReportDto {
   champions: Array<{ competitionName: string; country: string; clubName: string }>;
   movements: Array<{ country: string; promoted: string[]; relegated: string[] }>;
   retiredUser: string[]; retiredTotal: number; releasedUser: string[];
-  youth: Array<{ id: string; name: string; position: Position; age: number; potentialEstimated: number }>;
+  /** jovens de 19 anos que deixaram a sua base sem ser promovidos */ youthReleased: string[];
   autoPromoted: string[]; aiRenewed: number; aiReleased: number;
 }
 export interface HistoryRowDto {
@@ -180,6 +182,32 @@ export interface HistoryRowDto {
 }
 export interface TrophyDto { season: number; competitionName: string; country: string; clubName: string; wonByUser: boolean }
 export interface TrophyRoomDto { mine: TrophyDto[]; champions: TrophyDto[] }
+
+// ---------------------------------------------------------------- olheiros e categorias de base (Fase 8B)
+export type ScoutAssignment = { kind: 'shortlist' } | { kind: 'country'; countryCode: string };
+export interface ScoutDto { id: string; name: string; nationality: string; ability: number; salary: number; contractEnd: string; assignment: ScoutAssignment }
+export interface ScoutCandidateDto { id: string; name: string; nationality: string; ability: number; salary: number }
+export interface ScoutingOverviewDto {
+  scouts: ScoutDto[]; candidates: ScoutCandidateDto[]; maxScouts: number; monthlyCost: number; countries: Array<{ code: string; name: string }>;
+  shortlist: MarketPlayerDto[]; reports: MarketPlayerDto[];
+}
+/** Ficha de um jogador. De outros clubes: só estimativas (faixas); do próprio clube: valores reais (faixas com low = high). */
+export interface PlayerProfileDto {
+  id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string; heightCm: number; weightKg: number;
+  clubId: string | null; clubName: string | null; own: boolean; youth: boolean; marketValue: number; salary: number; contractEnd: string;
+  knowledge: number; estOverall: Range; estPotential: Range;
+  /** null = conhecimento insuficiente para relatar atributos */
+  attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range> } | null;
+  stats: { appearances: number; goals: number; assists: number; avgRating: number | null };
+  verdict: { level: 'starter' | 'rotation' | 'depth' | 'no'; text: string } | null;
+  /** Para negociar a partir da ficha (null para jogadores do próprio clube). */
+  market: MarketPlayerDto | null;
+  /** pode receber proposta agora (janela aberta, ou jogador livre) */ negotiable: boolean;
+}
+export interface YouthPlayerDto { id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; salary: number; /** completa 19 anos até a virada: sai se não for promovido */ leavesAtTurnover: boolean }
+export interface YouthOverviewDto {
+  players: YouthPlayerDto[]; academyLevel: number; nextIntake: string; lastIntake: { date: string; names: string[] } | null; cap: number; seniorSize: number; seniorMax: number;
+}
 
 export interface GameApi {
   appInfo(): Promise<IpcResult<AppInfo>>;
@@ -217,6 +245,15 @@ export interface GameApi {
   getNews(profileId: string, careerId: string): Promise<IpcResult<NewsDto[]>>;
   getHistory(profileId: string, careerId: string): Promise<IpcResult<HistoryRowDto[]>>;
   getTrophies(profileId: string, careerId: string): Promise<IpcResult<TrophyRoomDto>>;
+  getScouting(profileId: string, careerId: string): Promise<IpcResult<ScoutingOverviewDto>>;
+  hireScout(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
+  fireScout(profileId: string, careerId: string, scoutId: string): Promise<IpcResult<number>>;
+  assignScout(profileId: string, careerId: string, scoutId: string, assignment: ScoutAssignment): Promise<IpcResult<true>>;
+  setShortlisted(profileId: string, careerId: string, playerId: string, on: boolean): Promise<IpcResult<true>>;
+  getYouth(profileId: string, careerId: string): Promise<IpcResult<YouthOverviewDto>>;
+  promoteYouth(profileId: string, careerId: string, playerId: string): Promise<IpcResult<true>>;
+  releaseYouth(profileId: string, careerId: string, playerId: string): Promise<IpcResult<true>>;
+  getPlayerProfile(profileId: string, careerId: string, playerId: string): Promise<IpcResult<PlayerProfileDto>>;
   quit(): Promise<IpcResult<true>>;
 }
 declare global { interface Window { api: GameApi } }

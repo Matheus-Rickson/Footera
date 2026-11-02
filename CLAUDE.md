@@ -21,7 +21,7 @@ Motor separado da UI. Versão atual: ver `package.json` (0.7.1).
 
 ## Regras inegociáveis (cada uma tem teste)
 1. Todo dinheiro passa por `makePoster`: saldo = saldo inicial + soma do extrato, para TODOS os clubes.
-2. Jogador só entra em clube via `executeTransfer`; saída sem destino (fim de contrato, aposentadoria) só via `releasePlayer`.
+2. Jogador só entra em clube vindo de outro clube/livre via `executeTransfer`; saída sem destino (fim de contrato, aposentadoria) via `releasePlayer`; base → principal (mesmo clube) via `promoteFromYouth`.
 3. O tempo só avança por `moveClock`, dia a dia: mercado do dia, depois fechamento mensal. Nunca passa de 1º/jul; a virada é `startNextSeason` (ação do usuário, atômica).
 4. Classificação é derivada das partidas, nunca armazenada.
 5. Rodada simulada é atômica.
@@ -32,12 +32,13 @@ Motor separado da UI. Versão atual: ver `package.json` (0.7.1).
 
 ## Método de trabalho
 Implementar → testar → **teste de mutação** (injetar defeito e confirmar que o teste falha) → documentar em `docs/PROGRESS.md` (funcional / pendente / não executado).
-Calibrações: `docs/MATCH_ENGINE.md`, `docs/FINANCE.md` (margem anual mediana ~+2%), `docs/TRANSFERS.md`, `docs/CAREER_CYCLE.md` (estabilidade em várias temporadas).
+Calibrações: `docs/MATCH_ENGINE.md`, `docs/FINANCE.md` (margem anual mediana ~+2%), `docs/TRANSFERS.md`, `docs/CAREER_CYCLE.md` e `docs/SCOUTING_YOUTH.md` (estabilidade em várias temporadas).
 Telas React só são "verificadas" depois que o usuário roda `npm run dev`; até lá, declarar como não verificadas.
 
 ## Estado e roadmap
 - Fases 1–7 concluídas (7: tela ainda não verificada no Electron). v0.7.1 = correções pós-fase 7.
 - 8A (ciclo de carreira) implementada e testada; telas não verificadas no Electron. Decisão pendente do usuário: prêmios × margem financeira (ver PROGRESS.md).
 - Plano acordado com o usuário: **8A ciclo de carreira → 8B olheiros/base → 8C treino/staff/médico/infra → 8D diretoria/objetivos/propostas de emprego → fase de lapidação (SEM funcionalidades novas) → Fase 9 (universo: outros países, competições continentais, dados reais importáveis por schema) → Fase 10 (export/import de saves, backups, migrações, build Windows).**
-- Próximo passo imediato: verificação manual da 7 e da 8A pelo usuário; depois Fase 8B (olheiros/base).
+- 8A e 8B commitadas (branches `fase-8a-ciclo-de-carreira` e `fase-8b-olheiros-base`) e verificadas pelo usuário.
+- Próximo passo imediato: Fase 8C (treino/staff/médico/infra) — decisões de desenho a combinar com o usuário.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

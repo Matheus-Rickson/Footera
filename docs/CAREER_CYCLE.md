@@ -20,7 +20,7 @@
    a 12% (27), × (0,85 + 0,3 × fração de minutos jogados) × (0,85 + 0,3 × profissionalismo/20), mais ruído; **antes dos 28 nunca passa do potencial oculto**
    (atributos cortados até caber). 28–29: estável. A partir dos 30 declina (−0,3, −1, −1,5 … −3 aos 35, −3,5 e mais a partir de 36), com o físico caindo 1,5× mais rápido;
    profissionais declinam mais devagar. Valor de mercado recalculado. Snapshot em `player_development`.
-7. **Jovens da base:** usuário 2–4 por temporada (até 30 no elenco); IA 1–3 (só até 26). 16–17 anos, qualidade = metade reputação do clube, metade nível da base.
+7. **Categorias de base** (desde a Fase 8B, ver `docs/SCOUTING_YOUTH.md`): a IA promove jovens prontos; quem tem 19 anos e não foi promovido sai da base. A safra chega na peneira de 15/mar, não mais na virada.
 8. **Elencos da IA:** acima de 28 libera os mais fracos (veteranos primeiro) sem abrir carência; abaixo da composição mínima (22 jogadores; 3 GK, 7 DEF, 6 MEI, 4 ATA)
    contrata livres compatíveis com o próprio nível e, se faltar, promove jovens. Elenco do usuário abaixo do mínimo para jogar (18; 2/6/4/3) recebe jovens às pressas (avisado).
 9. Suspensões e cartões amarelos zeram (lesões continuam). `season + 1`, calendário novo (`createSeason`), mercado e cobrança do dia 1º/jul.

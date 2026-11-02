@@ -90,20 +90,21 @@ test('Patrocínios: 3 contratos por clube, valores coerentes e vencimentos escal
 test('Liquidação: cada mês é cobrado uma só vez e os valores batem com as fórmulas', async () => {
   const { db, clubId, initial } = await setup();
   assert.equal(advanceTime(db, 'day').toDate, '2026-07-02');
-  assert.equal(n(db, "SELECT COUNT(*) AS n FROM finance_months WHERE category NOT IN ('transfer_in', 'transfer_out')"), 32 * 7, '7 categorias recorrentes por clube (sem bilheteria nem transferências)');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM finance_months WHERE category NOT IN ('transfer_in', 'transfer_out')"), 32 * 8, '8 categorias recorrentes por clube (sem bilheteria, transferências nem olheiros)');
   const e = loadClubEcon(db, clubId);
   const get = (cat: string) => n(db, "SELECT amount AS n FROM finance_months WHERE club_id = ? AND month = '2026-07' AND category = ?", clubId, cat);
   assert.equal(get('tv'), tvMonthly(e)); assert.equal(get('merchandising'), merchMonthly(e));
   assert.equal(get('sponsorship'), n(db, 'SELECT SUM(monthly_amount) AS n FROM sponsor_deals WHERE club_id = ?', clubId));
   assert.equal(get('wages'), -n(db, 'SELECT SUM(salary) AS n FROM players WHERE club_id = ?', clubId));
   assert.equal(get('staff'), -staffMonthly(e)); assert.equal(get('maintenance'), -maintenanceMonthly(e)); assert.equal(get('operations'), -operationsMonthly(e));
+  assert.equal(get('youth'), -n(db, 'SELECT SUM(salary) AS n FROM players WHERE youth_club_id = ?', clubId), 'salários da base');
   assertBooksBalance(db, initial);
   // extrato detalhado só do clube do usuário, somando exatamente a variação do saldo
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM finance_ledger WHERE club_id <> ?', clubId), 0);
   assert.equal(n(db, 'SELECT SUM(amount) AS n FROM finance_ledger'), n(db, 'SELECT balance AS n FROM clubs WHERE id = ?', clubId) - initial.get(clubId)!);
   // avançar de novo no mesmo mês não cobra de novo
   advanceTime(db, 'day'); advanceTime(db, 'day');
-  assert.equal(n(db, "SELECT COUNT(*) AS n FROM finance_months WHERE category NOT IN ('transfer_in', 'transfer_out')"), 32 * 7);
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM finance_months WHERE category NOT IN ('transfer_in', 'transfer_out')"), 32 * 8);
   assertBooksBalance(db, initial);
 });
 
@@ -241,7 +242,8 @@ test('Projeção mensal inclui a bilheteria (estimada antes de 3 jogos em casa, 
   assert.equal(before.projection.gate, Math.round((gateRevenue(Math.round(e.capacity * expectedFill(e.reputation, 50, 'clear')), e) * home) / 12));
   const deals = n(db, 'SELECT SUM(monthly_amount) AS n FROM sponsor_deals WHERE club_id = ?', clubId);
   assert.equal(before.projection.income, tvMonthly(e) + merchMonthly(e) + deals + before.projection.gate, 'receita projetada = TV + produtos + patrocínios + bilheteria');
-  assert.equal(before.projection.expense, before.projection.wageBill + staffMonthly(e) + maintenanceMonthly(e) + operationsMonthly(e));
+  assert.equal(before.projection.youthBill, n(db, 'SELECT SUM(salary) AS n FROM players WHERE youth_club_id = ?', clubId));
+  assert.equal(before.projection.expense, before.projection.wageBill + before.projection.youthBill + before.projection.scoutBill + staffMonthly(e) + maintenanceMonthly(e) + operationsMonthly(e));
   assert.equal(before.projection.net, before.projection.income - before.projection.expense);
   for (let i = 0; i < 40 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
   const after = getFinanceOverview(db);

@@ -5,7 +5,7 @@ import { OUTCOME_LABEL } from './SeasonView.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string }
 const NEWS_LABEL: Record<NewsDto['kind'], string> = {
-  season: 'Temporada', trophy: 'Título', transfer: 'Transferência', contract: 'Contrato', youth: 'Base', retirement: 'Aposentadoria', offer: 'Proposta',
+  season: 'Temporada', trophy: 'Título', transfer: 'Transferência', contract: 'Contrato', youth: 'Base', retirement: 'Aposentadoria', offer: 'Proposta', staff: 'Comissão'
 };
 
 /** Carrega um recurso do save sempre que a data ou a rodada mudam. */

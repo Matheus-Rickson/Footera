@@ -128,7 +128,7 @@ test('Virada: contratos — o usuário perde quem não renovou; a IA renova ou l
   const report = startNextSeason(db);
   assert.equal(String(db.prepare('SELECT club_id AS c FROM players WHERE id = ?').get(keep.id)!.c), clubId, 'renovado fica');
   const left = db.prepare('SELECT club_id, retired FROM players WHERE id = ?').get(leave.id)!;
-  assert.equal(left.club_id, null, 'não renovado sai de graça');
+  assert.notEqual(left.club_id, clubId, 'não renovado sai de graça (pode até assinar com outro clube como livre)');
   assert.ok(report.releasedUser.length + report.retiredUser.length >= 1);
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM players WHERE club_id IS NOT NULL AND contract_end <= '2027-07-01'"), 0, 'nenhum contrato vencido em clube');
   assert.ok(report.aiRenewed > 0 && report.aiReleased > 0);
@@ -155,16 +155,11 @@ test('Virada: desenvolvimento respeita o teto antes dos 28, snapshot registrado,
   const grown = db.prepare('SELECT d.overall_after, p.potential_hidden FROM player_development d JOIN players p ON p.id = d.player_id WHERE d.age < ?').all(PEAK_AGE);
   assert.ok(grown.every((g) => Number(g.overall_after) <= Number(g.potential_hidden)));
   assert.ok(n(db, 'SELECT COUNT(*) AS n FROM player_development WHERE overall_after > overall_before AND age < 24') > n(db, 'SELECT COUNT(*) AS n FROM player_development WHERE overall_after < overall_before AND age < 24'), 'jovens mais crescem do que regridem');
-  assert.ok(report.youth.length >= 2 && report.youth.length <= 4);
-  for (const y of report.youth) {
-    assert.equal(String(db.prepare('SELECT club_id AS c FROM players WHERE id = ?').get(y.id)!.c), clubId);
-    assert.ok(y.age >= 16 && y.age <= 17, `jovem com ${y.age} anos`);
-  }
-  for (const c of db.prepare('SELECT id FROM clubs').all()) {
-    const id = String(c.id);
-    const fresh = n(db, "SELECT COUNT(*) AS n FROM players WHERE club_id = ? AND id LIKE 'plr_s2027_%'", id);
-    assert.ok(fresh >= 1 || n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', id) >= 26, `${id}: sem jovens da base e com vaga no elenco`);
-  }
+  // a safra chega na peneira de março, às categorias de base (fora do elenco principal)
+  assert.ok(n(db, "SELECT COUNT(*) AS n FROM players WHERE id LIKE 'plr_y2027_%' AND youth_club_id = ?", clubId) >= 2);
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM players WHERE id LIKE 'plr_y2027_%' AND club_id IS NOT NULL AND youth_club_id IS NULL AND birth_date > '2010-07-01'"), 0, 'safra de 15–16 anos não sobe direto ao principal');
+  for (const c of db.prepare('SELECT id FROM clubs').all()) assert.ok(n(db, "SELECT COUNT(*) AS n FROM players WHERE youth_club_id = ?", String(c.id)) >= 1, `${String(c.id)}: base vazia`);
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE youth_club_id IS NOT NULL AND birth_date <= ?', '2008-07-01'), 0, 'ninguém com 19+ fica na base depois da virada');
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM player_status WHERE suspension_matches > 0 OR yellow_cards > 0'), 0);
   assert.ok(getNews(db).some((x) => x.kind === 'youth'));
 });
@@ -185,9 +180,10 @@ test('Jogadores livres: aparecem no mercado sem clube, contratação sem taxa (t
   assert.throws(() => makeOffer(db, { playerId: target.id, fee: 1000, wage: 10_000, years: 1 }), TransferError);
   const low = makeOffer(db, { playerId: target.id, fee: 0, wage: 100, years: 1 });
   assert.equal(low.outcome, 'player_rejected');
-  const ask = makeOffer(db, { playerId: target.id, fee: 0, wage: Math.round(target.salary * 0.9), years: 1 });
-  const wage = ask.outcome === 'player_counter' ? ask.counterWage! : ask.outcome === 'completed' ? 0 : Math.round(target.salary * 2);
-  const done = ask.outcome === 'completed' ? ask : makeOffer(db, { playerId: target.id, fee: 0, wage, years: 1 });
+  // ofertas um pouco abaixo do pedido rendem contraproposta; aceitar a contraproposta conclui
+  const ask = makeOffer(db, { playerId: target.id, fee: 0, wage: Math.round(Math.max(target.salary, target.marketValue * 0.012) * 0.95), years: 1 });
+  assert.notEqual(ask.outcome, 'player_rejected', ask.message);
+  const done = ask.outcome === 'completed' ? ask : makeOffer(db, { playerId: target.id, fee: 0, wage: ask.counterWage!, years: 1 });
   assert.equal(done.outcome, 'completed', done.message);
   const t = db.prepare('SELECT * FROM transfers WHERE player_id = ? ORDER BY id DESC LIMIT 1').get(target.id)!;
   assert.deepEqual([t.from_club_id, String(t.to_club_id), Number(t.fee)], [null, clubId, 0]);

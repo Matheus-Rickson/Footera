@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { CareerOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
-import type { AdvanceMode, SimulationSummaryDto } from '../../shared/api.ts';
+import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
 import { MatchReport } from './MatchReport.tsx';
 import { MatchesView } from './MatchesView.tsx';
 import { TacticsView } from './TacticsView.tsx';
@@ -12,16 +12,19 @@ import { CompetitionsView } from './CompetitionsView.tsx';
 import { SeasonView } from './SeasonView.tsx';
 import { ContractsView } from './ContractsView.tsx';
 import { HistoryView, NewsView, TrophiesView } from './CareerRecordsView.tsx';
+import { ScoutingView } from './ScoutingView.tsx';
+import { YouthView } from './YouthView.tsx';
+import { PlayerProfile } from './PlayerProfile.tsx';
 
-type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies';
+type View = 'overview' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth';
 const TITLES: Record<View, string> = {
   overview: 'Visão geral', squad: 'Elenco', tactics: 'Táticas', calendar: 'Calendário', matches: 'Partidas', competitions: 'Competições', finance: 'Finanças', transfers: 'Transferências',
-  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus',
+  season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base',
 };
 const SECTIONS: Array<{ id: View | null; label: string }> = [
   { id: 'overview', label: 'Visão geral' }, { id: 'season', label: 'Temporada' }, { id: 'squad', label: 'Elenco' }, { id: 'contracts', label: 'Contratos' }, { id: 'tactics', label: 'Táticas' },
   { id: 'calendar', label: 'Calendário' }, { id: 'matches', label: 'Partidas' }, { id: 'competitions', label: 'Competições' },
-  { id: 'transfers', label: 'Transferências' }, { id: null, label: 'Olheiros' }, { id: null, label: 'Categorias de base' },
+  { id: 'transfers', label: 'Transferências' }, { id: 'scouting', label: 'Olheiros' }, { id: 'youth', label: 'Categorias de base' },
   { id: null, label: 'Comissão técnica' }, { id: null, label: 'Treinamento' }, { id: null, label: 'Departamento médico' },
   { id: 'finance', label: 'Finanças' }, { id: null, label: 'Infraestrutura' }, { id: null, label: 'Diretoria' },
   { id: 'trophies', label: 'Sala de troféus' }, { id: 'news', label: 'Notícias' }, { id: 'history', label: 'Histórico da carreira' },
@@ -33,6 +36,8 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
   const [match, setMatch] = useState<{ fixtureId: string; autoplay: boolean } | null>(null);
+  const [player, setPlayer] = useState<string | null>(null);
+  const [preselect, setPreselect] = useState<MarketPlayerDto | null>(null);
   const [lastSim, setLastSim] = useState<SimulationSummaryDto | null>(null);
   const [imgOk, setImgOk] = useState(true);
   const { coach, club, squad, summary } = overview;
@@ -43,7 +48,8 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const pos = overview.leaguePosition;
   const season = overview.seasonStatus;
   const refreshKey = `${summary.gameDate}|${summary.season}|${pos?.played ?? 0}`;
-  const go = (v: View) => { setNote(null); setMatch(null); setView(v); };
+  const go = (v: View) => { setNote(null); setMatch(null); setPlayer(null); setPreselect(null); setView(v); };
+  const negotiate = (p: MarketPlayerDto) => { setPlayer(null); setMatch(null); setNote(null); setPreselect({ ...p }); setView('transfers'); };
 
   async function simulate(live: boolean) {
     setBusy(true); setNote(null); setMatch(null);
@@ -103,9 +109,10 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
           <p className="notice">A temporada {summary.season}/{String(summary.season + 1).slice(2)} terminou. {season.canStart ? 'Inicie a nova temporada' : `A virada acontece em ${fmtDate(season.turnoverDate)}`} na aba <button className="link" onClick={() => go('season')}>Temporada</button>; antes disso, renove os contratos que vencem.</p>
         )}
 
+        {player && !match && <PlayerProfile profileId={profileId} careerId={careerId} playerId={player} onClose={() => setPlayer(null)} onNegotiate={negotiate} />}
         {match && <MatchReport profileId={profileId} careerId={careerId} fixtureId={match.fixtureId} autoplay={match.autoplay} onBack={() => setMatch(null)} />}
 
-        {!match && view === 'overview' && (
+        {!match && !player && view === 'overview' && (
           <div className="grid2">
             <section className="card">
               <h2>Treinador</h2>
@@ -167,24 +174,26 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
             )}
             <section className="card">
               <h2>Estado do desenvolvimento</h2>
-              <p className="muted">Treino, olheiros, gestão da base e demais seções ainda não foram implementadas. Os jogadores evoluem uma vez por temporada, na virada (aba Temporada). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
+              <p className="muted">Treino, comissão técnica, departamento médico, infraestrutura e diretoria ainda não foram implementados. Os jogadores evoluem uma vez por temporada, na virada (aba Temporada). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
             </section>
           </div>
         )}
 
-        {!match && view === 'transfers' && <TransfersView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && view === 'finance' && <FinanceView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} />}
-        {!match && view === 'season' && <SeasonView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenContracts={() => go('contracts')} />}
-        {!match && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && view === 'news' && <NewsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
-        {!match && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'transfers' && <TransfersView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} preselect={preselect} onOpenPlayer={setPlayer} />}
+        {!match && !player && view === 'finance' && <FinanceView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} />}
+        {!match && !player && view === 'season' && <SeasonView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenContracts={() => go('contracts')} />}
+        {!match && !player && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && view === 'scouting' && <ScoutingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenPlayer={setPlayer} onNegotiate={negotiate} />}
+        {!match && !player && view === 'youth' && <YouthView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && view === 'news' && <NewsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
+        {!match && !player && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
 
-        {!match && view === 'squad' && (
+        {!match && !player && view === 'squad' && (
           <section className="card scroll tall">
             <table>
               <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. estimado</th><th>Condição</th><th>Moral</th><th>Salário</th><th>Contrato até</th></tr></thead>

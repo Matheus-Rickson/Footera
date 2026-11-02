@@ -33,7 +33,7 @@ export function expectedChange(age: number, overall: number, potential: number, 
 export function retirementChance(age: number, overall: number, freeAgent: boolean): number {
   if (age >= 40) return 1;
   let p = age >= 37 ? 0.9 : ({ 33: 0.12, 34: 0.28, 35: 0.48, 36: 0.7 } as Record<number, number>)[age] ?? 0;
-  if (freeAgent) p += age >= 30 ? 0.5 : age >= 24 ? 0.3 : 0.1; // sem clube, muitos abandonam o futebol profissional
+  if (freeAgent) p += age >= 30 ? 0.5 : 0.3; // sem clube, muitos abandonam o futebol profissional (inclusive jovens dispensados da base)
   if (overall >= 75) p -= 0.1;
   return clamp(p, 0, 1);
 }

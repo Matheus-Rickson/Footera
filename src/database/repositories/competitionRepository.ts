@@ -9,6 +9,8 @@ import { UserError } from '../../shared/errors.ts';
 import { getCareerState, type CareerState } from './careerRepository.ts';
 import { settleFinances } from './financeRepository.ts';
 import { processMarketDay } from './transferRepository.ts';
+import { processScoutingDay } from './scoutRepository.ts';
+import { youthIntake } from './youthRepository.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type {
   AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionTableDto, FixtureDto, StandingRowDto, TableZone,
@@ -178,8 +180,10 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
   for (let i = 1; i <= days; i++) {
     const d = addDays(from, i);
     if (d >= turnover) break; // o dia da virada é processado por startNextSeason
-    processMarketDay(db, d); // propostas expiram; a IA negocia dentro das janelas
-    settleFinances(db, d);   // salários, patrocínios, TV etc. dos meses que começaram até este dia
+    processMarketDay(db, d);   // propostas expiram; a IA negocia dentro das janelas
+    processScoutingDay(db, d); // olheiros observam jogadores
+    youthIntake(db, d);        // peneira anual (15/mar)
+    settleFinances(db, d);     // salários, patrocínios, TV etc. dos meses que começaram até este dia
   }
   return days;
 }

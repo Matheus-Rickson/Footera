@@ -7,8 +7,7 @@ import { developPlayer, prizeMoney, retirementChance } from '../../game/career-e
 import {
   AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, expiresAt, maxContractYears, renewalDecision, renewalDemand, turnoverDate,
 } from '../../game/career-engine/contracts.ts';
-import { buildPlayer, marketValue } from '../../game/world/generator.ts';
-import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
+import { marketValue } from '../../game/world/generator.ts';
 import { groupOf, SQUAD_MAX, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { LeagueRules, Player, Position } from '../../shared/types.ts';
 import type {
@@ -19,7 +18,9 @@ import { createSeason, getCompetitionTable, listCompetitions } from './competiti
 import { makePoster, settleFinances, type Poster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { aiSignFreeAgents, neededGroup, processMarketDay, releasePlayer } from './transferRepository.ts';
-import { playerInserter, rowToPlayer } from './worldRepository.ts';
+import { rowToPlayer } from './worldRepository.ts';
+import { GROUP_POSITIONS, playerFactory, promoteBestOfGroup, youthTurnover } from './youthRepository.ts';
+import { processScoutingDay } from './scoutRepository.ts';
 
 export class SeasonError extends UserError {}
 
@@ -37,8 +38,6 @@ const squadOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FR
 export const RENEW_WINDOW_MONTHS = 24;
 /** A IA mantém no máximo este número de jogadores depois da virada (abre espaço para o mercado). */
 const AI_SQUAD_CAP = 28;
-/** A IA só promove jovens da base até este tamanho de elenco (o usuário, até o máximo de 30). */
-const AI_YOUTH_CAP = 26;
 
 // ---------------------------------------------------------------- consultas
 export function isSeasonComplete(db: SqlDb): boolean {
@@ -116,29 +115,6 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
 // ---------------------------------------------------------------- virada de temporada
 interface CompRow { id: string; name: string; leagueId: string; tier: number; countryId: string; country: string; economy: number; rules: LeagueRules }
 
-const GROUP_POSITIONS: Record<PositionGroup, Position[]> = { GK: ['GK'], DEF: ['CB', 'CB', 'LB', 'RB'], MID: ['DM', 'CM', 'CM', 'AM'], ATT: ['ST', 'ST', 'LW', 'RW'] };
-
-/** Gera jogadores novos (jovens da base e reposições) com IDs estáveis e únicos por temporada. */
-function makeGenerator(db: SqlDb, newSeason: number, date: string) {
-  const insert = playerInserter(db);
-  let counter = 0;
-  const newId = (prefix: string) => `${prefix}_s${newSeason}_${(++counter).toString(36).padStart(4, '0')}`;
-  const clubInfo = (clubId: string) => db.prepare('SELECT cl.reputation, cl.facilities_json, co.code FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!;
-  return (rng: Rng, clubId: string, pos: Position, age: number): Player => {
-    const info = clubInfo(clubId);
-    const tpl = COUNTRY_TEMPLATES.find((t) => t.code === S(info.code)) ?? COUNTRY_TEMPLATES[0]!;
-    // qualidade dos jovens: metade reputação do clube, metade nível das categorias de base (escala 1..20 → 5..100)
-    const youthRep = 0.5 * N(info.reputation) + 0.5 * (JSON.parse(S(info.facilities_json)) as { youth: number }).youth * 5;
-    const taken = new Set(db.prepare('SELECT first_name || \' \' || last_name AS n FROM players WHERE club_id = ?').all(clubId).map((r) => S(r.n)));
-    let name = { first: rng.pick(tpl.firstNames), last: rng.pick(tpl.lastNames) };
-    for (let i = 0; i < 50 && taken.has(`${name.first} ${name.last}`); i++) name = { first: rng.pick(tpl.firstNames), last: rng.pick(tpl.lastNames) };
-    const p = buildPlayer(rng, newId, tpl, clubId, youthRep, pos, date, name, { forceAge: age });
-    const out: Player = { ...p, contractEnd: contractEndFor(date, 3) };
-    insert(out);
-    return out;
-  };
-}
-
 /** Elenco do usuário sem o mínimo para jogar (tamanho, 2 goleiros e profundidade por setor)? Devolve o setor que falta. */
 function userShortage(squad: Player[]): PositionGroup | null {
   const count = (g: PositionGroup) => squad.filter((p) => groupOf(p.position) === g).length;
@@ -168,7 +144,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
     const report: NewSeasonReportDto = {
       season: newSeason, label: seasonLabel(newSeason), previous: null, newLeague: '', champions: [], movements: [],
-      retiredUser: [], retiredTotal: 0, releasedUser: [], youth: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0,
+      retiredUser: [], retiredTotal: 0, releasedUser: [], youthReleased: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0,
     };
 
     // 1. resultados finais (derivados das partidas) e trocas de divisão por país
@@ -224,7 +200,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     // 3. aposentadorias (inclui jogadores livres)
     for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
       const p = rowToPlayer(r);
-      if (!rng.chance(retirementChance(ageOn(p.birthDate, date), p.overall, p.clubId === null))) continue;
+      if (!rng.chance(retirementChance(ageOn(p.birthDate, date), p.overall, p.clubId === null && r.youth_club_id == null))) continue;
       releasePlayer(db, p.id, date, true);
       report.retiredTotal++;
       if (p.clubId === st.clubId) report.retiredUser.push(nameOf(p));
@@ -265,22 +241,11 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
       insDev.run(p.id, st.season, p.clubId, age, p.overall, d.overall, played);
     }
 
-    // 6. jovens da base (usuário: 2 a 4; IA: 1 a 3), se houver vaga
-    const generate = makeGenerator(db, newSeason, date);
+    // 6. categorias de base: a IA promove os jovens prontos; quem chega aos 19 sem ser promovido deixa a base
+    const generate = playerFactory(db, `s${newSeason}`, date);
     const clubs = db.prepare('SELECT id FROM clubs ORDER BY rowid').all().map((r) => S(r.id));
-    for (const clubId of clubs) {
-      const youthRng = rng.fork(`youth:${clubId}`);
-      const squad = squadOf(db, clubId);
-      const user = clubId === st.clubId;
-      const n = Math.max(0, Math.min(user ? youthRng.int(2, 4) : youthRng.int(1, 3), (user ? SQUAD_MAX : AI_YOUTH_CAP) - squad.length));
-      for (let i = 0; i < n; i++) {
-        const g = neededGroup(squad) ?? youthRng.pick(['DEF', 'MID', 'ATT', 'DEF', 'MID', 'ATT', 'GK'] as PositionGroup[]);
-        const p = generate(youthRng, clubId, youthRng.pick(GROUP_POSITIONS[g]), youthRng.int(16, 17));
-        squad.push(p);
-        if (clubId === st.clubId) report.youth.push({ id: p.id, name: nameOf(p), position: p.position, age: ageOn(p.birthDate, date), potentialEstimated: p.potentialEstimated });
-      }
-    }
-    if (report.youth.length) addNews(db, date, 'youth', `Categorias de base: ${report.youth.length} jovem(ns) promovido(s) ao elenco`, report.youth.map((y) => `${y.name} (${y.position}, ${y.age} anos)`).join(', '));
+    report.youthReleased = youthTurnover(db, date, st.clubId, AI_SQUAD_CAP - 2); // promove até 26: deixa espaço para o mercado
+    if (report.youthReleased.length) addNews(db, date, 'youth', `Base: ${report.youthReleased.join(', ')} deixa(m) o clube`, 'Completaram 19 anos sem ser promovidos ao elenco principal e ficaram livres.');
 
     // 7. elencos da IA: enxuga os inchados (veteranos mais fracos primeiro) e completa os desfalcados (livres; se faltar, jovens)
     for (const clubId of clubs) {
@@ -303,13 +268,15 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     for (const clubId of [...new Set(unmet.map((u) => u.clubId))]) {
       const squad = squadOf(db, clubId);
       const fillRng = rng.fork(`fill:${clubId}`);
-      for (let g = neededGroup(squad), guard = 0; g && guard < 15; g = neededGroup(squad), guard++) squad.push(generate(fillRng, clubId, fillRng.pick(GROUP_POSITIONS[g]), fillRng.int(17, 19)));
+      for (let g = neededGroup(squad), guard = 0; g && guard < 15; g = neededGroup(squad), guard++) {
+        squad.push(promoteBestOfGroup(db, clubId, g, date) ?? generate(fillRng, clubId, fillRng.pick(GROUP_POSITIONS[g]), fillRng.int(17, 19), false));
+      }
     }
-    // elenco do usuário abaixo do mínimo para jogar: a base completa automaticamente (avisado nas notícias)
+    // elenco do usuário abaixo do mínimo para jogar: promove o melhor jovem da base no setor (ou gera um, se a base não tiver), avisando nas notícias
     const mine = squadOf(db, st.clubId);
     const autoRng = rng.fork('auto-user');
     for (let g = userShortage(mine), guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
-      const p = generate(autoRng, st.clubId, autoRng.pick(GROUP_POSITIONS[g]), autoRng.int(17, 18));
+      const p = promoteBestOfGroup(db, st.clubId, g, date) ?? generate(autoRng, st.clubId, autoRng.pick(GROUP_POSITIONS[g]), autoRng.int(17, 18), false);
       mine.push(p);
       report.autoPromoted.push(`${nameOf(p)} (${p.position})`);
     }
@@ -322,6 +289,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     db.prepare('UPDATE career SET season = ?, updated_at = ? WHERE id = 1').run(newSeason, now.toISOString());
     createSeason(db, newSeason);
     processMarketDay(db, date);
+    processScoutingDay(db, date);
     settleFinances(db, date);
     report.newLeague = S(db.prepare('SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(newSeason, st.clubId)?.name ?? '');
     addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, `${clubName(st.clubId)} disputa a ${report.newLeague}. A janela de transferências de verão está aberta.`);

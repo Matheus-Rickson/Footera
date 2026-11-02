@@ -1,6 +1,6 @@
 import { createRng } from '../rng.ts';
 import { parseIso } from '../../shared/date.ts';
-import type { Position } from '../../shared/types.ts';
+import type { Attributes, Position } from '../../shared/types.ts';
 
 /** Janelas de transferência (MM-DD, fim exclusivo). Configuráveis por liga na Fase 9; por ora iguais para todos. */
 export const WINDOWS = [{ start: '07-01', end: '09-01' }, { start: '01-01', end: '02-01' }] as const;
@@ -63,13 +63,56 @@ export function playerDecision(wage: number, demand: number): PlayerDecision {
 export interface Range { low: number; high: number }
 /**
  * Estimativa de qualidade com margem de erro (o usuário não vê os atributos reais antes de contratar).
- * O ruído é fixo por jogador (semente), então atualizar a tela não revela o valor verdadeiro. A faixa sempre contém o valor real.
+ * O ruído é fixo por jogador (semente), então atualizar a tela não revela o valor verdadeiro. A faixa de força sempre contém o valor real.
+ * `knowledge` (0..100, rede de olheiros) estreita as faixas e leva o centro do potencial ao valor oculto; com 0 o resultado é o de antes dos olheiros.
  */
-export function estimateRange(overall: number, potentialEstimated: number, seed: string, playerId: string): { overall: Range; potential: Range } {
+export function estimateRange(overall: number, potentialEstimated: number, seed: string, playerId: string, knowledge = 0, potentialHidden = potentialEstimated): { overall: Range; potential: Range } {
   const rng = createRng(`scout:${seed}:${playerId}`);
-  const o = overall + rng.int(-4, 4), p = potentialEstimated + rng.int(-3, 3);
+  const f = 1 - Math.max(0, Math.min(100, knowledge)) / 100;
+  const o = overall + Math.round(rng.int(-4, 4) * f);
+  const p = Math.round(potentialEstimated + (potentialHidden - potentialEstimated) * (1 - f)) + Math.round(rng.int(-3, 3) * f);
+  const halfO = 1 + Math.round(5 * f), halfP = 2 + Math.round(6 * f);
   const clamp = (v: number) => Math.max(1, Math.min(100, v));
-  return { overall: { low: clamp(o - 6), high: clamp(o + 6) }, potential: { low: clamp(p - 8), high: clamp(Math.max(p + 8, o + 6)) } };
+  return { overall: { low: clamp(o - halfO), high: clamp(o + halfO) }, potential: { low: clamp(p - halfP), high: clamp(Math.max(p + halfP, o + halfO)) } };
+}
+
+/** Conhecimento mínimo (0..100) para os olheiros relatarem atributos individuais. */
+export const ATTR_MIN_KNOWLEDGE = 25;
+export type AttributeRanges = { [G in keyof Attributes]: Record<string, Range> };
+
+/**
+ * Atributos (1..20) como o usuário os enxerga num jogador de outro clube: null abaixo de `ATTR_MIN_KNOWLEDGE`; depois, faixas de ±3 (25%) a ±1 (100%)
+ * que sempre contêm o valor real e são fixas por jogador (semente). Nunca revela o valor exato (regra 7).
+ */
+export function estimateAttributes(attrs: Attributes, seed: string, playerId: string, knowledge: number): AttributeRanges | null {
+  if (knowledge < ATTR_MIN_KNOWLEDGE) return null;
+  const f = 1 - Math.min(100, knowledge) / 100;
+  const half = 1 + Math.round(3 * f);
+  const rng = createRng(`scout-attr:${seed}:${playerId}`);
+  const group = (g: Record<string, number>) => Object.fromEntries(Object.keys(g).sort().map((k) => {
+    const c = g[k]! + Math.round(rng.int(-2, 2) * f);
+    return [k, { low: Math.max(1, c - half), high: Math.min(20, c + half) }];
+  }));
+  return { technical: group(attrs.technical as unknown as Record<string, number>), mental: group(attrs.mental as unknown as Record<string, number>), physical: group(attrs.physical as unknown as Record<string, number>) };
+}
+
+/** Titulares por setor numa formação típica (4-4-2), usados no parecer do olheiro. */
+const STARTERS: Record<PositionGroup, number> = { GK: 1, DEF: 4, MID: 4, ATT: 2 };
+
+/**
+ * Parecer do olheiro: compara a força estimada (centro da faixa) com o elenco do usuário no mesmo setor e destaca promessas.
+ * `squad` = forças do elenco do usuário naquele setor.
+ */
+export function scoutVerdict(est: { overall: number; potential: number; age: number; group: PositionGroup; knowledge: number }, squad: readonly number[]): { level: 'starter' | 'rotation' | 'depth' | 'no'; text: string } {
+  const sorted = [...squad].sort((a, b) => b - a);
+  const starterBar = sorted[STARTERS[est.group] - 1] ?? 0, worst = sorted.at(-1) ?? 0;
+  const prospect = est.age <= 21 && est.potential - est.overall >= 8 ? ' Promessa: pode crescer bastante.' : '';
+  const doubt = est.knowledge < 50 ? ' (relatório ainda pouco preciso)' : '';
+  if (est.overall > (sorted[0] ?? 0)) return { level: 'starter', text: `Seria o melhor do elenco no setor${doubt}.${prospect}` };
+  if (est.overall >= starterBar) return { level: 'starter', text: `Brigaria por vaga de titular${doubt}.${prospect}` };
+  if (est.overall >= worst) return { level: 'rotation', text: `Reforço para o banco${doubt}.${prospect}` };
+  if (prospect) return { level: 'depth', text: `Não melhora o elenco hoje${doubt}.${prospect}` };
+  return { level: 'no', text: `Não melhora o elenco${doubt}.` };
 }
 
 /** Após a saída de um jogador o elenco ainda tem que ter tamanho mínimo e goleiros/defensores/meias/atacantes suficientes. */

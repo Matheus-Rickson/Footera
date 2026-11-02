@@ -64,3 +64,11 @@ Toda aleatoriedade passa por `createRng(seed)`; `fork(label)` cria fluxos indepe
   `newsRepository`: `addNews`/`getNews`.
 - A tabela de uma competição deriva os participantes das **partidas** dela (não da liga atual do clube), para temporadas passadas continuarem corretas depois de acessos e rebaixamentos.
 - Migração `007_career_cycle`: `players.retired`, `player_development`, `season_results` (registro do que a virada aplicou), `trophies`, `news`.
+
+## Olheiros e categorias de base (Fase 8B) — regras em `docs/SCOUTING_YOUTH.md`
+- `game/scouting-engine/scouting.ts`: candidatos, salários, ganho diário, tamanho da safra, salário da base. `estimateRange` (transfer-engine) recebe o conhecimento.
+- `scoutRepository`: olheiros, lista de observação, conhecimento (`scout_knowledge`) e `processScoutingDay` (chamado por `moveClock`).
+- `youthRepository`: `playerFactory` (fábrica única de jogadores novos), academias iniciais, peneira (`youthIntake`, chamada por `moveClock` em 15/mar), promover/dispensar,
+  decisões da virada (`youthTurnover`, `promoteBestOfGroup`).
+- Jogador da base = `club_id` nulo + `youth_club_id`; todas as consultas de elenco continuam usando `club_id`. Consultas de livres excluem `youth_club_id`.
+- Migração `008_scouting_youth`: `players.youth_club_id`, `scouts`, `scout_knowledge`, `scout_shortlist`; recria `news` para aceitar o tipo `staff` (dados preservados).

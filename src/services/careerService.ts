@@ -5,6 +5,7 @@ import { saveWorld } from '../database/repositories/worldRepository.ts';
 import { ensureSeason } from '../database/repositories/competitionRepository.ts';
 import { ensureSchemes } from '../database/repositories/tacticsRepository.ts';
 import { ensureFinance, prevMonth } from '../database/repositories/financeRepository.ts';
+import { ensureYouthAcademies } from '../database/repositories/youthRepository.ts';
 import { ageOn, isValidIso } from '../shared/date.ts';
 import type { Coach, World } from '../shared/types.ts';
 
@@ -39,4 +40,5 @@ export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: stri
   // a 1ª cobrança mensal ocorre quando o jogo passar do dia 1 do mês de início
   db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('finance_last_month', prevMonth(world.startDate.slice(0, 7)));
   ensureFinance(db);
+  ensureYouthAcademies(db);
 }
