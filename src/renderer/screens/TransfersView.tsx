@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MarketFilter, MarketPlayerDto, OfferResultDto, TransfersOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { YearsPicker } from './YearsPicker.tsx';
 
 type Tab = 'market' | 'incoming' | 'mine' | 'history';
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
@@ -14,7 +15,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [filter, setFilter] = useState<{ position: string; minAge: string; maxAge: string; maxValue: string; name: string }>({ position: '', minAge: '', maxAge: '', maxValue: '', name: '' });
+  const [filter, setFilter] = useState<{ position: string; minAge: string; maxAge: string; maxValue: string; name: string; freeOnly: boolean }>({ position: '', minAge: '', maxAge: '', maxValue: '', name: '', freeOnly: false });
   const [results, setResults] = useState<MarketPlayerDto[] | null>(null);
   const [sel, setSel] = useState<MarketPlayerDto | null>(null);
   const [fee, setFee] = useState(0);
@@ -34,14 +35,15 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
     if (filter.maxAge) f.maxAge = Number(filter.maxAge);
     if (filter.maxValue) f.maxValue = Math.round(Number(filter.maxValue));
     if (filter.name.trim()) f.name = filter.name.trim();
+    if (filter.freeOnly) f.freeOnly = true;
     setResults(await unwrap(window.api.searchMarket(profileId, careerId, f)));
   });
 
-  const choose = (p: MarketPlayerDto) => { setSel(p); setFee(p.marketValue); setWage(Math.round((p.salary * 1.2) / 100) * 100); setYears(3); setAnswer(null); setNotice(null); };
+  const choose = (p: MarketPlayerDto) => { setSel(p); setFee(p.clubId ? p.marketValue : 0); setWage(Math.round((p.salary * 1.2) / 100) * 100); setYears(3); setAnswer(null); setNotice(null); };
 
   const send = (over?: { fee?: number; wage?: number }) => run(async () => {
     if (!sel) return;
-    const offer = { playerId: sel.id, fee: Math.round(over?.fee ?? fee), wage: Math.round(over?.wage ?? wage), years };
+    const offer = { playerId: sel.id, fee: sel.clubId ? Math.round(over?.fee ?? fee) : 0, wage: Math.round(over?.wage ?? wage), years };
     if (over?.fee !== undefined) setFee(offer.fee);
     if (over?.wage !== undefined) setWage(offer.wage);
     const r = await unwrap(window.api.makeOffer(profileId, careerId, offer));
@@ -70,7 +72,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
           <span className="muted">Caixa: <strong>{fmtNum(ov.balance)}</strong></span>
           <span className="muted">Elenco: <strong>{ov.squadSize}</strong> (mín. {ov.squadMin}, máx. {ov.squadMax})</span>
         </div>
-        <p className="muted small">Os atributos reais dos jogadores de outros clubes não são conhecidos: o mercado mostra <strong>estimativas com margem de erro</strong> (a rede de olheiros chega numa fase futura).</p>
+        <p className="muted small">Os atributos reais dos jogadores de outros clubes não são conhecidos: o mercado mostra <strong>estimativas com margem de erro</strong> (a rede de olheiros chega numa fase futura). Jogadores <strong>sem clube</strong> (contrato encerrado) não custam taxa e podem ser contratados mesmo com a janela fechada.</p>
         {notice && <p className="ok" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row">
@@ -90,6 +92,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
               <label>Idade de<input type="number" min={14} max={50} value={filter.minAge} onChange={(e) => setFilter({ ...filter, minAge: e.target.value })} /></label>
               <label>até<input type="number" min={14} max={50} value={filter.maxAge} onChange={(e) => setFilter({ ...filter, maxAge: e.target.value })} /></label>
               <label>Valor máx.<input type="number" min={0} value={filter.maxValue} onChange={(e) => setFilter({ ...filter, maxValue: e.target.value })} /></label>
+              <label className="inline"><input type="checkbox" checked={filter.freeOnly} onChange={(e) => setFilter({ ...filter, freeOnly: e.target.checked })} />Só jogadores livres</label>
               <label>Nome<input value={filter.name} maxLength={40} onChange={(e) => setFilter({ ...filter, name: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void search(); }} /></label>
               <button disabled={busy} onClick={() => void search()}>Buscar</button>
             </div>
@@ -97,12 +100,12 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
           {sel && (
             <section className="card offer">
               <h2>Proposta por {sel.name}</h2>
-              <p className="muted small">{sel.position} · {sel.age} anos · {sel.clubName} · valor de mercado {fmtNum(sel.marketValue)} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)}</p>
+              <p className="muted small">{sel.position} · {sel.age} anos · {sel.clubName ?? 'Sem clube (livre: sem taxa, contratável fora da janela)'} · valor de mercado {fmtNum(sel.marketValue)} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)}</p>
               <div className="row">
-                <label>Taxa ao clube (valor total, uma vez)<input type="number" min={0} value={fee} onChange={(e) => setFee(Number(e.target.value))} /></label>
+                <label>Taxa ao clube (valor total, uma vez)<input type="number" min={0} value={sel.clubId ? fee : 0} disabled={!sel.clubId} onChange={(e) => setFee(Number(e.target.value))} /></label>
                 <label>Salário do jogador (por mês)<input type="number" min={1} value={wage} onChange={(e) => setWage(Number(e.target.value))} /></label>
-                <label>Anos de contrato<select value={years} onChange={(e) => setYears(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-                <button disabled={busy || !w.open} onClick={() => void send()}>Enviar proposta</button>
+                <YearsPicker label="Anos de contrato" value={years} onChange={setYears} />
+                <button disabled={busy || (!w.open && sel.clubId !== null)} onClick={() => void send()}>Enviar proposta</button>
                 <button className="secondary" onClick={() => { setSel(null); setAnswer(null); }}>Cancelar</button>
               </div>
               {answer && answer.outcome !== 'completed' && (
@@ -120,9 +123,9 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged }: Pr
                 <thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Clube</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Força (est.)</th><th>Potencial (est.)</th><th /></tr></thead>
                 <tbody>{results.map((p) => (
                   <tr key={p.id} className={sel?.id === p.id ? 'mine' : ''}>
-                    <td>{p.name}</td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td>
+                    <td>{p.name}</td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td>
                     <td>{fmtDate(p.contractEnd)}</td><td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td>
-                    <td><button className="secondary" disabled={!w.open} onClick={() => choose(p)}>Negociar</button></td>
+                    <td><button className="secondary" disabled={!w.open && p.clubId !== null} onClick={() => choose(p)}>Negociar</button></td>
                   </tr>))}</tbody>
               </table>
             )}

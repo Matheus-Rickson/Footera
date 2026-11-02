@@ -3,7 +3,7 @@ import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import {
-  askingPrice, clubDecision, estimateRange, groupOf, OFFER_VALID_DAYS, playerDecision, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
+  askingPrice, clubDecision, estimateRange, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
 import type { Player } from '../../shared/types.ts';
@@ -11,6 +11,8 @@ import type {
   IncomingOfferDto, MarketFilter, MarketPlayerDto, MyPlayerDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
+import { addNews } from './newsRepository.ts';
+import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
 
@@ -32,28 +34,47 @@ function priceOf(db: SqlDb, p: Player, date: string): number {
     { balance: N(clubRow(db, p.clubId!).balance) });
 }
 
-/** Executa a transferência (sem transação própria): move o jogador, atualiza contrato, registra o histórico e lança o dinheiro. */
+/**
+ * Executa a transferência (sem transação própria): move o jogador, atualiza contrato, registra o histórico e lança o dinheiro.
+ * ÚNICA porta de entrada de um jogador em um clube (inclui jogadores livres, com `clubId` nulo e taxa zero).
+ * O contrato termina em 30/jun, para vencer exatamente numa virada de temporada.
+ */
 export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; toClubId: string; fee: number; wage: number; years: number; date: string; kind: 'purchase' | 'sale' | 'ai' }): number {
   const from = a.player.clubId;
   if (from === a.toClubId) throw new TransferError('O jogador já pertence a este clube.');
-  db.prepare('UPDATE players SET club_id = ?, salary = ?, contract_end = ? WHERE id = ?').run(a.toClubId, a.wage, addDays(a.date, a.years * 365), a.player.id);
+  const end = contractEndFor(a.date, a.years);
+  db.prepare('UPDATE players SET club_id = ?, salary = ?, contract_end = ? WHERE id = ?').run(a.toClubId, a.wage, end, a.player.id);
   db.prepare('DELETE FROM transfer_list WHERE player_id = ?').run(a.player.id);
+  db.prepare("UPDATE transfer_offers SET status = 'expired', response_date = ? WHERE status = 'pending' AND player_id = ?").run(a.date, a.player.id);
   const id = N((db.prepare('INSERT INTO transfers (date, player_id, from_club_id, to_club_id, fee, wage, years, kind) VALUES (?,?,?,?,?,?,?,?) RETURNING id')
     .get(a.date, a.player.id, from, a.toClubId, a.fee, a.wage, a.years, a.kind) as { id: number }).id);
   const name = `${a.player.firstName} ${a.player.lastName}`;
   post(a.toClubId, a.date, 'transfer_out', -a.fee, `Compra de ${name}`);
   if (from) post(from, a.date, 'transfer_in', a.fee, `Venda de ${name}`);
+  const until = `Contrato até ${end.split('-').reverse().join('/')}, salário de ${fmt(a.wage)} por mês.`;
+  if (a.kind === 'purchase') addNews(db, a.date, 'transfer', from ? `Reforço: ${name} contratado por ${fmt(a.fee)}` : `Reforço: ${name} chega sem custo de transferência`, until);
+  if (a.kind === 'sale') addNews(db, a.date, 'transfer', `Venda: ${name} deixa o clube por ${fmt(a.fee)}`, `Destino: ${S(clubRow(db, a.toClubId).name)}.`);
   return id;
+}
+
+/**
+ * Saída sem destino (fim de contrato ou aposentadoria): o jogador fica sem clube. Não envolve dinheiro.
+ * NÃO abre transação.
+ */
+export function releasePlayer(db: SqlDb, playerId: string, date: string, retire: boolean): void {
+  db.prepare('UPDATE players SET club_id = NULL, retired = ? WHERE id = ?').run(retire ? 1 : 0, playerId);
+  db.prepare('DELETE FROM transfer_list WHERE player_id = ?').run(playerId);
+  db.prepare("UPDATE transfer_offers SET status = 'expired', response_date = ? WHERE status = 'pending' AND player_id = ?").run(date, playerId);
 }
 
 // ---------------------------------------------------------------- mercado e propostas
 export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
   const st = getCareerState(db);
   const seed = seedOf(db);
-  const where = ['p.club_id <> ?'], args: unknown[] = [st.clubId];
+  const where = ['p.retired = 0', f.freeOnly ? 'p.club_id IS NULL' : '(p.club_id IS NULL OR p.club_id <> ?)'], args: unknown[] = f.freeOnly ? [] : [st.clubId];
   if (f.maxValue !== undefined) { where.push('p.market_value <= ?'); args.push(Math.max(0, Math.floor(f.maxValue))); }
   if (f.name && f.name.trim()) { where.push("(p.first_name || ' ' || p.last_name) LIKE ?"); args.push(`%${f.name.trim().replace(/[%_]/g, '')}%`); }
-  const rows = db.prepare(`SELECT p.*, c.name AS club_name FROM players p JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
+  const rows = db.prepare(`SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
   const out: MarketPlayerDto[] = [];
   for (const r of rows) {
     const p = rowToPlayer(r), age = ageOn(p.birthDate, st.gameDate);
@@ -63,7 +84,7 @@ export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
     const est = estimateRange(p.overall, p.potentialEstimated, seed, p.id);
     out.push({
       id: p.id, name: `${p.firstName} ${p.lastName}`, age, nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions, foot: p.foot,
-      clubId: p.clubId!, clubName: S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, estOverall: est.overall, estPotential: est.potential,
+      clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, estOverall: est.overall, estPotential: est.potential,
     });
     if (out.length >= 100) break;
   }
@@ -73,16 +94,18 @@ export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
 export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
   const st = getCareerState(db);
   if (![input.fee, input.wage, input.years].every(Number.isInteger) || input.fee < 0 || input.wage <= 0 || input.years < 1 || input.years > 5) throw new TransferError('Proposta inválida: use valores inteiros (anos de 1 a 5).');
-  const win = windowStatus(st.gameDate);
-  if (!win.open) throw new TransferError(`A janela de transferências está fechada. Ela abre em ${win.opensOn!.split('-').reverse().join('/')}.`);
   const row = db.prepare('SELECT * FROM players WHERE id = ?').get(input.playerId);
   if (!row) throw new TransferError('Jogador não encontrado.');
+  if (N(row.retired) === 1) throw new TransferError('Este jogador está aposentado.');
   const p = rowToPlayer(row);
   if (p.clubId === st.clubId) throw new TransferError('Este jogador já é do seu clube.');
-  if (!p.clubId) throw new TransferError('Contratação de jogadores sem clube ainda não é suportada.');
   const mine = squadOf(db, st.clubId);
   if (mine.length >= SQUAD_MAX) throw new TransferError(`Seu elenco já tem o máximo de ${SQUAD_MAX} jogadores.`);
-  const me = clubRow(db, st.clubId), seller = clubRow(db, p.clubId);
+  const me = clubRow(db, st.clubId);
+  if (!p.clubId) return signFreeAgent(db, st, p, input, me);
+  const win = windowStatus(st.gameDate);
+  if (!win.open) throw new TransferError(`A janela de transferências está fechada. Ela abre em ${win.opensOn!.split('-').reverse().join('/')}.`);
+  const seller = clubRow(db, p.clubId);
   if (input.fee > N(me.balance)) throw new TransferError(`Caixa insuficiente: você tem ${fmt(N(me.balance))} e a proposta é de ${fmt(input.fee)}.`);
 
   const ask = priceOf(db, p, st.gameDate);
@@ -99,6 +122,17 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
 
   withTransaction(db, () => executeTransfer(db, makePoster(db, st.clubId), { player: p, toClubId: st.clubId, fee: input.fee, wage: input.wage, years: input.years, date: st.gameDate, kind: 'purchase' }));
   return { outcome: 'completed', message: `Transferência concluída: ${p.firstName} ${p.lastName} é o novo reforço do clube por ${fmt(input.fee)}.` };
+}
+
+/** Jogador livre: sem clube vendedor nem taxa, e pode ser contratado fora das janelas. Só o salário é negociado. */
+function signFreeAgent(db: SqlDb, st: { clubId: string; gameDate: string }, p: Player, input: OfferInput, me: Record<string, unknown>): OfferResultDto {
+  if (input.fee !== 0) throw new TransferError('Jogador sem clube: não há taxa de transferência (use 0).');
+  const demand = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(me.reputation), N(me.reputation));
+  const pd = playerDecision(input.wage, demand);
+  if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
+  if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
+  withTransaction(db, () => executeTransfer(db, makePoster(db, st.clubId), { player: p, toClubId: st.clubId, fee: 0, wage: input.wage, years: input.years, date: st.gameDate, kind: 'purchase' }));
+  return { outcome: 'completed', message: `${p.firstName} ${p.lastName} assinou com o clube (jogador livre, sem taxa de transferência).` };
 }
 
 // ---------------------------------------------------------------- vendas
@@ -169,13 +203,56 @@ function aiDeals(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: stri
   }
 }
 
+/** Composição mínima que a IA mantém (folga sobre o mínimo de `squadStaysValid`). */
+export const AI_SQUAD_TARGET = { size: 22, GK: 3, DEF: 7, MID: 6, ATT: 4 } as const;
+const GROUPS: PositionGroup[] = ['GK', 'DEF', 'MID', 'ATT'];
+
+/** Setor mais carente do elenco (ou null se o elenco já atende à composição mínima da IA). */
+export function neededGroup(squad: ReadonlyArray<{ position: Player['position'] }>): PositionGroup | null {
+  const count = (g: PositionGroup) => squad.filter((p) => groupOf(p.position) === g).length;
+  const missing = GROUPS.filter((g) => count(g) < AI_SQUAD_TARGET[g]);
+  if (missing.length) return missing[0]!;
+  if (squad.length >= AI_SQUAD_TARGET.size) return null;
+  return [...GROUPS].sort((a, b) => count(a) / AI_SQUAD_TARGET[a] - count(b) / AI_SQUAD_TARGET[b])[0]!;
+}
+
+/**
+ * Clubes da IA contratam jogadores livres para cobrir carências do elenco. `fill` = virada de temporada: completa todos os elencos
+ * enquanto houver livres adequados; caso contrário, no máximo uma contratação por clube, com pouca chance por dia.
+ * Devolve as carências que o mercado de livres não conseguiu cobrir.
+ */
+export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string, fill: boolean): Array<{ clubId: string; group: PositionGroup }> {
+  const unmet: Array<{ clubId: string; group: PositionGroup }> = [];
+  const pool = db.prepare('SELECT * FROM players WHERE club_id IS NULL AND retired = 0 ORDER BY overall DESC, id').all().map(rowToPlayer);
+  if (!fill && pool.length === 0) return unmet;
+  const taken = new Set<string>();
+  for (const c of db.prepare('SELECT id, reputation FROM clubs WHERE id <> ? ORDER BY rowid').all(userClub)) {
+    if (!fill && !rng.chance(0.15)) continue;
+    const squad = squadOf(db, S(c.id));
+    const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível
+    for (let guard = 0; guard < (fill ? 12 : 1); guard++) {
+      const g = neededGroup(squad);
+      if (!g) break;
+      const p = pool.find((x) => !taken.has(x.id) && groupOf(x.position) === g && x.overall <= ceiling);
+      if (!p) { unmet.push({ clubId: S(c.id), group: g }); break; }
+      taken.add(p.id);
+      const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation));
+      executeTransfer(db, post, { player: p, toClubId: S(c.id), fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
+      squad.push({ ...p, clubId: S(c.id) });
+    }
+  }
+  return unmet;
+}
+
 export function processMarketDay(db: SqlDb, date: string): void {
   const st = getCareerState(db);
   db.prepare("UPDATE transfer_offers SET status = 'expired', response_date = ? WHERE status = 'pending' AND expires < ?").run(date, date);
   if (!windowStatus(date).open) return;
   const rng = createRng(`market:${seedOf(db)}:${date}`);
+  const post = makePoster(db, st.clubId);
   offersToUser(db, rng, date, st.clubId);
-  aiDeals(db, makePoster(db, st.clubId), rng, date, st.clubId);
+  aiDeals(db, post, rng, date, st.clubId);
+  aiSignFreeAgents(db, post, rng.fork('free'), date, st.clubId, false);
 }
 
 // ---------------------------------------------------------------- visão da tela

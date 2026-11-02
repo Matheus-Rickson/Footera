@@ -9,11 +9,12 @@ import { createProfile, listProfiles } from '../services/profileService.node.ts'
 import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
+  getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
 import { UserError } from '../shared/errors.ts';
 import { ImageError, inspectImage, MAX_PHOTO_BYTES } from '../shared/photo.ts';
-import type { IpcResult, MarketFilter, OfferInput, PhotoPick, SchemeInput } from '../shared/api.ts';
+import type { IpcResult, MarketFilter, OfferInput, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
 
 const dataDir = () => path.join(app.getPath('userData'), 'data');
 const uuid = z.string().uuid();
@@ -102,7 +103,7 @@ function registerHandlers(): void {
   handle('transfers:search', ref.extend({ filter: z.object({
     position: z.enum(['GK', 'DEF', 'MID', 'ATT', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST']).optional(),
     minAge: z.number().int().min(14).max(50).optional(), maxAge: z.number().int().min(14).max(50).optional(),
-    maxValue: z.number().int().min(0).max(1e10).optional(), name: z.string().max(40).optional(),
+    maxValue: z.number().int().min(0).max(1e10).optional(), name: z.string().max(40).optional(), freeOnly: z.boolean().optional(),
   }) }), (i) => searchTransferMarket(dataDir(), i.profileId, i.careerId, i.filter as MarketFilter));
   handle('transfers:offer', ref.extend({ offer: z.object({
     playerId: z.string().min(1).max(60), fee: z.number().int().min(0).max(1e10), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
@@ -118,6 +119,15 @@ function registerHandlers(): void {
   handle('tactics:delete', schemeId, (i) => deleteTacticScheme(dataDir(), i.profileId, i.careerId, i.schemeId));
   handle('tactics:activate', schemeId, (i) => activateTacticScheme(dataDir(), i.profileId, i.careerId, i.schemeId));
   handle('tactics:auto', ref.extend({ formation: z.string().max(20) }), (i) => getAutoLineup(dataDir(), i.profileId, i.careerId, i.formation));
+  handle('season:status', ref, (i) => getSeason(dataDir(), i.profileId, i.careerId));
+  handle('season:start', ref, (i) => beginNextSeason(dataDir(), i.profileId, i.careerId));
+  handle('contracts:list', ref, (i) => listContracts(dataDir(), i.profileId, i.careerId));
+  handle('contracts:renew', ref.extend({ input: z.object({
+    playerId: z.string().min(1).max(60), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
+  }) }), (i) => offerRenewal(dataDir(), i.profileId, i.careerId, i.input as RenewInput));
+  handle('news:list', ref, (i) => listNews(dataDir(), i.profileId, i.careerId));
+  handle('career:history', ref, (i) => careerHistory(dataDir(), i.profileId, i.careerId));
+  handle('career:trophies', ref, (i) => trophyRoom(dataDir(), i.profileId, i.careerId));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });
 }
 

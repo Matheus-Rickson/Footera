@@ -20,7 +20,9 @@ try {
   await waitForVite();
   await import('./build-electron.mjs');
   const electronPath = require('electron');
-  const app = spawn(electronPath, ['.'], { stdio: 'inherit', env: { ...process.env, VITE_DEV_SERVER_URL: URL } });
+  // ELECTRON_RUN_AS_NODE (herdado de terminais de extensões do VS Code) faria o Electron rodar como Node puro, sem janela.
+  const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
+  const app = spawn(electronPath, ['.'], { stdio: 'inherit', env: { ...env, VITE_DEV_SERVER_URL: URL } });
   app.on('exit', () => { vite.kill(); process.exit(0); });
 } catch (e) {
   console.error(e); vite.kill(); process.exit(1);

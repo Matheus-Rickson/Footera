@@ -1,7 +1,7 @@
 import { createRng, clamp, type Rng } from '../rng.ts';
 import { COUNTRY_TEMPLATES, STADIUM_SUFFIX, type CountryTemplate } from './names.ts';
 import { overallFor } from './overall.ts';
-import { addYears } from '../../shared/date.ts';
+import { addDays, addYears } from '../../shared/date.ts';
 import type {
   Attributes, Club, Country, Foot, League, Player, Position, Stadium, World, IsoDate,
 } from '../../shared/types.ts';
@@ -14,7 +14,7 @@ export interface WorldOptions {
 }
 
 /** 25 jogadores por elenco: composição fixa e coerente. */
-const SQUAD_TEMPLATE: Position[] = [
+export const SQUAD_TEMPLATE: Position[] = [
   'GK','GK','GK','CB','CB','CB','CB','LB','LB','RB','RB','DM','DM','CM','CM','CM','AM','AM','LW','LW','RW','RW','ST','ST','ST',
 ];
 
@@ -65,26 +65,34 @@ function genAttributes(rng: Rng, pos: Position, ability: number): Attributes {
 
 /** Ajuste (em pontos de atributo, escala 1..20) da habilidade atual conforme a idade. Jovens ainda não atingiram o auge. */
 export function ageAbilityDelta(age: number): number {
+  if (age < 17) return -3.2 - 0.5 * (17 - age);
   if (age <= 24) return -[3.2, 2.7, 2.2, 1.7, 1.2, 0.8, 0.45, 0.2][age - 17]! ;
   if (age <= 29) return 0;
   if (age >= 35) return -2.4;
   return -({ 30: 0.2, 31: 0.5, 32: 0.9, 33: 1.3, 34: 1.8 } as Record<number, number>)[age]!;
 }
 
-function marketValue(overall: number, age: number, potential: number, scale: number): number {
+export function marketValue(overall: number, age: number, potential: number, scale: number): number {
   const base = Math.pow(Math.max(overall - 30, 1) / 10, 3.2) * 90_000 * scale;
   const ageFactor = age <= 21 ? 1.5 : age <= 25 ? 1.25 : age <= 29 ? 1 : age <= 32 ? 0.6 : 0.3;
   const potFactor = 1 + Math.max(potential - overall, 0) / 60;
   return Math.round((base * ageFactor * potFactor) / 1000) * 1000;
 }
 
-function buildPlayer(
+export interface BuildOptions {
+  /** Idade fixa (ex.: 16 para jovens da base); sem ela a idade segue a distribuição do universo (17..38). */
+  forceAge?: number;
+}
+
+export function buildPlayer(
   rng: Rng, newId: (p: string) => string, tpl: CountryTemplate, clubId: string, clubRep: number,
-  pos: Position, startDate: IsoDate, name: { first: string; last: string },
+  pos: Position, startDate: IsoDate, name: { first: string; last: string }, opts: BuildOptions = {},
 ): Player {
-  const age = clamp(Math.round(rng.normal(25.5, 4.2)), 17, 38);
+  const age = opts.forceAge ?? clamp(Math.round(rng.normal(25.5, 4.2)), 17, 38);
   const year = Number(startDate.slice(0, 4)) - age;
-  const birthDate = `${year}-${String(rng.int(1, 12)).padStart(2, '0')}-${String(rng.int(1, 28)).padStart(2, '0')}`;
+  // idade forçada: nascimento nos 12 meses anteriores ao aniversário, para ter exatamente `age` anos na data (jovens de 16 não podem sair com 15)
+  const birthDate = opts.forceAge !== undefined ? addDays(addYears(startDate, -age), -rng.int(0, 364))
+    : `${year}-${String(rng.int(1, 12)).padStart(2, '0')}-${String(rng.int(1, 28)).padStart(2, '0')}`;
   // habilidade de auge cresce com a reputação do clube (escala 1..20); a idade ajusta a habilidade ATUAL
   const peak = clamp(6 + clubRep * 0.085 + rng.normal(0, 1.4), 3, 17);
   const delta = ageAbilityDelta(age);

@@ -12,10 +12,10 @@ export interface ClubEcon {
   facilities: { training: number; youth: number; medical: number; stadium: number };
 }
 
-export type IncomeCategory = 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'transfer_in';
+export type IncomeCategory = 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'transfer_in' | 'prize';
 export type ExpenseCategory = 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_out';
 export type FinanceCategory = IncomeCategory | ExpenseCategory;
-export const INCOME_CATEGORIES: IncomeCategory[] = ['gate', 'tv', 'sponsorship', 'merchandising', 'transfer_in'];
+export const INCOME_CATEGORIES: IncomeCategory[] = ['gate', 'tv', 'sponsorship', 'merchandising', 'transfer_in', 'prize'];
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = ['wages', 'staff', 'maintenance', 'operations', 'transfer_out'];
 
 /** Calibração (ver teste de calibração e docs/FINANCE.md). */

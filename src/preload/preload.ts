@@ -30,6 +30,13 @@ const api: GameApi = {
   simulateMatchday: (profileId, careerId) => ipcRenderer.invoke('career:simulate', { profileId, careerId }),
   getMatchReport: (profileId, careerId, fixtureId) => ipcRenderer.invoke('career:match', { profileId, careerId, fixtureId }),
   listRound: (profileId, careerId, competitionId, round) => ipcRenderer.invoke('career:round', { profileId, careerId, competitionId, round }),
+  getSeasonStatus: (profileId, careerId) => ipcRenderer.invoke('season:status', { profileId, careerId }),
+  startNextSeason: (profileId, careerId) => ipcRenderer.invoke('season:start', { profileId, careerId }),
+  getContracts: (profileId, careerId) => ipcRenderer.invoke('contracts:list', { profileId, careerId }),
+  renewContract: (profileId, careerId, input) => ipcRenderer.invoke('contracts:renew', { profileId, careerId, input }),
+  getNews: (profileId, careerId) => ipcRenderer.invoke('news:list', { profileId, careerId }),
+  getHistory: (profileId, careerId) => ipcRenderer.invoke('career:history', { profileId, careerId }),
+  getTrophies: (profileId, careerId) => ipcRenderer.invoke('career:trophies', { profileId, careerId }),
   quit: () => ipcRenderer.invoke('app:quit'),
 };
 contextBridge.exposeInMainWorld('api', api);

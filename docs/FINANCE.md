@@ -24,7 +24,8 @@ A 1ª calibração deixava a 2ª divisão em −22% (todos quebrando); custos fi
 a `economia × (reputação/65)^2,35`, e as receitas foram ancoradas na mesma estrutura.
 
 ## Limitações conhecidas
-- Sem premiações, transferências (taxas), empréstimos, juros, impostos nem regras de fair play; saldo negativo não gera consequências ainda.
+- Premiação da liga (categoria `prize`) é paga na virada de temporada — fórmula e efeito na margem em `docs/CAREER_CYCLE.md`.
+- Sem empréstimos, juros, impostos nem regras de fair play; saldo negativo não gera consequências ainda.
 - Patrocínios são renovados automaticamente (sem negociação); reputação é fixa, então os valores só variam entre contratos por sorteio (±12%).
 - Comissão técnica não é modelada por funcionário: o custo deriva do nível das instalações. Preço do ingresso não é editável.
 - Extrato detalhado só para o clube do usuário; os demais têm resumo mensal por categoria.

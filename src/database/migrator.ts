@@ -6,10 +6,11 @@ import { migration003 } from './migrations/003_matches.ts';
 import { migration004 } from './migrations/004_tactics.ts';
 import { migration005 } from './migrations/005_finance.ts';
 import { migration006 } from './migrations/006_transfers.ts';
+import { migration007 } from './migrations/007_career_cycle.ts';
 
 export interface Migration { version: number; name: string; sql: string }
 
-export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006];
+export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007];
 
 export function currentVersion(db: SqlDb): number {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');

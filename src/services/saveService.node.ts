@@ -13,6 +13,9 @@ import { getTransfersOverview, makeOffer, respondOffer, searchMarket, setListed 
 import {
   activateScheme, autoLineup, deleteScheme, duplicateScheme, ensureSchemes, getTacticsOverview, saveScheme,
 } from '../database/repositories/tacticsRepository.ts';
+import { getContracts, getHistory, getSeasonStatus, getTrophies, renewContract, startNextSeason } from '../database/repositories/seasonRepository.ts';
+import { getNews } from '../database/repositories/newsRepository.ts';
+import { turnoverDate } from '../game/career-engine/contracts.ts';
 import type { SqlDb } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
@@ -21,6 +24,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology } from '../shared/types.ts';
 import type {
+  ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
 } from '../shared/api.ts';
 
@@ -165,6 +169,11 @@ export async function openCareer(base: string, profileId: string, careerId: stri
       },
       photoDataUrl, warnings, nationalityName: natRow ? String(natRow.name) : coach.nationality,
       nextFixture: getNextFixture(db), pendingMatches: countPending(db), leaguePosition,
+      seasonStatus: (() => {
+        const complete = Number(db.prepare("SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'scheduled'").get(summary.season)!.n) === 0;
+        const turnover = turnoverDate(summary.season);
+        return { complete, turnoverDate: turnover, canStart: complete && summary.gameDate >= turnover };
+      })(),
       club: {
         id: String(c.id), name: String(c.name), city: String(c.city), league: String(c.league_name),
         country: String(c.country_name), reputation: Number(c.reputation), balance: Number(c.balance),
@@ -226,3 +235,11 @@ export const searchTransferMarket = (b: string, p: string, c: string, f: MarketF
 export const sendTransferOffer = (b: string, p: string, c: string, o: OfferInput): Promise<OfferResultDto> => withPreparedCareer(b, p, c, (db) => makeOffer(db, o));
 export const answerTransferOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { respondOffer(db, id, accept); return true as const; });
 export const listPlayerForSale = (b: string, p: string, c: string, playerId: string, listed: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { setListed(db, playerId, listed); return true as const; });
+
+export const getSeason = (b: string, p: string, c: string): Promise<SeasonStatusDto> => withPreparedCareer(b, p, c, (db) => getSeasonStatus(db));
+export const beginNextSeason = (b: string, p: string, c: string): Promise<NewSeasonReportDto> => withPreparedCareer(b, p, c, (db) => startNextSeason(db));
+export const listContracts = (b: string, p: string, c: string): Promise<ContractRowDto[]> => withPreparedCareer(b, p, c, (db) => getContracts(db));
+export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withPreparedCareer(b, p, c, (db) => renewContract(db, input));
+export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));
+export const careerHistory = (b: string, p: string, c: string): Promise<HistoryRowDto[]> => withPreparedCareer(b, p, c, (db) => getHistory(db));
+export const trophyRoom = (b: string, p: string, c: string): Promise<TrophyRoomDto> => withPreparedCareer(b, p, c, (db) => getTrophies(db));

@@ -262,3 +262,78 @@ Jogadores livres e renovação de contrato, rescisões, empréstimos, cláusulas
 - **Perdido:** o trabalho parcial da 8A (ver `docs/PHASE_8A_PLAN.md`) — refazer.
 - **Ausente:** a especificação original do usuário não está no zip; colocar em `docs/SPEC.md`.
 - Testes manuais pendentes do usuário: tooltip do gráfico (v0.6.1), tela de Transferências (Fase 7), v0.7.1.
+
+## Fase 8A — Ciclo de carreira (estado: regras, persistência e integração testadas; telas AINDA NÃO verificadas no Electron)
+
+Regras, fórmulas e calibração: `docs/CAREER_CYCLE.md`.
+
+### Funcional e testado (119 testes no total, `npm test`; `npm run typecheck` e `typecheck:core` limpos)
+- **Virada de temporada** como ação do usuário em 1º/jul, atômica, na ordem do plano: resultados → promoção/rebaixamento por país → prêmios → aposentadorias →
+  contratos → desenvolvimento → jovens da base → reposição dos elencos da IA → zera suspensões/amarelos → temporada + 1 → calendário novo → mercado e cobrança do dia.
+- **Relógio:** `moveClock` é o único ponto que move a data; depois da última rodada o jogo avança até 1º/jul (maio e junho continuam sendo cobrados) e para.
+- **Prêmios** pela porta única de dinheiro (`makePoster`, categoria `prize`): `saldo = saldo inicial + lançamentos` vale para todos os clubes depois de uma e de duas viradas.
+- **Desenvolvimento** anual: cresce até o potencial (nunca acima antes dos 28), estável no auge, declínio a partir dos 30; snapshot em `player_development`.
+- **Contratos:** todo contrato novo termina em 30/jun; a IA renova (90%/55%) ou libera; o usuário perde quem não renovou; **renovação** com contraproposta e limite de temporadas por idade.
+- **Jogadores livres:** mercado com filtro, contratação sem taxa e fora da janela; a IA contrata livres para cobrir carências. Aposentados nunca aparecem.
+- **Notícias, histórico da carreira e sala de troféus** (histórico derivado das partidas; `season_results` guarda só o que a virada aplicou).
+- **Correção encontrada no caminho:** a tabela de uma competição pegava os times pela liga *atual* do clube — depois de um acesso/rebaixamento as tabelas de temporadas
+  passadas ficariam erradas. Agora os participantes vêm das partidas da competição (testado).
+- Mutação: **14 defeitos injetados**, todos detectados — prêmio fora do `makePoster`, teto de potencial ignorado, rebaixar os primeiros, renovação automática do usuário,
+  dia da virada processado pelo relógio, tabela antiga pela liga atual, suspensões não zeradas, aposentados no mercado, livre com taxa, renovação contada da temporada,
+  aleatoriedade sem semente nos jovens, avanço passando da virada, IA renovando com inflação salarial, aposentado continuando no clube.
+
+### Descobertas durante a fase (simulação de 5 viradas no universo completo)
+- No primeiro desenho a qualidade média caía ~1 ponto por temporada (jovens reservas cresciam devagar e a base entrava rápido demais) e os livres passavam de 500.
+  Recalibrado: minutos pesam menos no crescimento, a IA promove 1–3 jovens só até 26 no elenco, livres abandonam a carreira com mais frequência. Agora qualidade, idade e número de livres ficam estáveis.
+- Renovações da IA com piso de +8% inflavam as folhas (margem mediana de +1% para −9% em 5 temporadas). A IA passou a renovar pelo valor atual (máx. +10%).
+- O `typecheck` completo rodou pela primeira vez (havia rede para o `npm install`): dois erros de tipo **pré-existentes** em testes antigos foram corrigidos
+  (`computeStandings` agora aceita critérios `readonly`; índice possivelmente indefinido em `photo.test.ts`).
+- Testes antigos que jogavam "até o fim da temporada" passaram a parar quando não há mais partidas (antes do novo avanço até 1º/jul); as asserções originais foram mantidas.
+
+### Decisão pendente (do usuário)
+- **Prêmios × calibração financeira:** os valores do plano (campeão = economia × 2,4 mi) elevam a margem anual mediana em +2 a +4 p.p. (≈ +3,5% → +7%), acima da âncora
+  de ~+2%. Opções: manter, reduzir o multiplicador ou compensar nos custos. Nada foi alterado sem a sua decisão.
+
+### Escrito, mas NÃO executado (precisa do seu `npm run dev`)
+- Abas **Temporada** (status, contratos que vencem, confirmação e relatório da virada), **Contratos** (renovação), **Notícias**, **Histórico da carreira** e **Sala de troféus**;
+  botão "Iniciar nova temporada" e aviso de fim de temporada no cabeçalho; mercado com jogadores livres (filtro, taxa travada em 0, negociação com a janela fechada).
+- `npm run build:renderer` e `npm run build:electron` compilam; a interface em si não foi aberta.
+- `scripts/dev.mjs` agora remove `ELECTRON_RUN_AS_NODE` do ambiente do Electron (herdada de terminais de extensões do VS Code, faz o Electron abrir como Node puro, sem janela).
+
+### Pendente
+Copas e competições continentais (Fase 9), artilharia/prêmios individuais, rescisões e empréstimos, treino individual (8C), olheiros e gestão da base (8B), mudança de clube do treinador (8D).
+
+### Próximos passos
+1. Seu teste da Fase 7 (Transferências) e da 8A (roteiro abaixo).
+2. Fase 8B: olheiros e categorias de base.
+
+### Roteiro de teste manual da Fase 8A
+O caminho mais rápido é uma **carreira nova**; para chegar ao fim da temporada use "Simular rodada" + "Avançar até a próxima rodada" repetidamente (38 rodadas).
+1. **Contratos:** antes do fim da temporada, abra a aba Contratos. Os que vencem em 01/07 aparecem destacados. Renove um (salário baixo → recusa; intermediário → contraproposta → aceitar).
+   Tente 5 temporadas com um veterano de 33+ (deve recusar pela duração). A renovação aparece em Notícias.
+2. Depois da última rodada, o cabeçalho mostra "Avançar até 01/07/2027 (nova temporada)" e o aviso de fim de temporada. Avance: Finanças mostra maio e junho cobrados.
+3. Em 01/07 o botão vira **Iniciar nova temporada** → aba Temporada → Confirmar virada. O relatório mostra posição, prêmio, campeões, acessos/rebaixamentos, jovens e quem saiu.
+4. Confira: Finanças tem "Premiação" no extrato; Competições mostra a temporada nova (e o clube na divisão certa, se subiu/caiu); Elenco tem os jovens e não tem quem não foi renovado.
+5. Transferências → marque "Só jogadores livres" → Buscar. Negocie um livre (taxa travada em 0). Depois de 01/09 (janela fechada) o botão Negociar continua ativo só para livres.
+6. Histórico da carreira e Sala de troféus mostram a temporada encerrada; Notícias lista os eventos da virada.
+
+### Verificado pelo usuário (prints de 02/11/2026)
+- Contratos (lista, destaque dos que vencem, renovação, botão desativado com mais de 24 meses), virada completa (relatório, prêmio de 758.000 pelo 11º lugar,
+  campeões, acessos/rebaixamentos, jovens, saídas por fim de contrato), Notícias, Histórico da carreira e Sala de troféus.
+
+### Correções após a verificação (8A.1)
+- Jovens da base saíam com **15 anos** (nascimento sorteado no ano todo); agora a idade forçada é exata (16–17 na virada). Mutação detectada por 2 testes.
+- Aba Temporada dizia "faltam 1520 partidas no país" (era a soma das 4 ligas); agora mostra os jogos restantes do seu clube e o total de todas as ligas.
+- Com a temporada nova ainda sem jogos, a aba Temporada e o Histórico mostravam uma posição sem sentido (10º de 20) e a premiação "se terminasse agora"; agora mostram que a liga não começou / "—".
+
+### Verificação do usuário (2ª rodada) e ajustes
+- **Verificado:** mercado de jogadores livres (filtro, taxa travada em 0, contratação de Sam Ward por 4 anos → contrato até 30/06/2031, salário pela contraproposta).
+- **Prêmios × margem financeira:** o usuário decidiu manter os valores atuais por enquanto (rever na fase de lapidação, se necessário).
+- **Renovação do Murilo Cardoso gravada até 30/06/2032 sem o usuário mudar "temporadas" (2):** o servidor foi reexecutado numa cópia do save e calcula certo
+  (2 temporadas a partir de 01/07/2028 → 30/06/2030); o código da tela envia o valor do seletor. Causa não confirmada — hipótese: a roda do mouse trocou o valor do
+  seletor com foco. Mitigação: o painel agora mostra **"Novo contrato até …"** (calculado com `renewBaseYear` vindo do servidor) antes de propor; teste garante que a data exibida = a gravada.
+  Se voltar a acontecer com a data exibida correta, é bug e deve ser reaberto.
+- **Causa provável confirmada pelo padrão (3ª rodada):** Davi Ribeiro também foi gravado com 5 temporadas (até 30/06/2033); Gabriel Freitas, com a data visível, saiu certo (2 → 30/06/2030).
+  Os dois erros caíram exatamente na última opção do seletor — o efeito da roda do mouse sobre um `<select>` com foco no Windows. O seletor de temporadas foi trocado por
+  **botões 1–5** (`YearsPicker`) em Contratos e Transferências; em Contratos, opções acima do máximo aceito pela idade ficam desativadas. Ainda não verificado no Electron.
+  Os contratos já gravados (Murilo até 2032, Davi até 2033) não foram alterados no save.

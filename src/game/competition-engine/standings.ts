@@ -47,7 +47,7 @@ function groupBy<T>(items: readonly T[], key: (t: T) => string): T[][] {
  * (pontos, saldo, gols pró) e é reaplicado ao subgrupo que continuar empatado.
  * Empates absolutos são resolvidos por ID da equipe, para o resultado ser determinístico.
  */
-export function computeStandings(teamIds: readonly string[], results: readonly MatchResult[], rules: Pick<LeagueRules, 'pointsWin' | 'pointsDraw' | 'tiebreakers'>): StandingRow[] {
+export function computeStandings(teamIds: readonly string[], results: readonly MatchResult[], rules: Pick<LeagueRules, 'pointsWin' | 'pointsDraw'> & { tiebreakers: readonly Tiebreaker[] }): StandingRow[] {
   const table = tally(teamIds, results, rules.pointsWin, rules.pointsDraw);
   const criteria: Tiebreaker[] = rules.tiebreakers.length ? [...rules.tiebreakers] : ['points', 'goalDiff', 'goalsFor'];
 

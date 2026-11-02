@@ -104,6 +104,7 @@ test('Temporada completa: 4 ligas jogadas com resultados aleatórios ficam consi
   const rng = createRng('placares');
   let guard = 0;
   while (guard++ < 200) {
+    if (count(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas
     const r = advanceTime(db, 'nextMatchday');
     if (r.reason === 'season_complete') break;
     if (!r.advanced) {
@@ -114,10 +115,15 @@ test('Temporada completa: 4 ligas jogadas com resultados aleatórios ficam consi
     }
   }
   assert.ok(guard < 200, 'terminou');
-  assert.equal(advanceTime(db, 'day').reason, 'season_complete');
   assert.equal(count(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'"), 0);
   assert.equal(count(db, "SELECT COUNT(*) AS n FROM competitions WHERE status <> 'finished'"), 0);
   assert.equal(getCareerState(db).gameDate, '2026-10-31', '14 rodadas: 1º/ago + 13 semanas');
+  // sem partidas, o avanço vai até a virada (1º/jul) e para lá até o usuário iniciar a nova temporada
+  const toTurnover = advanceTime(db, 'nextMatchday');
+  assert.deepEqual([toTurnover.advanced, toTurnover.toDate], [true, '2027-07-01']);
+  assert.equal(advanceTime(db, 'day').reason, 'season_complete');
+  assert.equal(advanceTime(db, 'nextMatchday').reason, 'season_complete');
+  assert.equal(getCareerState(db).gameDate, '2027-07-01', 'nunca passa da virada');
   for (const c of listCompetitions(db).competitions) {
     const t = getCompetitionTable(db, c.id);
     assert.equal(t.roundsPlayed, t.totalRounds);

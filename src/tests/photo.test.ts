@@ -10,7 +10,7 @@ test('Foto: PNG válido é aceito com dimensões corretas', () => {
 
 test('Foto: PNG corrompido (CRC), truncado ou com lixo no final é rejeitado', () => {
   const png = makePng(80, 80);
-  const bad = png.slice(); bad[20] ^= 0xff;
+  const bad = png.slice(); bad[20] = bad[20]! ^ 0xff;
   assert.throws(() => inspectImage(bad), /corrompido|inválido/);
   assert.throws(() => inspectImage(png.slice(0, png.length - 5)), ImageError);
   const extra = new Uint8Array(png.length + 3); extra.set(png);

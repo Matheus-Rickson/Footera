@@ -121,6 +121,7 @@ test('Temporada simulada: lesionados e suspensos não são escalados, tabelas e 
   const { db } = await setup(8, 'season-sim');
   let rounds = 0;
   for (; rounds < 40; rounds++) {
+    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas (avançar levaria até a virada, 1º/jul)
     const a = advanceTime(db, 'nextMatchday');
     if (a.reason === 'season_complete') break;
     if (!a.advanced) { simulateMatchday(db); continue; }

@@ -50,6 +50,17 @@ Toda aleatoriedade passa por `createRng(seed)`; `fork(label)` cria fluxos indepe
 
 ## Transferências (Fase 7)
 - `game/transfer-engine/transfer.ts`: regras puras (janelas, preço pedido, salário exigido, decisões, estimativas, validade do elenco).
-- `database/repositories/transferRepository.ts`: `executeTransfer` (única porta de movimentação de jogadores), mercado, propostas, vendas e `processMarketDay`
-  (chamado por `advanceTime` dia a dia, antes da cobrança mensal do mesmo dia).
+- `database/repositories/transferRepository.ts`: `executeTransfer` (única porta de **entrada** de um jogador num clube, inclusive livres), `releasePlayer`
+  (saída sem destino: fim de contrato ou aposentadoria), mercado, propostas, vendas, `aiSignFreeAgents` e `processMarketDay`
+  (chamado por `moveClock` dia a dia, antes da cobrança mensal do mesmo dia).
 - Tabelas: `transfers` (histórico), `transfer_offers` (propostas recebidas), `transfer_list` (transferíveis).
+
+## Ciclo de carreira (Fase 8A) — regras e calibração em `docs/CAREER_CYCLE.md`
+- `game/career-engine/development.ts` (`developPlayer`, `expectedChange`, `retirementChance`, `prizeMoney`) e `contracts.ts` (fim de contrato em 30/jun,
+  vencimento na virada, pedidos de renovação). Puros e determinísticos.
+- `competitionRepository.moveClock`: **único ponto que move o relógio** (dia a dia: mercado, depois fechamento mensal). Não processa o dia 1º/jul da virada.
+  `advanceTime` nunca passa desse dia. `createSeason` = `ensureSeason` sem transação própria.
+- `seasonRepository`: `isSeasonComplete`, `getSeasonStatus`, `startNextSeason` (virada atômica), `renewContract`, `getContracts`, `getHistory`, `getTrophies`.
+  `newsRepository`: `addNews`/`getNews`.
+- A tabela de uma competição deriva os participantes das **partidas** dela (não da liga atual do clube), para temporadas passadas continuarem corretas depois de acessos e rebaixamentos.
+- Migração `007_career_cycle`: `players.retired`, `player_development`, `season_results` (registro do que a virada aplicou), `trophies`, `news`.

@@ -23,18 +23,24 @@ export function saveWorld(db: SqlDb, w: World): void {
       insClub.run(c.id, c.name, c.shortName, c.countryId, c.city, c.leagueId, c.stadiumId, c.reputation, c.balance, c.fans, JSON.stringify(c.facilities));
     }
 
-    const insPlayer = db.prepare(
-      `INSERT INTO players (id, club_id, first_name, last_name, birth_date, nationality, extra_nationalities_json, position,
-        secondary_positions_json, foot, height_cm, weight_kg, attributes_json, personality_json, potential_estimated,
-        potential_hidden, condition_pct, fatigue, morale, form, market_value, salary, contract_end, overall)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-    for (const p of w.players) {
-      insPlayer.run(p.id, p.clubId, p.firstName, p.lastName, p.birthDate, p.nationality, JSON.stringify(p.extraNationalities),
-        p.position, JSON.stringify(p.secondaryPositions), p.foot, p.heightCm, p.weightKg, JSON.stringify(p.attributes),
-        JSON.stringify(p.personality), p.potentialEstimated, p.potentialHidden, p.condition, p.fatigue, p.morale, p.form,
-        p.marketValue, p.salary, p.contractEnd, p.overall);
-    }
+    const insPlayer = playerInserter(db);
+    for (const p of w.players) insPlayer(p);
   });
+}
+
+/** Insere jogadores (universo inicial e jovens da base). NÃO abre transação. */
+export function playerInserter(db: SqlDb): (p: Player) => void {
+  const ins = db.prepare(
+    `INSERT INTO players (id, club_id, first_name, last_name, birth_date, nationality, extra_nationalities_json, position,
+      secondary_positions_json, foot, height_cm, weight_kg, attributes_json, personality_json, potential_estimated,
+      potential_hidden, condition_pct, fatigue, morale, form, market_value, salary, contract_end, overall)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  return (p) => {
+    ins.run(p.id, p.clubId, p.firstName, p.lastName, p.birthDate, p.nationality, JSON.stringify(p.extraNationalities),
+      p.position, JSON.stringify(p.secondaryPositions), p.foot, p.heightCm, p.weightKg, JSON.stringify(p.attributes),
+      JSON.stringify(p.personality), p.potentialEstimated, p.potentialHidden, p.condition, p.fatigue, p.morale, p.form,
+      p.marketValue, p.salary, p.contractEnd, p.overall);
+  };
 }
 
 const s = (v: unknown) => String(v);

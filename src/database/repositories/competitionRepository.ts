@@ -3,7 +3,8 @@ import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { DEFAULT_CALENDAR, scheduleLeague } from '../../game/competition-engine/schedule.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
-import { addDays } from '../../shared/date.ts';
+import { addDays, daysBetween } from '../../shared/date.ts';
+import { turnoverDate } from '../../game/career-engine/contracts.ts';
 import { UserError } from '../../shared/errors.ts';
 import { getCareerState, type CareerState } from './careerRepository.ts';
 import { settleFinances } from './financeRepository.ts';
@@ -24,30 +25,33 @@ export type { CareerState };
  * (semente = semente do universo + temporada + liga). Também "repara" saves criados antes da Fase 3.
  */
 export function ensureSeason(db: SqlDb, season: number): { created: number } {
+  return withTransaction(db, () => createSeason(db, season));
+}
+
+/** Corpo de `ensureSeason` sem transação própria (usado pela virada de temporada, que já é atômica). */
+export function createSeason(db: SqlDb, season: number): { created: number } {
   const seed = S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
-  return withTransaction(db, () => {
-    let created = 0;
-    const insComp = db.prepare('INSERT INTO competitions (id, league_id, season, name) VALUES (?, ?, ?, ?)');
-    const insFix = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues ORDER BY rowid').all()) {
-      const leagueId = S(lg.id);
-      if (db.prepare('SELECT 1 AS x FROM competitions WHERE league_id = ? AND season = ?').get(leagueId, season)) continue;
-      const teams = db.prepare('SELECT id FROM clubs WHERE league_id = ? ORDER BY id').all(leagueId).map((r) => S(r.id));
-      if (teams.length < 2) continue;
-      const rules = JSON.parse(S(lg.rules_json)) as LeagueRules;
-      const games = scheduleLeague(teams, rules.rounds, season, rules.calendar ?? DEFAULT_CALENDAR, createRng(`schedule:${seed}:${season}:${leagueId}`));
-      const compId = `cmp_${leagueId}_${season}`;
-      insComp.run(compId, leagueId, season, `${S(lg.name)} ${season}/${String(season + 1).slice(2)}`);
-      const perRound = new Map<number, number>();
-      for (const g of games) {
-        const idx = (perRound.get(g.round) ?? 0) + 1;
-        perRound.set(g.round, idx);
-        insFix.run(`${compId}_r${String(g.round).padStart(2, '0')}_m${idx}`, compId, g.round, g.date, g.home, g.away);
-      }
-      created++;
+  let created = 0;
+  const insComp = db.prepare('INSERT INTO competitions (id, league_id, season, name) VALUES (?, ?, ?, ?)');
+  const insFix = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues ORDER BY rowid').all()) {
+    const leagueId = S(lg.id);
+    if (db.prepare('SELECT 1 AS x FROM competitions WHERE league_id = ? AND season = ?').get(leagueId, season)) continue;
+    const teams = db.prepare('SELECT id FROM clubs WHERE league_id = ? ORDER BY id').all(leagueId).map((r) => S(r.id));
+    if (teams.length < 2) continue;
+    const rules = JSON.parse(S(lg.rules_json)) as LeagueRules;
+    const games = scheduleLeague(teams, rules.rounds, season, rules.calendar ?? DEFAULT_CALENDAR, createRng(`schedule:${seed}:${season}:${leagueId}`));
+    const compId = `cmp_${leagueId}_${season}`;
+    insComp.run(compId, leagueId, season, `${S(lg.name)} ${season}/${String(season + 1).slice(2)}`);
+    const perRound = new Map<number, number>();
+    for (const g of games) {
+      const idx = (perRound.get(g.round) ?? 0) + 1;
+      perRound.set(g.round, idx);
+      insFix.run(`${compId}_r${String(g.round).padStart(2, '0')}_m${idx}`, compId, g.round, g.date, g.home, g.away);
     }
-    return { created };
-  });
+    created++;
+  }
+  return { created };
 }
 
 export const FIXTURE_SELECT = `
@@ -107,7 +111,9 @@ export function getCompetitionTable(db: SqlDb, competitionId: string): Competiti
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE c.id = ?`).get(competitionId);
   if (!c) throw new Error('Competição não encontrada.');
   const rules = JSON.parse(S(c.rules_json)) as LeagueRules;
-  const teams = db.prepare('SELECT id, name FROM clubs WHERE league_id = ?').all(S(c.league_id));
+  // Participantes saem das partidas da competição (não da liga atual do clube, que muda com promoção e rebaixamento).
+  const teams = db.prepare(`SELECT id, name FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ?
+    UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)`).all(competitionId, competitionId);
   const names = new Map(teams.map((t) => [S(t.id), S(t.name)]));
   const results: MatchResult[] = db.prepare(
     "SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played'").all(competitionId)
@@ -158,35 +164,48 @@ export function listRound(db: SqlDb, competitionId: string, round: number): Fixt
 }
 
 /**
- * Avança a data do jogo. Nunca passa por cima de partidas ainda não disputadas: enquanto o motor de partidas
- * não registrar os resultados, o avanço para na data dessas partidas.
+ * Único ponto que move o relógio: de `from` (exclusivo) até `to`, dia a dia e sempre na mesma ordem (mercado do dia, depois a
+ * cobrança mensal, se for dia 1), de modo que saltar vários dias equivale a avançar um a um. O dia da virada de temporada
+ * (1º/jul) fica para `startNextSeason`, que processa esse dia depois de aplicar contratos, promoções e entrada de jovens.
+ * NÃO abre transação: chame dentro de uma.
+ */
+export function moveClock(db: SqlDb, from: string, to: string, now: Date): number {
+  const st = getCareerState(db);
+  const days = daysBetween(from, to);
+  db.prepare('UPDATE career SET game_date = ?, updated_at = ? WHERE id = 1').run(to, now.toISOString());
+  db.prepare('UPDATE players SET condition_pct = MIN(100, condition_pct + ?) WHERE condition_pct < 100').run(6 * days); // recuperação diária
+  const turnover = turnoverDate(st.season);
+  for (let i = 1; i <= days; i++) {
+    const d = addDays(from, i);
+    if (d >= turnover) break; // o dia da virada é processado por startNextSeason
+    processMarketDay(db, d); // propostas expiram; a IA negocia dentro das janelas
+    settleFinances(db, d);   // salários, patrocínios, TV etc. dos meses que começaram até este dia
+  }
+  return days;
+}
+
+/**
+ * Avança a data do jogo. Nunca passa por cima de partidas ainda não disputadas, e nunca passa do dia da virada de temporada
+ * (1º/jul): ali o usuário precisa iniciar a nova temporada.
  */
 export function advanceTime(db: SqlDb, mode: AdvanceMode, now: Date = new Date()): AdvanceResultDto {
   if (mode !== 'day' && mode !== 'nextMatchday') throw new ResultError('Modo de avanço inválido.');
   const st = getCareerState(db);
   const today = st.gameDate;
+  const turnover = turnoverDate(st.season);
   const blockers = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND match_date <= ?").get(today)!.n);
   const fail = (reason: 'pending_matches' | 'season_complete', pending: number, message: string): AdvanceResultDto =>
     ({ advanced: false, fromDate: today, toDate: today, daysAdvanced: 0, reason, pendingMatches: pending, message });
   if (blockers > 0) return fail('pending_matches', blockers, `Há ${blockers} partida(s) a disputar hoje ou em datas anteriores. Elas precisam ser simuladas antes de avançar.`);
+  if (today >= turnover) return fail('season_complete', 0, 'A temporada terminou. Inicie a nova temporada para continuar.');
   const next = db.prepare("SELECT MIN(match_date) AS d FROM fixtures WHERE status = 'scheduled'").get();
-  if (!next || next.d == null) return fail('season_complete', 0, 'Todas as partidas da temporada foram disputadas.');
-  const target = mode === 'day' ? addDays(today, 1) : S(next.d);
-  withTransaction(db, () => {
-    db.prepare('UPDATE career SET game_date = ?, updated_at = ? WHERE id = 1').run(target, now.toISOString());
-    const days = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-    db.prepare('UPDATE players SET condition_pct = MIN(100, condition_pct + ?) WHERE condition_pct < 100').run(6 * days); // recuperação diária
-    // Dia a dia, sempre na mesma ordem (mercado do dia e depois a cobrança mensal, se for dia 1): saltar vários dias equivale a avançar um a um.
-    for (let i = 1; i <= days; i++) {
-      const d = addDays(today, i);
-      processMarketDay(db, d); // propostas expiram; a IA negocia dentro das janelas
-      settleFinances(db, d);   // salários, patrocínios, TV etc. dos meses que começaram até este dia
-    }
-  });
+  const nextMatch = next && next.d != null ? S(next.d) : null;
+  let target = mode === 'day' ? addDays(today, 1) : nextMatch ?? turnover;
+  if (target > turnover) target = turnover;
+  const days = withTransaction(db, () => moveClock(db, today, target, now));
   const pendingOnTarget = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND match_date = ?").get(target)!.n);
-  const days = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-  return {
-    advanced: true, fromDate: today, toDate: target, daysAdvanced: days, reason: 'ok', pendingMatches: pendingOnTarget,
-    message: pendingOnTarget > 0 ? `Dia de jogos: ${pendingOnTarget} partida(s) a disputar.` : 'Nada a processar neste dia.',
-  };
+  const message = pendingOnTarget > 0 ? `Dia de jogos: ${pendingOnTarget} partida(s) a disputar.`
+    : target === turnover ? 'Chegou o dia 1º de julho: inicie a nova temporada.'
+      : nextMatch === null ? 'Temporada encerrada: sem partidas até a virada (1º de julho).' : 'Nada a processar neste dia.';
+  return { advanced: true, fromDate: today, toDate: target, daysAdvanced: days, reason: 'ok', pendingMatches: pendingOnTarget, message };
 }

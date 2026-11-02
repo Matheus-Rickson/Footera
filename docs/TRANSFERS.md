@@ -20,7 +20,8 @@ para todos os clubes. O salário novo entra na folha mensal automaticamente. O d
 pular até a próxima rodada dá o mesmo resultado que avançar dia a dia (testado).
 
 ## Limitações conhecidas
-- Sem jogadores livres/fim de contrato, renovações, rescisões, empréstimos, cláusulas (multa, bônus), agentes, limite de estrangeiros nem regras de inscrição.
+- Jogadores livres, fim de contrato e renovações: ver `docs/CAREER_CYCLE.md` (Fase 8A). Todo contrato novo termina em 30/jun.
+- Sem rescisões, empréstimos, cláusulas (multa, bônus), agentes, limite de estrangeiros nem regras de inscrição.
 - Sem rede de olheiros (Fase 8): as estimativas não melhoram com investimento.
 - As taxas de jogadores muito caros superam o caixa de quase todos os clubes (o caixa inicial equivale a ~4 meses de receita). Isso é realista, mas limita compras e vendas de craques.
 - O jogador não considera tempo de jogo prometido, moral nem projeto esportivo; a recusa é só por salário.

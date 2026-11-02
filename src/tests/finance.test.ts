@@ -144,6 +144,7 @@ test('Bilheteria: público ≤ capacidade, renda vai só para o mandante e os li
 test('Temporada completa: saldo = saldo inicial + lançamentos para TODOS os clubes; salários e bilheteria somam certo', async () => {
   const { db, clubId, initial } = await setup(8, 'fin-season');
   for (let i = 0; i < 40; i++) {
+    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas (avançar levaria até a virada, 1º/jul)
     const a = advanceTime(db, 'nextMatchday');
     if (a.reason === 'season_complete') break;
     simulateMatchday(db);
@@ -209,7 +210,7 @@ test('Gráfico: composição de cada barra soma o total, ordena do maior para o 
 
 test('Gráfico: os itens de cada mês fechados com receitas/despesas; mês sem cobrança mensal é marcado como parcial', async () => {
   const { db } = await setup(8, 'fin-chart');
-  for (let i = 0; i < 40; i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
+  for (let i = 0; i < 40 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
   const ov = getFinanceOverview(db);
   assert.equal(ov.last12.length, 4);
   for (const m of ov.last12) {
@@ -242,7 +243,7 @@ test('Projeção mensal inclui a bilheteria (estimada antes de 3 jogos em casa, 
   assert.equal(before.projection.income, tvMonthly(e) + merchMonthly(e) + deals + before.projection.gate, 'receita projetada = TV + produtos + patrocínios + bilheteria');
   assert.equal(before.projection.expense, before.projection.wageBill + staffMonthly(e) + maintenanceMonthly(e) + operationsMonthly(e));
   assert.equal(before.projection.net, before.projection.income - before.projection.expense);
-  for (let i = 0; i < 40; i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
+  for (let i = 0; i < 40 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
   const after = getFinanceOverview(db);
   assert.equal(after.projection.gateEstimated, after.gates.length < 3);
   const avg = after.gates.reduce((a, g) => a + g.revenue, 0) / after.gates.length;

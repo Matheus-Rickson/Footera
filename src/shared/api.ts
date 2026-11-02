@@ -62,7 +62,7 @@ export interface FinanceOverviewDto {
   balance: number; lastSettledMonth: string | null;
   /** `items`: lançamentos do mês por categoria (positivo = receita, negativo = despesa). `settled`: false = mês sem a cobrança mensal (save anterior às finanças). */
   last12: Array<{ month: string; income: number; expense: number; net: number; settled: boolean; items: Array<{ category: string; amount: number }> }>;
-  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out'; amount: number }>;
+  lastMonth: Array<{ category: 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'wages' | 'staff' | 'maintenance' | 'operations' | 'transfer_in' | 'transfer_out' | 'prize'; amount: number }>;
   projection: { income: number; expense: number; net: number; wageBill: number; gate: number; gateEstimated: boolean };
   runwayMonths: number | null;
   sponsors: Array<{ id: string; kind: 'shirt' | 'kit' | 'stadium'; sponsor: string; monthly: number; start: string; end: string }>;
@@ -70,10 +70,11 @@ export interface FinanceOverviewDto {
   ledger: Array<{ date: string; category: string; amount: number; description: string }>;
 }
 export interface Range { low: number; high: number }
-export interface MarketFilter { position?: 'GK' | 'DEF' | 'MID' | 'ATT' | Position; minAge?: number; maxAge?: number; maxValue?: number; name?: string }
+export interface MarketFilter { position?: 'GK' | 'DEF' | 'MID' | 'ATT' | Position; minAge?: number; maxAge?: number; maxValue?: number; name?: string; /** só jogadores sem clube */ freeOnly?: boolean }
 export interface MarketPlayerDto {
   id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string;
-  clubId: string; clubName: string; marketValue: number; salary: number; contractEnd: string;
+  /** null = jogador livre (sem clube): contratação sem taxa, fora das janelas inclusive. */
+  clubId: string | null; clubName: string | null; marketValue: number; salary: number; contractEnd: string;
   /** Estimativas com margem de erro (os atributos reais só aparecem depois de contratado). */
   estOverall: Range; estPotential: Range;
 }
@@ -138,12 +139,47 @@ export interface CareerOverviewDto {
   pendingMatches: number;
   leaguePosition: { competitionId: string; position: number; total: number; points: number; played: number } | null;
   warnings: string[];
+  /** Virada de temporada: `canStart` = todas as partidas disputadas e a data chegou a 1º/jul. */
+  seasonStatus: { complete: boolean; turnoverDate: string; canStart: boolean };
   club: {
     id: string; name: string; city: string; league: string; country: string;
     reputation: number; balance: number; fans: number; stadium: string; capacity: number;
   };
   squad: SquadRow[];
 }
+
+// ---------------------------------------------------------------- ciclo de carreira (Fase 8A)
+export interface NewsDto { id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer'; title: string; body: string }
+export interface ContractRowDto {
+  id: string; name: string; position: Position; age: number; overall: number; salary: number; contractEnd: string;
+  monthsLeft: number; /** vence na próxima virada (1º/jul) */ expiresThisSeason: boolean; canRenew: boolean; maxYears: number;
+  /** renovar por N temporadas = contrato até 30/06 de (renewBaseYear + N) */ renewBaseYear: number;
+}
+export interface RenewInput { playerId: string; wage: number; years: number }
+export interface RenewResultDto { outcome: 'accepted' | 'counter' | 'rejected'; message: string; counterWage?: number; contractEnd?: string }
+export interface SeasonStatusDto {
+  season: number; label: string; gameDate: string; turnoverDate: string; matchesLeft: number; complete: boolean; canStart: boolean;
+  user: { competitionId: string; competitionName: string; position: number; teamCount: number; points: number; played: number; zone: TableZone; prizeIfEndedNow: number } | null;
+  leagues: Array<{ competitionId: string; name: string; country: string; tier: number; leader: string | null; roundsPlayed: number; totalRounds: number }>;
+  expiring: ContractRowDto[];
+}
+export interface NewSeasonReportDto {
+  season: number; label: string;
+  previous: { season: number; competitionName: string; position: number; teamCount: number; outcome: 'champion' | 'promoted' | 'relegated' | null; prize: number } | null;
+  newLeague: string;
+  champions: Array<{ competitionName: string; country: string; clubName: string }>;
+  movements: Array<{ country: string; promoted: string[]; relegated: string[] }>;
+  retiredUser: string[]; retiredTotal: number; releasedUser: string[];
+  youth: Array<{ id: string; name: string; position: Position; age: number; potentialEstimated: number }>;
+  autoPromoted: string[]; aiRenewed: number; aiReleased: number;
+}
+export interface HistoryRowDto {
+  season: number; current: boolean; competitionName: string; tier: number; position: number; teamCount: number;
+  played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; points: number;
+  outcome: 'champion' | 'promoted' | 'relegated' | null; prize: number;
+}
+export interface TrophyDto { season: number; competitionName: string; country: string; clubName: string; wonByUser: boolean }
+export interface TrophyRoomDto { mine: TrophyDto[]; champions: TrophyDto[] }
 
 export interface GameApi {
   appInfo(): Promise<IpcResult<AppInfo>>;
@@ -174,6 +210,13 @@ export interface GameApi {
   simulateMatchday(profileId: string, careerId: string): Promise<IpcResult<SimulationSummaryDto>>;
   getMatchReport(profileId: string, careerId: string, fixtureId: string): Promise<IpcResult<MatchReportDto>>;
   listRound(profileId: string, careerId: string, competitionId: string, round: number): Promise<IpcResult<FixtureDto[]>>;
+  getSeasonStatus(profileId: string, careerId: string): Promise<IpcResult<SeasonStatusDto>>;
+  startNextSeason(profileId: string, careerId: string): Promise<IpcResult<NewSeasonReportDto>>;
+  getContracts(profileId: string, careerId: string): Promise<IpcResult<ContractRowDto[]>>;
+  renewContract(profileId: string, careerId: string, input: RenewInput): Promise<IpcResult<RenewResultDto>>;
+  getNews(profileId: string, careerId: string): Promise<IpcResult<NewsDto[]>>;
+  getHistory(profileId: string, careerId: string): Promise<IpcResult<HistoryRowDto[]>>;
+  getTrophies(profileId: string, careerId: string): Promise<IpcResult<TrophyRoomDto>>;
   quit(): Promise<IpcResult<true>>;
 }
 declare global { interface Window { api: GameApi } }
