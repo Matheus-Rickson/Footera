@@ -3,9 +3,10 @@ import type { Position } from '../../shared/types.ts';
 import { effective } from './roles.ts';
 import { FORMATIONS } from './formations.ts';
 import type {
-  ChanceType, EventType, MatchConditions, MatchEvent, MatchOptions, MatchOutcome, MatchPlayer, PlayerReport,
+  ChanceType, EventType, MatchConditions, MatchEvent, MatchOptions, MatchOutcome, MatchPlayer, MatchTick, PlayerReport,
   ShotOutcome, TeamSheet, TeamStats, TeamTactics,
 } from './types.ts';
+import { TICK_STATS } from './types.ts';
 
 /** Constantes de calibração (ajustadas contra médias reais de futebol — ver docs e testes de calibração). */
 export const K = {
@@ -62,6 +63,28 @@ const emptyStats = (): TeamStats => ({
 });
 
 const a20 = (v: number) => v / 20;
+
+/** Condição física depois de `minutes` em campo (a mesma fórmula grava a condição no fim do jogo). */
+export function conditionAfter(condition: number, stamina: number, minutes: number, weather: MatchConditions['weather']): number {
+  const sta = stamina / 20;
+  const loss = (minutes / 90) * (12 + (1 - sta) * 10) + (weather === 'heat' ? 2 * (minutes / 90) : 0);
+  return Math.round(clamp(condition - loss, 30, 100) * 10) / 10;
+}
+
+/** Nota do jogador (3..10) com o placar e os minutos informados: usada no fim do jogo e, parcial, a cada minuto. */
+export function rateReport(r: PlayerReport, minutes: number, ownGoals: number, oppGoals: number): number {
+  const result = ownGoals > oppGoals ? 0.3 : ownGoals < oppGoals ? -0.3 : 0;
+  const defender = ['CB', 'LB', 'RB'].includes(r.slot);
+  let rating = 6 + result
+    + Math.min(r.goals, 3) * 1.1 + Math.min(r.assists, 3) * 0.7 + Math.min(r.keyPasses, 4) * 0.12
+    + Math.min(r.tackles, 5) * 0.12 + Math.min(r.interceptions, 5) * 0.1
+    + (r.slot === 'GK' ? r.saves * 0.28 - r.goalsConceded * 0.3 : defender ? -0.18 * oppGoals * (minutes / 90) : 0)
+    + (oppGoals === 0 && (defender || r.slot === 'GK' || r.slot === 'DM') ? 0.45 * (minutes / 90) : 0)
+    - 0.05 * Math.max(r.shots - r.shotsOnTarget - r.goals, 0) - 0.3 * r.yellow - 1.5 * r.red - 0.08 * Math.max(r.fouls - 2, 0)
+    + (r.passes >= 10 ? (r.passesCompleted / r.passes - 0.8) * 1.5 : 0);
+  if (minutes < 25) rating = 6 + (rating - 6) * (minutes / 25);
+  return Math.round(clamp(rating, 3, 10) * 10) / 10;
+}
 
 function newReport(p: MatchPlayer, team: Side, slot: Position, starter: boolean, at: number): PlayerReport {
   return {
@@ -428,6 +451,23 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const mean = K.phasesPerMinute * (1 + 0.05 * ((T[0].sheet.tactics.tempo + T[1].sheet.tactics.tempo) / 2 - 3)) * (etFactor > 1 ? 0.9 : 1);
     const n = Math.floor(mean) + (rng.next() < mean - Math.floor(mean) ? 1 : 0);
     for (let i = 0; i < n; i++) phase();
+    if (timeline) snapshot();
+  };
+
+  // ---------- linha do tempo (opcional; só lê o estado, nunca sorteia) ----------
+  const timeline: MatchTick[] | null = opts.timeline ? [] : null;
+  const snapshot = (): void => {
+    const side = (t: TeamState) => {
+      const o = T[1 - t.idx as Side];
+      const p: number[] = [];
+      for (const l of t.all) {
+        const from = l.rep.subbedInAt ?? 0, mins = clamp((l.rep.subbedOutAt ?? clock.minute) - from, 0, 120);
+        p.push(Math.round(rateReport(l.rep, mins, t.goals, o.goals) * 10), Math.round(conditionAfter(l.p.condition, l.p.attributes.physical.stamina, mins, conditions.weather) * 10));
+      }
+      return { s: TICK_STATS.map((k) => (k === 'xg' ? Math.round(t.stats.xg * 100) : t.stats[k])), p };
+    };
+    const a = side(T[0]), b = side(T[1]);
+    timeline!.push({ minute: clock.minute, label: clock.label, ev: events.length, held: [T[0].held, T[1].held], s: [a.s, b.s], p: [a.p, b.p] });
   };
 
   const stoppage = (from: number): number => {
@@ -451,6 +491,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     for (let k = 1; k <= extra; k++) tick(to, `${to}+${k}'`, etFactor, true);
     clock.minute = to; clock.label = `${to}+${extra}'`;
     emit('period_end', 0, { detail: tag });
+    if (timeline?.length) timeline.at(-1)!.ev = events.length; // o apito final do período entra no último minuto
     lastMinute = to + extra;
   };
 
@@ -511,20 +552,9 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const reports: PlayerReport[] = [];
   for (const t of T) {
     const o = T[1 - t.idx as Side];
-    const result = t.goals > o.goals ? 0.3 : t.goals < o.goals ? -0.3 : 0;
     for (const l of t.all) {
-      const r = l.rep;
-      const defender = ['CB', 'LB', 'RB'].includes(r.slot);
-      let rating = 6 + result
-        + Math.min(r.goals, 3) * 1.1 + Math.min(r.assists, 3) * 0.7 + Math.min(r.keyPasses, 4) * 0.12
-        + Math.min(r.tackles, 5) * 0.12 + Math.min(r.interceptions, 5) * 0.1
-        + (r.slot === 'GK' ? r.saves * 0.28 - r.goalsConceded * 0.3 : defender ? -0.18 * o.goals * (r.minutes / 90) : 0)
-        + (o.goals === 0 && (defender || r.slot === 'GK' || r.slot === 'DM') ? 0.45 * (r.minutes / 90) : 0)
-        - 0.05 * Math.max(r.shots - r.shotsOnTarget - r.goals, 0) - 0.3 * r.yellow - 1.5 * r.red - 0.08 * Math.max(r.fouls - 2, 0)
-        + (r.passes >= 10 ? (r.passesCompleted / r.passes - 0.8) * 1.5 : 0);
-      if (r.minutes < 25) rating = 6 + (rating - 6) * (r.minutes / 25);
-      r.rating = Math.round(clamp(rating, 3, 10) * 10) / 10;
-      reports.push(r);
+      l.rep.rating = rateReport(l.rep, l.rep.minutes, t.goals, o.goals);
+      reports.push(l.rep);
     }
   }
   const best = [...reports].filter((r) => r.minutes >= 45).sort((a, b) => b.rating - a.rating || b.goals - a.goals)[0];
@@ -536,7 +566,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       clubId: t.sheet.clubId, name: t.sheet.name, formation: t.sheet.formation,
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
-    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null,
+    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline,
   };
 }
 

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { FolderOpen, Moon, Play, Plus, Power, Sun, Upload } from 'lucide-react';
+import { useTheme } from './theme.ts';
+import footeraMark from './assets/footera-mark.png';
 import type { AppInfo, CareerListDto, CareerOverviewDto, ProfileDto } from '../shared/api.ts';
 import { errMsg, fmtDate, fmtDateTime, unwrap } from './util.ts';
 import { NewCareer } from './screens/NewCareer.tsx';
@@ -20,6 +23,7 @@ export function App() {
   const [newProfile, setNewProfile] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [theme, toggleTheme] = useTheme();
 
   useEffect(() => {
     (async () => {
@@ -69,9 +73,16 @@ export function App() {
   const latest = careers?.careers[0];
   return (
     <main className="shell narrow">
+      <div className="bar">
+        <span />
+        <button className="secondary" onClick={toggleTheme} title="Alternar entre tema escuro e claro">
+          {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+        </button>
+      </div>
       <header className="hero">
-        <h1>Football Manager Simulator</h1>
-        <p className="muted">Gerencie um clube, desenvolva jovens e construa sua carreira de treinador.</p>
+        <span className="brand-mark" role="img" aria-label="Logo do FOOTERA" style={{ ['--mark' as string]: `url(${footeraMark})` }} />
+        <h1 className="brand-name">FOOTERA</h1>
+        <p className="brand-tagline">Build your club. Create your legacy.</p>
       </header>
 
       <section className="card">
@@ -84,31 +95,33 @@ export function App() {
           </label>
         ) : <p className="muted">Crie um perfil para começar. Ele fica apenas neste computador, sem conta online.</p>}
         <div className="row">
-          <input placeholder="Nome do novo perfil" value={newProfile} maxLength={40}
+          <input className="grow" placeholder="Nome do novo perfil" value={newProfile} maxLength={40}
             onChange={(e) => setNewProfile(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newProfile.trim()) void addProfile(); }} />
-          <button className="secondary" onClick={() => void addProfile()} disabled={busy || !newProfile.trim()}>Criar perfil</button>
+          <button className="secondary" onClick={() => void addProfile()} disabled={busy || !newProfile.trim()}><Plus size={16} aria-hidden="true" />Criar perfil</button>
         </div>
         {error && <p className="error" role="alert">{error}</p>}
-      </section>
-
-      <section className="card menu">
-        <button disabled={!profileId} onClick={() => setScreen({ name: 'new' })}>Nova carreira</button>
-        <button disabled={!latest || busy} onClick={() => latest && void openCareer(latest.id)}>Continuar carreira</button>
-        <button disabled={!profileId} onClick={() => setScreen({ name: 'load' })}>Carregar carreira</button>
-        <button disabled title="Disponível na Fase 10 (exportação e importação de saves)">Importar save <small>Fase 10</small></button>
-        <button disabled title="Ainda não implementado">Editor de dados <small>Pendente</small></button>
-        <button disabled title="Ainda não implementado">Configurações <small>Pendente</small></button>
-        <button className="danger" onClick={() => void window.api.quit()}>Sair</button>
       </section>
 
       {latest && (
         <section className="card">
           <h2>Última carreira</h2>
-          <p><strong>{latest.coachName}</strong> — {latest.clubName}</p>
-          <p className="muted">Temporada {latest.season} · jogo em {fmtDate(latest.gameDate)} · salvo em {fmtDateTime(latest.updatedAt)}</p>
+          <div className="bar">
+            <div>
+              <p><strong>{latest.coachName}</strong> — {latest.clubName}</p>
+              <p className="muted small">Temporada {latest.season} · jogo em {fmtDate(latest.gameDate)} · salvo em {fmtDateTime(latest.updatedAt)}</p>
+            </div>
+            <button disabled={busy} onClick={() => void openCareer(latest.id)}><Play size={16} aria-hidden="true" />Continuar</button>
+          </div>
         </section>
       )}
-      {info && <footer className="muted small">v{info.version} · dados em {info.dataDir}</footer>}
+
+      <section className="card menu">
+        <button disabled={!profileId} onClick={() => setScreen({ name: 'new' })}><Plus size={18} aria-hidden="true" />Nova carreira</button>
+        <button className="secondary" disabled={!profileId} onClick={() => setScreen({ name: 'load' })}><FolderOpen size={18} aria-hidden="true" />Carregar carreira</button>
+        <button className="secondary" disabled title="Disponível na Fase 10 (exportação e importação de saves)"><Upload size={18} aria-hidden="true" />Importar save <span className="muted small">— em breve (Fase 10)</span></button>
+        <button className="danger" onClick={() => void window.api.quit()}><Power size={18} aria-hidden="true" />Sair</button>
+      </section>
+      {info && <footer className="muted small center">v{info.version} · dados em {info.dataDir}</footer>}
     </main>
   );
 }

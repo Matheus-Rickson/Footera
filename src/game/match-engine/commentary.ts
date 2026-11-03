@@ -4,6 +4,8 @@ export interface CommentaryLine {
   i: number; minute: number; label: string; text: string; team: 0 | 1 | null;
   kind: 'goal' | 'shot' | 'card' | 'sub' | 'foul' | 'corner' | 'offside' | 'injury' | 'penalty' | 'period' | 'shootout';
   major: boolean;
+  /** dados do evento de origem, para a tela marcar jogadores (gol, cartão, substituição) e posicionar os lances */
+  type: MatchEvent['type']; player?: string; player2?: string; detail?: string; chance?: MatchEvent['chance']; outcome?: MatchEvent['outcome']; scored?: boolean;
 }
 export interface CommentaryContext {
   teamNames: [string, string];
@@ -20,7 +22,11 @@ export function commentate(events: readonly MatchEvent[], ctx: CommentaryContext
   const nm = ctx.playerName;
   for (const e of events) {
     const team = ctx.teamNames[e.team];
-    const base = { i: e.i, minute: e.minute, label: e.label, team: e.team as 0 | 1 | null };
+    const base = {
+      i: e.i, minute: e.minute, label: e.label, team: e.team as 0 | 1 | null, type: e.type,
+      ...(e.player ? { player: e.player } : {}), ...(e.player2 ? { player2: e.player2 } : {}), ...(e.detail ? { detail: e.detail } : {}),
+      ...(e.chance ? { chance: e.chance } : {}), ...(e.outcome ? { outcome: e.outcome } : {}), ...(e.scored !== undefined ? { scored: e.scored } : {}),
+    };
     const push = (kind: CommentaryLine['kind'], text: string, major: boolean) => out.push({ ...base, kind, text, major });
     switch (e.type) {
       case 'goal': {

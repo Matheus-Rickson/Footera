@@ -10,6 +10,11 @@ não natural), condição física, moral, forma, **fadiga acumulada no jogo** (d
 mando de campo, tática (mentalidade, ritmo, linha defensiva, pressão, saída de bola, amplitude), placar (urgência no fim do jogo),
 cartões vermelhos e lesões (o time joga com menos gente), substituições da IA e "forma do dia" (±8%, evento aleatório controlado).
 
+**Linha do tempo (`opts.timeline`, só nas partidas do usuário):** ao fim de cada minuto o motor guarda estatísticas acumuladas, fases de posse e,
+por jogador, a nota parcial (`rateReport`, a mesma fórmula da nota final, com os minutos jogados até ali) e a condição (`conditionAfter`, a mesma
+fórmula que grava a condição pós-jogo). Só lê o estado: não sorteia nada, então o resultado é idêntico com ou sem registro (há teste).
+O campo animado da tela de acompanhamento é uma representação desses dados: o motor não tem coordenadas de jogadores.
+
 Finalização: tipo de chance (jogada, cruzamento, bola longa, contra-ataque, escanteio, falta, pênalti) → xG = base × habilidade do finalizador ×
 (ataque/defesa) × goleiro × clima → bloqueio / para fora / trave / defesa / gol. Gols esperados somam coerentemente com os gols reais.
 

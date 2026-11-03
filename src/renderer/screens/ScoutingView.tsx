@@ -47,7 +47,7 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
     <div className="grid1">
       <section className="card">
         <p className="muted small">Olheiros reduzem a margem de erro das estimativas de força e potencial (e aproximam o potencial estimado do real). Designe cada um para
-          <strong> um país</strong> (observa vários jogadores por dia, ao acaso) ou para a <strong>lista de observação</strong> (divide o esforço entre os jogadores que você marcou com “Observar” no mercado).
+          <strong> um país</strong> (acompanha 5 jogadores por vez até concluir cada relatório, começando pelos mais valiosos) ou para a <strong>lista de observação</strong> (divide o esforço entre os jogadores que você marcou com “Observar” no mercado).
           Salários entram nas Finanças no dia 1º de cada mês; demitir paga até 3 meses de multa. Clique no nome de um jogador para ver a ficha com atributos estimados e o parecer.</p>
         <p>Custo mensal: <strong>{fmtNum(ov.monthlyCost)}</strong> · {ov.scouts.length} de {ov.maxScouts} olheiros</p>
         {notice && <p className="ok" role="status">{notice}</p>}

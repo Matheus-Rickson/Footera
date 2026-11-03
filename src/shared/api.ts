@@ -1,7 +1,7 @@
 /** Contrato da API exposta pelo preload ao renderer. */
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
-import type { MatchConditions, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
+import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -79,11 +79,23 @@ export interface MarketPlayerDto {
   estOverall: Range; estPotential: Range;
   /** Conhecimento da rede de olheiros (0..100): quanto maior, mais estreitas as faixas. */
   knowledge: number; shortlisted: boolean;
+  nationalityName: string; heightCm: number; weightKg: number;
+  /** situação pública: lesão, suspensão e cartões nas competições da temporada atual */
+  status: { injuredUntil: string | null; suspension: number; yellows: number; reds: number };
 }
 export interface OfferInput { playerId: string; fee: number; wage: number; years: number }
 export interface OfferResultDto {
   outcome: 'completed' | 'club_counter' | 'club_rejected' | 'player_counter' | 'player_rejected' | 'board_rejected';
   message: string; counterFee?: number; counterWage?: number;
+}
+/** Etapa 1 da negociação: só a taxa ao clube vendedor (nada é gravado). */
+export interface FeeResultDto { outcome: 'accepted' | 'club_counter' | 'club_rejected'; message: string; counterFee?: number }
+/** Dados para a janela de negociação. Disposição e interesse vêm só de dados públicos (contrato, caixa, prestígio dos clubes). */
+export interface NegotiationDto {
+  player: MarketPlayerDto; buyerName: string; sellerName: string | null; windowOpen: boolean; opensOn: string | null;
+  balance: number; payroll: number; wageCeiling: number | null; transferBudgetRemaining: number | null;
+  /** 0..100; null = jogador livre (não há clube vendedor) */ clubWillingness: number | null;
+  /** 0..100 */ playerInterest: number;
 }
 export interface IncomingOfferDto { id: number; date: string; expires: string; playerId: string; playerName: string; position: Position; age: number; marketValue: number; buyerClubName: string; fee: number }
 export interface TransferLogDto { id: number; date: string; playerName: string; fromClub: string | null; toClub: string; fee: number; kind: 'purchase' | 'sale' | 'ai' }
@@ -123,6 +135,10 @@ export interface MatchReportDto {
   manOfTheMatch: { id: string; name: string } | null;
   attendance: { attendance: number; capacity: number; revenue: number } | null;
   tactics: [TeamTactics, TeamTactics] | null;
+  /** minuto a minuto (só partidas do usuário jogadas a partir da lapidação); null = acompanhamento só pelos eventos */
+  timeline: MatchTick[] | null;
+  /** força atual dos jogadores do clube do usuário que aparecem na partida */ levels: Record<string, number>;
+  userClubId: string;
 }
 
 export interface SquadRow {
@@ -206,6 +222,12 @@ export interface PlayerProfileDto {
   /** Para negociar a partir da ficha (null para jogadores do próprio clube). */
   market: MarketPlayerDto | null;
   /** pode receber proposta agora (janela aberta, ou jogador livre) */ negotiable: boolean;
+  birthDate: string; nationalityName: string; condition: number;
+  /** moral e personalidade: do próprio clube ou com 50%+ de conhecimento dos olheiros; senão null */
+  morale: number | null; personality: { professionalism: number; ambition: number; loyalty: number } | null;
+  /** força ao fim de cada temporada (só do próprio clube; de outros clubes revelaria o valor real) */ history: Array<{ season: number; overall: number }> | null;
+  lastMatches: Array<{ fixtureId: string; date: string; opponent: string; home: boolean; score: string; minutes: number; rating: number; goals: number; assists: number }>;
+  transfers: Array<{ date: string; from: string | null; to: string; fee: number }>;
 }
 export interface YouthPlayerDto { id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; salary: number; /** completa 19 anos até a virada: sai se não for promovido */ leavesAtTurnover: boolean }
 export interface YouthOverviewDto {
@@ -270,6 +292,8 @@ export interface GameApi {
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;
   searchMarket(profileId: string, careerId: string, filter: MarketFilter): Promise<IpcResult<MarketPlayerDto[]>>;
   makeOffer(profileId: string, careerId: string, offer: OfferInput): Promise<IpcResult<OfferResultDto>>;
+  getNegotiation(profileId: string, careerId: string, playerId: string): Promise<IpcResult<NegotiationDto>>;
+  proposeFee(profileId: string, careerId: string, playerId: string, fee: number): Promise<IpcResult<FeeResultDto>>;
   respondOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;
   setListed(profileId: string, careerId: string, playerId: string, listed: boolean): Promise<IpcResult<true>>;
   getFinance(profileId: string, careerId: string): Promise<IpcResult<FinanceOverviewDto>>;

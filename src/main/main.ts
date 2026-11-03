@@ -8,7 +8,7 @@ import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
-  simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
+  simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
@@ -19,6 +19,9 @@ import { UserError } from '../shared/errors.ts';
 import { ImageError, inspectImage, MAX_PHOTO_BYTES } from '../shared/photo.ts';
 import type { IpcResult, MarketFilter, OfferInput, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
 
+// O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
+// senão carreiras criadas antes da troca de nome sumiriam da lista.
+if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'football-manager-simulator'));
 const dataDir = () => path.join(app.getPath('userData'), 'data');
 const uuid = z.string().uuid();
 const seedSchema = z.string().trim().min(1).max(64);
@@ -111,6 +114,8 @@ function registerHandlers(): void {
   handle('transfers:offer', ref.extend({ offer: z.object({
     playerId: z.string().min(1).max(60), fee: z.number().int().min(0).max(1e10), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
   }) }), (i) => sendTransferOffer(dataDir(), i.profileId, i.careerId, i.offer as OfferInput));
+  handle('transfers:negotiation', ref.extend({ playerId: z.string().min(1).max(60) }), (i) => getTransferNegotiation(dataDir(), i.profileId, i.careerId, i.playerId));
+  handle('transfers:fee', ref.extend({ playerId: z.string().min(1).max(60), fee: z.number().int().min(0).max(1e10) }), (i) => proposeTransferFee(dataDir(), i.profileId, i.careerId, i.playerId, i.fee));
   handle('transfers:respond', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerTransferOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
   handle('transfers:list', ref.extend({ playerId: z.string().min(1).max(60), listed: z.boolean() }), (i) => listPlayerForSale(dataDir(), i.profileId, i.careerId, i.playerId, i.listed));
   handle('finance:get', ref, (i) => getFinance(dataDir(), i.profileId, i.careerId));
@@ -162,7 +167,7 @@ function registerHandlers(): void {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#0f1620',
+    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#070d1c', title: 'FOOTERA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,

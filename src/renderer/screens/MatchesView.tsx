@@ -59,7 +59,7 @@ export function MatchesView({ profileId, careerId, refreshKey, onOpen }: Props) 
       <section className="card">
         <h2>Meus jogos</h2>
         {mine.length === 0 ? <p className="muted">Nenhuma partida disputada ainda.</p> : (
-          <table><tbody>{mine.map((f) => <Row key={f.id} f={f} onOpen={onOpen} mine={cal.clubId} />)}</tbody></table>
+          <table><tbody>{mine.map((f) => <Row key={f.id} f={f} onOpen={onOpen} />)}</tbody></table>
         )}
       </section>
       <section className="card">

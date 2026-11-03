@@ -183,3 +183,83 @@ test('Desempenho: uma rodada completa de 4 ligas de 20 times (40 jogos) simula e
   assert.equal(simulateMatchday(db).simulated, 40);
   assert.ok(performance.now() - t0 < 2000, `${(performance.now() - t0).toFixed(0)} ms`);
 });
+
+test('Relatório: linha do tempo minuto a minuto só nas partidas do usuário; força só dos jogadores do usuário; condição gravada = última foto', async () => {
+  const { db, clubId } = await setup();
+  toFirstMatchday(db);
+  const s = simulateMatchday(db);
+  const mine = getMatchReport(db, s.userMatch!.fixtureId);
+  assert.ok(mine.timeline && mine.timeline.length >= 91, 'partida do usuário tem a linha do tempo');
+  const other = s.results.find((r) => !r.involvesUser)!;
+  assert.equal(getMatchReport(db, other.fixtureId).timeline, null, 'outras partidas não guardam (relatório resumido)');
+  const myIds = new Set(db.prepare('SELECT id FROM players WHERE club_id = ?').all(clubId).map((r) => String(r.id)));
+  assert.ok(Object.keys(mine.levels).length >= 11 && Object.keys(mine.levels).every((id) => myIds.has(id)), 'força só do próprio clube');
+  const side = mine.home.clubId === clubId ? 0 : 1;
+  const last = mine.timeline!.at(-1)!;
+  mine.players.filter((p) => p.team === side).forEach((p, j) => {
+    const cond = Number(db.prepare('SELECT condition_pct AS c FROM players WHERE id = ?').get(p.id)!.c);
+    assert.equal(last.p[side][2 * j + 1], Math.round(cond * 10), `condição gravada de ${p.name}`);
+  });
+});
+
+test('Ao vivo: placar, eventos, jogadores em campo e estatísticas em cada minuto batem com o relatório; sem linha do tempo, só eventos', async () => {
+  const { liveAt, ticksOf } = await import('../renderer/matchLive.ts');
+  const { db } = await setup(8, 'live-test');
+  let checked = 0;
+  for (let round = 0; round < 4; round++) {
+    advanceTime(db, 'nextMatchday');
+    const s = simulateMatchday(db);
+    const r = getMatchReport(db, s.userMatch!.fixtureId);
+    const ticks = ticksOf(r);
+    assert.equal(ticks, r.timeline);
+    const start = liveAt(r, ticks, 0);
+    assert.deepEqual([start.score, start.lines.length, start.started], [[0, 0], 0, false]);
+    assert.ok(start.teams.every((t) => t.onPitch.length === 11 && t.onPitch.every((p) => p.rating === null)));
+    let prevShots = [0, 0];
+    for (let k = 1; k <= ticks.length; k++) {
+      const st = liveAt(r, ticks, k);
+      const goals = [0, 1].map((t) => st.lines.filter((l) => l.kind === 'goal' && l.team === t).length);
+      assert.deepEqual(st.score, st.finished ? [r.homeGoals, r.awayGoals] : goals);
+      for (const t of [0, 1] as const) {
+        const tm = st.teams[t];
+        const removed = st.lines.filter((l) => l.team === t && (l.type === 'red_card' || (l.type === 'injury' && !r.commentary.some((x) => x.type === 'substitution' && x.player2 === l.player && x.i === l.i + 1)))).length;
+        assert.equal(tm.onPitch.length, 11 - removed, `jogadores em campo (${k})`);
+        assert.equal(new Set(tm.onPitch.map((p) => p.id)).size, tm.onPitch.length);
+        const out = new Set(st.lines.filter((l) => l.team === t && l.type === 'substitution').map((l) => l.player2));
+        const inn = st.lines.filter((l) => l.team === t && l.type === 'substitution').map((l) => l.player);
+        assert.ok(tm.onPitch.every((p) => !out.has(p.id)), 'substituído não continua em campo');
+        assert.ok(inn.every((id) => tm.onPitch.some((p) => p.id === id) || tm.gone.some((p) => p.id === id)), 'quem entrou aparece');
+        assert.ok(tm.onPitch.every((p) => p.rating !== null && p.rating >= 3 && p.rating <= 10 && p.condition !== null));
+        assert.ok(st.stats![t].shots >= prevShots[t]!); prevShots[t] = st.stats![t].shots;
+      }
+      checked++;
+    }
+    const end = liveAt(r, ticks, ticks.length);
+    assert.equal(end.finished, true); assert.deepEqual(end.stats, r.stats); assert.equal(end.lines.length, r.commentary.length);
+    for (const t of [0, 1] as const) for (const p of [...end.teams[t].onPitch, ...end.teams[t].gone]) assert.equal(p.rating, r.players.find((x) => x.id === p.id)!.rating);
+    const subsOut = r.commentary.filter((l) => l.type === 'substitution').map((l) => l.player2);
+    assert.ok(subsOut.every((id) => [...end.teams[0].gone, ...end.teams[1].gone].some((p) => p.id === id && p.subOut)), 'substituídos aparecem como "saíram"');
+    // relatório antigo (sem linha do tempo): um passo por minuto, sem notas nem estatísticas parciais
+    const old = { ...r, timeline: null };
+    const ot = ticksOf(old);
+    assert.equal(ot.length, r.decidedIn === 'regular' ? 90 : 120);
+    const mid = liveAt(old, ot, 60);
+    assert.equal(mid.stats, null); assert.ok(mid.teams[0].onPitch.every((p) => p.rating === null));
+    assert.ok(mid.lines.every((l) => l.minute <= 60));
+    assert.deepEqual(liveAt(old, ot, ot.length).score, [r.homeGoals, r.awayGoals]);
+  }
+  assert.ok(checked > 300);
+  // lesão sem substituto (sem trocas restantes) e expulsão tiram o jogador de campo
+  const r = getMatchReport(db, simulateMatchday(db).userMatch?.fixtureId ?? db.prepare("SELECT fixture_id AS f FROM matches WHERE detail = 'full' LIMIT 1").get()!.f as string);
+  const subbed = new Set(r.commentary.filter((l) => l.type === 'substitution').map((l) => l.player2));
+  const [hurt, sent] = r.players.filter((p) => p.team === 0 && p.starter && !subbed.has(p.id) && p.slot !== 'GK').map((p) => p.id);
+  const extra = [
+    { i: 100000, minute: 88, label: "88'", text: 'lesão', team: 0 as const, kind: 'injury' as const, major: true, type: 'injury' as const, player: hurt },
+    { i: 100001, minute: 89, label: "89'", text: 'vermelho', team: 0 as const, kind: 'card' as const, major: true, type: 'red_card' as const, player: sent },
+  ];
+  const r2 = { ...r, commentary: [...r.commentary, ...extra] };
+  const end2 = liveAt(r2, ticksOf(r2), ticksOf(r2).length);
+  const base = liveAt(r, ticksOf(r), ticksOf(r).length).teams[0].onPitch.length;
+  assert.equal(end2.teams[0].onPitch.length, base - 2);
+  assert.ok(end2.teams[0].gone.some((p) => p.id === hurt && p.injured) && end2.teams[0].gone.some((p) => p.id === sent && p.red));
+});

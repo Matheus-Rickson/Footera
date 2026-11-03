@@ -9,7 +9,7 @@ import {
 } from '../database/repositories/competitionRepository.ts';
 import { getMatchReport, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { ensureFinance, getFinanceOverview } from '../database/repositories/financeRepository.ts';
-import { getTransfersOverview, makeOffer, respondOffer, searchMarket, setListed } from '../database/repositories/transferRepository.ts';
+import { getNegotiation, getTransfersOverview, makeOffer, proposeFee, respondOffer, searchMarket, setListed } from '../database/repositories/transferRepository.ts';
 import {
   activateScheme, autoLineup, deleteScheme, duplicateScheme, ensureSchemes, getTacticsOverview, saveScheme,
 } from '../database/repositories/tacticsRepository.ts';
@@ -36,7 +36,7 @@ import type {
   BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
-  AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
+  AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
 } from '../shared/api.ts';
 
 const careersDir = (base: string, profileId: string) => path.join(base, 'saves', profileId);
@@ -257,6 +257,8 @@ export const getFinance = (b: string, p: string, c: string): Promise<FinanceOver
 export const getTransfers = (b: string, p: string, c: string): Promise<TransfersOverviewDto> => withClubCareer(b, p, c, (db) => getTransfersOverview(db));
 export const searchTransferMarket = (b: string, p: string, c: string, f: MarketFilter): Promise<MarketPlayerDto[]> => withClubCareer(b, p, c, (db) => searchMarket(db, f));
 export const sendTransferOffer = (b: string, p: string, c: string, o: OfferInput): Promise<OfferResultDto> => withClubCareer(b, p, c, (db) => makeOffer(db, o));
+export const getTransferNegotiation = (b: string, p: string, c: string, playerId: string): Promise<NegotiationDto> => withClubCareer(b, p, c, (db) => getNegotiation(db, playerId));
+export const proposeTransferFee = (b: string, p: string, c: string, playerId: string, fee: number): Promise<FeeResultDto> => withClubCareer(b, p, c, (db) => proposeFee(db, playerId, fee));
 export const answerTransferOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { respondOffer(db, id, accept); return true as const; });
 export const listPlayerForSale = (b: string, p: string, c: string, playerId: string, listed: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setListed(db, playerId, listed); return true as const; });
 

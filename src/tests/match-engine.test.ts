@@ -195,3 +195,38 @@ test('Motor: desempenho — média abaixo de 40 ms por partida', () => {
   for (let i = 0; i < 60; i++) play(i, { seed: `perf-${i}` });
   assert.ok((performance.now() - t0) / 60 < 40);
 });
+
+test('Linha do tempo: só observa (resultado idêntico), cobre cada minuto e termina igual ao relatório final', async () => {
+  const { conditionAfter, rateReport } = await import('../game/match-engine/engine.ts');
+  const { TICK_STATS } = await import('../game/match-engine/types.ts');
+  for (let i = 0; i < 24; i++) {
+    const [a, b] = pairOf(i), seed = `tl-${i}`, knockout = i % 3 === 0;
+    const plain = simulateMatch(sheet(a), sheet(b), { seed, knockout });
+    const live = simulateMatch(sheet(a), sheet(b), { seed, knockout, timeline: true });
+    assert.equal(plain.timeline, null);
+    assert.deepEqual({ ...live, timeline: null }, plain, 'registrar a linha do tempo não pode mudar nada');
+    const tl = live.timeline!;
+    const regular = live.decidedIn === 'regular' ? 90 : 120;
+    assert.deepEqual([...new Set(tl.filter((t) => !t.label.includes('+')).map((t) => t.minute))], Array.from({ length: regular }, (_, k) => k + 1), 'um registro por minuto');
+    for (let k = 1; k < tl.length; k++) {
+      assert.ok(tl[k]!.ev >= tl[k - 1]!.ev);
+      for (const s of [0, 1] as const) tl[k]!.s[s].forEach((v, j) => assert.ok(v >= tl[k - 1]!.s[s][j]!, `estatística ${TICK_STATS[j]} só cresce`));
+    }
+    const last = tl.at(-1)!;
+    const lastRegular = live.events.findLast((e) => e.type === 'period_end')!;
+    assert.equal(last.ev, lastRegular.i + 1, 'o último minuto inclui o apito final (pênaltis vêm depois)');
+    for (const s of [0, 1] as const) {
+      TICK_STATS.forEach((k, j) => assert.equal(last.s[s][j], k === 'xg' ? Math.round(live.stats[s].xg * 100) : live.stats[s][k], `${k} final`));
+      const ps = live.players.filter((p) => p.team === s);
+      const sh = s === 0 ? sheet(a) : sheet(b);
+      const byId = new Map([...sh.lineup.map((l) => l.player), ...sh.bench].map((p) => [p.id, p]));
+      assert.equal(last.p[s].length, ps.length * 2);
+      ps.forEach((p, j) => {
+        assert.equal(last.p[s][2 * j], Math.round(p.rating * 10), `nota final de ${p.name}`);
+        const mp = byId.get(p.id)!;
+        assert.equal(last.p[s][2 * j + 1], Math.round(conditionAfter(mp.condition, mp.attributes.physical.stamina, p.minutes, live.conditions.weather) * 10), 'condição final');
+      });
+    }
+    assert.equal(rateReport(live.players[0]!, live.players[0]!.minutes, live.homeGoals, live.awayGoals), live.players[0]!.rating);
+  }
+});

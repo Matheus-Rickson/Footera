@@ -31,7 +31,7 @@ function effectText(kind: FacilityKind, level: number): string {
   const pct = (x: number) => `${x >= 1 ? '+' : ''}${Math.round((x - 1) * 100)}%`;
   if (kind === 'training') return `Evolução dos jogadores ${pct(qualityFactor(level))}`;
   if (kind === 'youth') return `Qualidade e tamanho das safras; evolução na base ${pct(qualityFactor(level))}`;
-  if (kind === 'medical') return `Tempo de lesão ${pct(recoveryFactor(UNSTAFFED_QUALITY, level))} sem médico contratado (o médico reduz mais)`;
+  if (kind === 'medical') { const d = (recoveryFactor(UNSTAFFED_QUALITY, level) - 1) * 100; return `Lesões duram ${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'a mais' : 'a menos'} que a referência (sem médico contratado; um bom médico reduz mais)`; }
   return 'Ampliação: +5% de lugares (mais bilheteria) e maior manutenção';
 }
 

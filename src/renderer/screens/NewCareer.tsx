@@ -108,7 +108,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
           </section>
           <section className="card scroll">
             {!list ? <p className="muted">Gerando universo…</p> : (
-              <table>
+              <table className="pick">
                 <thead><tr><th /><th>Clube</th><th>Liga</th><th>Reputação</th><th>Força média</th><th>Estádio</th><th>Capacidade</th></tr></thead>
                 <tbody>
                   {visible.map((c) => (

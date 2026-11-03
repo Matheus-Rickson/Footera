@@ -28,7 +28,16 @@ export interface TeamSheet {
 export interface MatchConditions { weather: 'clear' | 'rain' | 'heat' | 'cold'; pitch: 'good' | 'poor' }
 export interface MatchOptions {
   seed: string; knockout?: boolean; neutral?: boolean; conditions?: MatchConditions;
+  /** registra a linha do tempo minuto a minuto (só observa: não muda nenhum sorteio nem o resultado) */ timeline?: boolean;
 }
+
+/** Ordem dos números em `MatchTick.s` (estatísticas acumuladas da equipe; xg em centésimos). */
+export const TICK_STATS = ['shots', 'shotsOnTarget', 'xg', 'corners', 'fouls', 'yellowCards', 'redCards', 'offsides', 'passes', 'passesCompleted', 'tackles', 'interceptions', 'saves'] as const;
+/**
+ * Foto do fim de um minuto de jogo. `ev` = quantos eventos já tinham acontecido; `held` = fases de posse acumuladas;
+ * `p[time]` = [nota×10, condição×10] de cada jogador, na ordem de entrada em campo da equipe (a mesma ordem de `players`).
+ */
+export interface MatchTick { minute: number; label: string; ev: number; held: [number, number]; s: [number[], number[]]; p: [number[], number[]] }
 
 export type EventType =
   | 'goal' | 'shot' | 'corner' | 'foul' | 'yellow_card' | 'red_card' | 'offside' | 'penalty_awarded'
@@ -83,4 +92,5 @@ export interface MatchOutcome {
   conditions: MatchConditions;
   duration: number;
   manOfTheMatch: string | null;
+  timeline: MatchTick[] | null;
 }

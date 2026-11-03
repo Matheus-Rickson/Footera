@@ -3,17 +3,17 @@ import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import {
-  askingPrice, clubDecision, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
+  askingPrice, clubDecision, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, playerInterest, sellerWillingness, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
 import type { Player } from '../../shared/types.ts';
 import type {
-  IncomingOfferDto, MarketFilter, MarketPlayerDto, MyPlayerDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
+  FeeResultDto, IncomingOfferDto, MarketFilter, MarketPlayerDto, MyPlayerDto, NegotiationDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
-import { boardVeto, recordTransferForBoard } from './boardRepository.ts';
+import { boardVeto, getBoardOverview, recordTransferForBoard } from './boardRepository.ts';
 import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
@@ -100,29 +100,65 @@ export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
   return out;
 }
 
-export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
+/** Validações comuns da proposta (sem taxa/salário): devolve o jogador, o clube do usuário e o estado da carreira. */
+function offerTarget(db: SqlDb, playerId: string) {
   const st = getCareerState(db);
-  if (![input.fee, input.wage, input.years].every(Number.isInteger) || input.fee < 0 || input.wage <= 0 || input.years < 1 || input.years > 5) throw new TransferError('Proposta inválida: use valores inteiros (anos de 1 a 5).');
-  const row = db.prepare('SELECT * FROM players WHERE id = ?').get(input.playerId);
+  const row = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
   if (!row) throw new TransferError('Jogador não encontrado.');
   if (N(row.retired) === 1) throw new TransferError('Este jogador está aposentado.');
   if (row.youth_club_id != null) throw new TransferError('Jogadores das categorias de base não estão à venda.');
   const p = rowToPlayer(row);
   if (p.clubId === st.clubId) throw new TransferError('Este jogador já é do seu clube.');
-  const mine = squadOf(db, st.clubId);
-  if (mine.length >= SQUAD_MAX) throw new TransferError(`Seu elenco já tem o máximo de ${SQUAD_MAX} jogadores.`);
-  const me = clubRow(db, st.clubId);
-  if (!p.clubId) return signFreeAgent(db, st, p, input, me);
-  const win = windowStatus(st.gameDate);
-  if (!win.open) throw new TransferError(`A janela de transferências está fechada. Ela abre em ${win.opensOn!.split('-').reverse().join('/')}.`);
-  const seller = clubRow(db, p.clubId);
-  if (input.fee > N(me.balance)) throw new TransferError(`Caixa insuficiente: você tem ${fmt(N(me.balance))} e a proposta é de ${fmt(input.fee)}.`);
+  if (squadOf(db, st.clubId).length >= SQUAD_MAX) throw new TransferError(`Seu elenco já tem o máximo de ${SQUAD_MAX} jogadores.`);
+  return { st, p, me: clubRow(db, st.clubId) };
+}
 
-  const ask = priceOf(db, p, st.gameDate);
-  if (!squadStaysValid(squadOf(db, p.clubId), p.id, 20)) return { outcome: 'club_rejected', message: `${S(seller.name)} precisa do jogador para manter o elenco completo e recusou negociar.` };
-  const cd = clubDecision(input.fee, ask);
+/** Decisão do clube vendedor sobre a taxa (jogador com clube). Mesma regra usada na proposta completa. */
+function clubTerms(db: SqlDb, date: string, p: Player, fee: number, me: Record<string, unknown>): FeeResultDto {
+  const win = windowStatus(date);
+  if (!win.open) throw new TransferError(`A janela de transferências está fechada. Ela abre em ${win.opensOn!.split('-').reverse().join('/')}.`);
+  const seller = clubRow(db, p.clubId!);
+  if (fee > N(me.balance)) throw new TransferError(`Caixa insuficiente: você tem ${fmt(N(me.balance))} e a proposta é de ${fmt(fee)}.`);
+  const ask = priceOf(db, p, date);
+  if (!squadStaysValid(squadOf(db, p.clubId!), p.id, 20)) return { outcome: 'club_rejected', message: `${S(seller.name)} precisa do jogador para manter o elenco completo e recusou negociar.` };
+  const cd = clubDecision(fee, ask);
   if (cd.kind === 'reject') return { outcome: 'club_rejected', message: `${S(seller.name)} recusou: a proposta está muito abaixo do que valorizam o jogador.` };
   if (cd.kind === 'counter') return { outcome: 'club_counter', counterFee: cd.fee, message: `${S(seller.name)} pede ${fmt(cd.fee)} pelo jogador.` };
+  return { outcome: 'accepted', message: `${S(seller.name)} aceitou a taxa de ${fmt(fee)}. Agora negocie o contrato com o jogador.` };
+}
+
+/** Etapa 1 da negociação: consulta o clube vendedor sobre a taxa. Não grava nada; a proposta completa reavalia a taxa. */
+export function proposeFee(db: SqlDb, playerId: string, fee: number): FeeResultDto {
+  if (!Number.isInteger(fee) || fee < 0) throw new TransferError('Taxa inválida: use um valor inteiro.');
+  const { st, p, me } = offerTarget(db, playerId);
+  if (!p.clubId) throw new TransferError('Jogador sem clube: não há taxa de transferência.');
+  return clubTerms(db, st.gameDate, p, fee, me);
+}
+
+export function getNegotiation(db: SqlDb, playerId: string): NegotiationDto {
+  const { st, p, me } = offerTarget(db, playerId);
+  const row = db.prepare('SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?').get(playerId)!;
+  const shortlisted = !!db.prepare('SELECT 1 AS x FROM scout_shortlist WHERE player_id = ?').get(playerId);
+  const win = windowStatus(st.gameDate);
+  const seller = p.clubId ? clubRow(db, p.clubId) : null;
+  const budgets = getBoardOverview(db).club?.budgets ?? null;
+  const payroll = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS s FROM players WHERE club_id = ?').get(st.clubId)!.s);
+  return {
+    player: toScoutedDto(db, row, st.gameDate, knowledgeMap(db).get(playerId) ?? 0, shortlisted),
+    buyerName: S(me.name), sellerName: seller ? S(seller.name) : null, windowOpen: win.open, opensOn: win.opensOn,
+    balance: N(me.balance), payroll, wageCeiling: budgets?.wageCeiling ?? null, transferBudgetRemaining: budgets?.remaining ?? null,
+    clubWillingness: seller ? sellerWillingness({ contractMonthsLeft: monthsLeft(st.gameDate, p.contractEnd), age: ageOn(p.birthDate, st.gameDate), sellerBalance: N(seller.balance), canSell: squadStaysValid(squadOf(db, p.clubId!), p.id, 20) }) : null,
+    playerInterest: playerInterest(N(me.reputation), seller ? N(seller.reputation) : N(me.reputation)),
+  };
+}
+
+export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
+  if (![input.fee, input.wage, input.years].every(Number.isInteger) || input.fee < 0 || input.wage <= 0 || input.years < 1 || input.years > 5) throw new TransferError('Proposta inválida: use valores inteiros (anos de 1 a 5).');
+  const { st, p, me } = offerTarget(db, input.playerId);
+  if (!p.clubId) return signFreeAgent(db, st, p, input, me);
+  const club = clubTerms(db, st.gameDate, p, input.fee, me);
+  if (club.outcome !== 'accepted') return { outcome: club.outcome, message: club.message, ...(club.counterFee !== undefined ? { counterFee: club.counterFee } : {}) };
+  const seller = clubRow(db, p.clubId);
 
   const ambition = p.personality.ambition;
   const demand = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition }, N(seller.reputation), N(me.reputation));

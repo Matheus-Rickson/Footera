@@ -1,10 +1,10 @@
 import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { createRng, clamp } from '../../game/rng.ts';
-import { simulateMatch } from '../../game/match-engine/engine.ts';
+import { conditionAfter, simulateMatch } from '../../game/match-engine/engine.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
-import type { MatchConditions, MatchEvent, MatchOutcome, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
+import type { MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
 import { addDays } from '../../shared/date.ts';
 import type { Coach, Player } from '../../shared/types.ts';
 import type { MatchReportDto, MatchSummaryDto, SchemeDto, SimulationSummaryDto } from '../../shared/api.ts';
@@ -44,6 +44,7 @@ interface StoredReport {
   conditions: MatchConditions; duration: number; stats: MatchOutcome['stats']; players: Array<Partial<PlayerReport>>;
   lineups: MatchOutcome['lineups']; events: MatchEvent[]; manOfTheMatch: string | null;
   tactics?: [TeamTactics, TeamTactics];
+  /** só nas partidas do usuário (relatório completo); ausente em saves anteriores à lapidação */ timeline?: MatchTick[];
 }
 
 interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string }
@@ -76,8 +77,8 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
   const tH = tactics(hSheet, aSheet, f.homeId, true), tA = tactics(aSheet, hSheet, f.awayId, false);
   hSheet = { ...hSheet, tactics: tH }; aSheet = { ...aSheet, tactics: tA };
 
-  const out = simulateMatch(hSheet, aSheet, { seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date) });
   const involves = f.homeId === ctx.userClub || f.awayId === ctx.userClub;
+  const out = simulateMatch(hSheet, aSheet, { seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves });
 
   applyResult(db, f.id, out.homeGoals, out.awayGoals);
   const report: StoredReport = {
@@ -87,7 +88,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
     lineups: out.lineups, events: involves ? out.events : out.events.filter((e) => COMPACT_TYPES.has(e.type)), manOfTheMatch: out.manOfTheMatch,
-    tactics: [tH, tA],
+    tactics: [tH, tA], ...(involves && out.timeline ? { timeline: out.timeline } : {}),
   };
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
@@ -109,9 +110,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
     const p = byId.get(r.id)!;
     const sq = r.team === 0 ? home : away, clubId = r.team === 0 ? f.homeId : f.awayId;
     const result = (r.team === 0 ? out.homeGoals - out.awayGoals : out.awayGoals - out.homeGoals);
-    const sta = p.attributes.physical.stamina / 20;
-    const loss = (r.minutes / 90) * (12 + (1 - sta) * 10) + (out.conditions.weather === 'heat' ? 2 * (r.minutes / 90) : 0);
-    upPlayer.run(Math.round(clamp(p.condition - loss, 30, 100) * 10) / 10,
+    upPlayer.run(conditionAfter(p.condition, p.attributes.physical.stamina, r.minutes, out.conditions.weather),
       Math.round(clamp(0.7 * p.form + 0.3 * (50 + (r.rating - 6) * 15), 0, 100) * 10) / 10,
       clamp(p.morale + (result > 0 ? 3 : result < 0 ? -3 : 0), 10, 100), p.id);
     upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating);
@@ -168,10 +167,14 @@ export function getMatchReport(db: SqlDb, fixtureId: string): MatchReportDto {
   const names = new Map(players.map((p) => [p.id, p.name]));
   const commentary = commentate(r.events, { teamNames: [r.home.name, r.away.name], playerName: (id) => (id ? names.get(id) ?? 'Jogador' : 'Jogador') });
   const mom = r.manOfTheMatch ? { id: r.manOfTheMatch, name: names.get(r.manOfTheMatch) ?? '' } : null;
+  // força atual só dos jogadores do clube do usuário (de outros clubes o usuário só vê estimativas)
+  const userClub = getCareerState(db).clubId;
+  const levels: Record<string, number> = {};
+  for (const row of db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(userClub)) if (names.has(S(row.id))) levels[S(row.id)] = N(row.overall);
   return {
     fixtureId, competitionName: S(m.competition_name), date: S(m.match_date), round: N(m.round), detail: r.detail, home: r.home, away: r.away,
     homeGoals: r.homeGoals, awayGoals: r.awayGoals, decidedIn: r.decidedIn, shootout: r.shootout, conditions: r.conditions, duration: r.duration,
-    stats: r.stats, players, lineups: r.lineups, commentary, manOfTheMatch: mom, tactics: r.tactics ?? null,
+    stats: r.stats, players, lineups: r.lineups, commentary, manOfTheMatch: mom, tactics: r.tactics ?? null, timeline: r.timeline ?? null, levels, userClubId: userClub,
     attendance: m.attendance == null ? null : { attendance: N(m.attendance), capacity: N(m.capacity), revenue: N(m.gate_revenue) },
   };
 }

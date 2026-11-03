@@ -47,6 +47,23 @@ export function wageDemand(p: { marketValue: number; salary: number; ambition: n
   return Math.round((base * f * (0.9 + 0.2 * (p.ambition / 20))) / 100) * 100;
 }
 
+/**
+ * Disposição do clube vendedor em negociar (0..100), só com dados públicos: os mesmos fatores que baixam o preço pedido em
+ * `askingPrice` (contrato perto do fim, jogador veterano, caixa negativo). Não usa a força real nem o status de titular.
+ */
+export function sellerWillingness(a: { contractMonthsLeft: number; age: number; sellerBalance: number; canSell: boolean }): number {
+  if (!a.canSell) return 0;
+  const m = a.contractMonthsLeft;
+  let v = m <= 6 ? 85 : m <= 12 ? 70 : m <= 24 ? 50 : 35;
+  if (a.age >= 32) v += 10;
+  if (a.sellerBalance < 0) v += 10;
+  return Math.min(100, v);
+}
+/** Interesse do jogador na mudança (0..100) pelo prestígio relativo dos clubes, o fator público de `wageDemand`. */
+export function playerInterest(toReputation: number, fromReputation: number): number {
+  return Math.max(5, Math.min(95, Math.round(50 + (toReputation - fromReputation) * 2.5)));
+}
+
 export type ClubDecision = { kind: 'accept' } | { kind: 'counter'; fee: number } | { kind: 'reject' };
 export function clubDecision(fee: number, ask: number): ClubDecision {
   if (fee >= ask) return { kind: 'accept' };

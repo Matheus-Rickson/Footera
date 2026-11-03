@@ -6,9 +6,9 @@ import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { activateScheme, autoLineup, saveScheme } from '../database/repositories/tacticsRepository.ts';
-import { getTransfersOverview, makeOffer, processMarketDay, respondOffer, searchMarket, setListed, TransferError } from '../database/repositories/transferRepository.ts';
+import { getNegotiation, getTransfersOverview, makeOffer, processMarketDay, proposeFee, respondOffer, searchMarket, setListed, TransferError } from '../database/repositories/transferRepository.ts';
 import {
-  askingPrice, clubDecision, estimateRange, groupOf, playerDecision, squadStaysValid, wageDemand, windowStatus,
+  askingPrice, clubDecision, estimateRange, groupOf, playerDecision, playerInterest, sellerWillingness, squadStaysValid, wageDemand, windowStatus,
 } from '../game/transfer-engine/transfer.ts';
 import { addDays } from '../shared/date.ts';
 import type { SqlDb } from '../database/types.ts';
@@ -259,4 +259,54 @@ test('Integração com a escalação: jogador vendido some do esquema manual e o
   const sim = simulateMatchday(db);
   assert.equal(sim.notes.length, 1);
   assert.match(sim.notes[0]!, /Escalação ajustada/);
+});
+
+test('Negociação em etapas: a consulta da taxa decide como a proposta completa, não grava nada; janela mostra só dados públicos', async () => {
+  const { db, clubId } = await setup();
+  const t = target(db, clubId);
+  const snap = () => JSON.stringify([db.prepare('SELECT club_id, salary FROM players WHERE id = ?').get(t.id), n(db, 'SELECT COUNT(*) AS n FROM transfers'), n(db, 'SELECT COALESCE(SUM(amount), 0) AS n FROM finance_ledger')]);
+  const before = snap();
+  // a etapa 1 tem que dar exatamente a mesma resposta do clube que a proposta completa (com salário que o jogador recusa, para não concluir)
+  for (const k of [0.3, 0.7, 0.9, 1, 1.3, 2]) {
+    const fee = Math.round(t.marketValue * k);
+    const a = proposeFee(db, t.id, fee), b = makeOffer(db, { playerId: t.id, fee, wage: 1, years: 3 });
+    if (a.outcome === 'accepted') assert.equal(b.outcome, 'player_rejected', `taxa ${k}`);
+    else { assert.equal(b.outcome, a.outcome, `taxa ${k}`); assert.equal(b.counterFee, a.counterFee); }
+  }
+  assert.equal(snap(), before, 'consultar a taxa não altera nada');
+  assert.throws(() => proposeFee(db, t.id, -5), /inválida/);
+  db.exec("UPDATE career SET game_date = '2026-10-10'");
+  assert.throws(() => proposeFee(db, t.id, t.marketValue), /janela de transferências está fechada/);
+  const closed = getNegotiation(db, t.id);
+  assert.equal(closed.windowOpen, false); assert.equal(closed.opensOn, '2027-01-01');
+  db.exec("UPDATE career SET game_date = '2026-07-10'");
+  const free = db.prepare('SELECT id FROM players WHERE club_id IS NOT NULL AND club_id <> ? LIMIT 1').get(clubId)!.id as string;
+  db.prepare('UPDATE players SET club_id = NULL WHERE id = ?').run(free);
+  assert.throws(() => proposeFee(db, free, 0), /sem clube/);
+  assert.equal(getNegotiation(db, free).clubWillingness, null, 'livre: sem clube vendedor');
+
+  const neg = getNegotiation(db, t.id);
+  assert.equal(neg.player.id, t.id); assert.ok(!('overall' in neg.player));
+  assert.equal(neg.balance, balance(db, clubId));
+  assert.equal(neg.payroll, n(db, 'SELECT SUM(salary) AS n FROM players WHERE club_id = ?', clubId));
+  assert.ok(neg.clubWillingness! > 0 && neg.playerInterest > 0);
+  // regras puras: contrato perto do fim e veterano aumentam a disposição; clube que não pode vender = 0; prestígio guia o interesse
+  const w = (o: Partial<Parameters<typeof sellerWillingness>[0]>) => sellerWillingness({ contractMonthsLeft: 36, age: 26, sellerBalance: 1, canSell: true, ...o });
+  assert.ok(w({ contractMonthsLeft: 5 }) > w({ contractMonthsLeft: 11 }) && w({ contractMonthsLeft: 11 }) > w({ contractMonthsLeft: 20 }) && w({ contractMonthsLeft: 20 }) > w({}));
+  assert.ok(w({ age: 33 }) > w({})); assert.ok(w({ sellerBalance: -1 }) > w({})); assert.equal(w({ canSell: false }), 0);
+  assert.ok(playerInterest(70, 40) > playerInterest(50, 50) && playerInterest(50, 50) > playerInterest(40, 70));
+  assert.equal(playerInterest(50, 50), 50);
+});
+
+test('Mercado: situação pública do jogador (lesão em curso, suspensão e cartões da temporada)', async () => {
+  const { db, clubId } = await setup();
+  const t = target(db, clubId);
+  const st = (id: string) => searchMarket(db, { name: db.prepare("SELECT first_name || ' ' || last_name AS n FROM players WHERE id = ?").get(id)!.n as string }).find((p) => p.id === id)!.status;
+  assert.deepEqual(st(t.id), { injuredUntil: null, suspension: 0, yellows: 0, reds: 0 });
+  const comp = db.prepare('SELECT id FROM competitions WHERE season = ? LIMIT 1').get(getCareerState(db).season)!.id;
+  db.prepare("INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?, '2026-08-01', 'x', 2, 1)").run(t.id);
+  db.prepare('INSERT INTO player_season_stats (player_id, competition_id, club_id, yellow_cards, red_cards) VALUES (?,?,?,3,1)').run(t.id, comp, t.clubId);
+  assert.deepEqual(st(t.id), { injuredUntil: '2026-08-01', suspension: 2, yellows: 3, reds: 1 });
+  db.exec("UPDATE career SET game_date = '2026-08-01'");
+  assert.equal(st(t.id).injuredUntil, null, 'lesão que termina hoje já não aparece');
 });

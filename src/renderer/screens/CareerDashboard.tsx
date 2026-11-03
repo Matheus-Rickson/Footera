@@ -1,4 +1,9 @@
 import { useState } from 'react';
+import {
+  Activity, ArrowLeftRight, Award, Binoculars, Building2, CalendarDays, CalendarRange, Dumbbell, FastForward, FileSignature, HeartPulse, History, Landmark, LayoutDashboard,
+  LogOut, Moon, Newspaper, Play, PlayCircle, SkipForward, Sprout, Sun, Swords, Trophy, UserCog, Users, Wallet, type LucideIcon,
+} from 'lucide-react';
+import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
 import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
@@ -28,15 +33,23 @@ const TITLES: Record<View, string> = {
 };
 /** Sem clube (demitido) só fazem sentido as telas que não dependem de um elenco. */
 const UNEMPLOYED_VIEWS: View[] = ['overview', 'season', 'competitions', 'matches', 'board', 'trophies', 'news', 'history'];
-const SECTIONS: Array<{ id: View | null; label: string }> = [
-  { id: 'overview', label: 'Visão geral' }, { id: 'season', label: 'Temporada' }, { id: 'squad', label: 'Elenco' }, { id: 'contracts', label: 'Contratos' }, { id: 'tactics', label: 'Táticas' },
-  { id: 'calendar', label: 'Calendário' }, { id: 'matches', label: 'Partidas' }, { id: 'competitions', label: 'Competições' },
-  { id: 'transfers', label: 'Transferências' }, { id: 'scouting', label: 'Olheiros' }, { id: 'youth', label: 'Categorias de base' },
-  { id: 'staff', label: 'Comissão técnica' }, { id: 'training', label: 'Treinamento' }, { id: 'medical', label: 'Departamento médico' },
-  { id: 'finance', label: 'Finanças' }, { id: 'infrastructure', label: 'Infraestrutura' }, { id: 'board', label: 'Diretoria' },
-  { id: 'trophies', label: 'Sala de troféus' }, { id: 'news', label: 'Notícias' }, { id: 'history', label: 'Histórico da carreira' },
-  { id: null, label: 'Configurações e salvamento' },
+const NAV: Array<{ group: string; items: Array<{ id: View; label: string; icon: LucideIcon }> }> = [
+  { group: 'Clube', items: [
+    { id: 'overview', label: 'Visão geral', icon: LayoutDashboard }, { id: 'season', label: 'Temporada', icon: CalendarRange }, { id: 'squad', label: 'Elenco', icon: Users },
+    { id: 'contracts', label: 'Contratos', icon: FileSignature }, { id: 'tactics', label: 'Táticas', icon: Swords },
+  ] },
+  { group: 'Competição', items: [
+    { id: 'calendar', label: 'Calendário', icon: CalendarDays }, { id: 'matches', label: 'Partidas', icon: Activity }, { id: 'competitions', label: 'Competições', icon: Trophy },
+  ] },
+  { group: 'Mercado', items: [{ id: 'transfers', label: 'Transferências', icon: ArrowLeftRight }, { id: 'scouting', label: 'Olheiros', icon: Binoculars }] },
+  { group: 'Desenvolvimento', items: [
+    { id: 'youth', label: 'Categorias de base', icon: Sprout }, { id: 'training', label: 'Treinamento', icon: Dumbbell },
+    { id: 'staff', label: 'Comissão técnica', icon: UserCog }, { id: 'medical', label: 'Departamento médico', icon: HeartPulse },
+  ] },
+  { group: 'Gestão', items: [{ id: 'finance', label: 'Finanças', icon: Wallet }, { id: 'infrastructure', label: 'Infraestrutura', icon: Building2 }, { id: 'board', label: 'Diretoria', icon: Landmark }] },
+  { group: 'Carreira', items: [{ id: 'trophies', label: 'Sala de troféus', icon: Award }, { id: 'news', label: 'Notícias', icon: Newspaper }, { id: 'history', label: 'Histórico da carreira', icon: History }] },
 ];
+const initials = (name: string) => name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter((w) => w.length > 2 || /^[A-ZÀ-Ú]/.test(w)).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || 'FC';
 
 export function CareerDashboard({ overview, onExit, onRefresh }: { overview: CareerOverviewDto; onExit: () => void; onRefresh: () => Promise<void> }) {
   const [view, setView] = useState<View>('overview');
@@ -47,6 +60,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const [preselect, setPreselect] = useState<MarketPlayerDto | null>(null);
   const [lastSim, setLastSim] = useState<SimulationSummaryDto | null>(null);
   const [imgOk, setImgOk] = useState(true);
+  const [theme, toggleTheme] = useTheme();
   const { coach, club, squad, summary } = overview;
   const avg = squad.length ? Math.round((squad.reduce((s, p) => s + p.overall, 0) / squad.length) * 10) / 10 : 0;
   const payroll = squad.reduce((s, p) => s + p.salary, 0);
@@ -79,38 +93,56 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   }
 
   return (
-    <div className="dash">
-      <nav className="side" aria-label="Seções do jogo">
-        <div className="brand">{club ? club.name : 'Sem clube'}</div>
-        {SECTIONS.map((s) => s.id ? (
-          <button key={s.label} className={`nav ${view === s.id ? 'active' : ''}`} disabled={!club && !UNEMPLOYED_VIEWS.includes(s.id)} title={!club && !UNEMPLOYED_VIEWS.includes(s.id) ? 'Sem clube: aceite uma proposta na Diretoria' : ''}
-            onClick={() => { setNote(null); setPlayer(null); setView(s.id as View); }}>{s.label}</button>
-        ) : (
-          <button key={s.label} className="nav" disabled title="Ainda não implementado">{s.label}</button>
+    <div className={match ? 'dash focus' : 'dash'}>
+      {/* durante a partida o acompanhamento é o foco: sem menu lateral nem barra de ações */}
+      {!match && <nav className="side" aria-label="Seções do jogo">
+        <div className="brand">
+          <span className="crest" aria-hidden="true">{club ? initials(club.name) : '—'}</span>
+          <span>{club ? club.name : 'Sem clube'}<span className="brand-sub">{club ? club.league : 'Treinador desempregado'}</span></span>
+        </div>
+        {NAV.map((g) => (
+          <div key={g.group}>
+            <div className="nav-group">{g.group}</div>
+            {g.items.map((s) => {
+              const locked = !club && !UNEMPLOYED_VIEWS.includes(s.id);
+              const Icon = s.icon;
+              return (
+                <button key={s.id} className={`nav ${view === s.id ? 'active' : ''}`} disabled={locked} title={locked ? 'Sem clube: aceite uma proposta na Diretoria' : ''} aria-current={view === s.id ? 'page' : undefined}
+                  onClick={() => { setNote(null); setPlayer(null); setMatch(null); setView(s.id); }}><Icon size={17} strokeWidth={1.9} aria-hidden="true" />{s.label}</button>
+              );
+            })}
+          </div>
         ))}
-        <button className="nav exit" onClick={onExit}>Menu principal</button>
-      </nav>
+        <div className="side-foot">
+          <button className="nav" onClick={toggleTheme} title="Alternar entre tema escuro e claro">
+            {theme === 'dark' ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" /> : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+          </button>
+          <button className="nav exit" onClick={onExit}><LogOut size={17} strokeWidth={1.9} aria-hidden="true" />Menu principal</button>
+        </div>
+      </nav>}
 
       <main className="content">
-        <header className="bar">
-          <h1>{TITLES[view]}</h1>
+        {!match && <header className="topbar">
           <div className="row">
-            <span className="muted">Temporada {summary.season} · {fmtWeekday(summary.gameDate)} {fmtDate(summary.gameDate)}</span>
+            <h1>{TITLES[view]}</h1>
+            <span className="date-pill"><CalendarDays size={14} aria-hidden="true" />Temporada {summary.season}/{String(summary.season + 1).slice(2)} · {fmtWeekday(summary.gameDate)} {fmtDate(summary.gameDate)}</span>
+          </div>
+          <div className="row">
             {season.canStart ? (
-              <button disabled={busy} onClick={() => go('season')}>Iniciar nova temporada</button>
+              <button disabled={busy} onClick={() => go('season')}><CalendarRange size={16} aria-hidden="true" />Iniciar nova temporada</button>
             ) : overview.pendingMatches > 0 ? (
               <>
-                <button className="secondary" disabled={busy} onClick={() => void simulate(false)}>Simular rodada ({overview.pendingMatches})</button>
-                <button disabled={busy} onClick={() => void simulate(true)}>Acompanhar minuto a minuto</button>
+                <button className="secondary" disabled={busy} onClick={() => void simulate(false)}><Play size={16} aria-hidden="true" />Simular rodada ({overview.pendingMatches})</button>
+                <button disabled={busy} onClick={() => void simulate(true)}><PlayCircle size={16} aria-hidden="true" />Acompanhar ao vivo</button>
               </>
             ) : (
               <>
-                <button className="secondary" disabled={busy} onClick={() => void advance('day')}>Avançar 1 dia</button>
-                <button disabled={busy} onClick={() => void advance('nextMatchday')}>{season.complete ? `Avançar até ${fmtDate(season.turnoverDate)} (nova temporada)` : 'Avançar até a próxima rodada'}</button>
+                <button className="secondary" disabled={busy} onClick={() => void advance('day')}><SkipForward size={16} aria-hidden="true" />Avançar 1 dia</button>
+                <button disabled={busy} onClick={() => void advance('nextMatchday')}><FastForward size={16} aria-hidden="true" />{season.complete ? `Avançar até ${fmtDate(season.turnoverDate)}` : 'Próxima rodada'}</button>
               </>
             )}
           </div>
-        </header>
+        </header>}
         {note && <p className={note.kind === 'error' ? 'error' : note.kind === 'info' ? 'notice' : 'ok'} role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
         {overview.warnings.map((w) => <p key={w} className="error" role="alert">{w}</p>)}
         {season.complete && !match && view !== 'season' && (
@@ -120,6 +152,15 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {player && !match && <PlayerProfile profileId={profileId} careerId={careerId} playerId={player} onClose={() => setPlayer(null)} onNegotiate={negotiate} />}
         {match && <MatchReport profileId={profileId} careerId={careerId} fixtureId={match.fixtureId} autoplay={match.autoplay} onBack={() => setMatch(null)} />}
 
+        {!match && !player && view === 'overview' && club && (
+          <div className="stats">
+            <div className="stat-tile"><span className="stat-label">Classificação</span><span className="stat-value">{pos && pos.played > 0 ? `${pos.position}º de ${pos.total}` : '—'}</span>
+              <span className="muted small">{pos ? (pos.played > 0 ? `${pos.points} pts em ${pos.played} jogo(s) · ` : 'liga ainda não começou · ') : 'sem competição'}{pos && <button className="link" onClick={() => go('competitions')}>ver tabela</button>}</span></div>
+            <div className="stat-tile"><span className="stat-label">Caixa</span><span className={`stat-value ${club.balance < 0 ? 'neg' : ''}`}>{fmtNum(club.balance)}</span><span className="muted small">saldo atual do clube</span></div>
+            <div className="stat-tile"><span className="stat-label">Elenco</span><span className="stat-value">{squad.length}</span><span className="muted small">força média {avg}</span></div>
+            <div className="stat-tile"><span className="stat-label">Folha mensal</span><span className="stat-value">{fmtNum(payroll)}</span><span className="muted small">salários dos jogadores</span></div>
+          </div>
+        )}
         {!match && !player && view === 'overview' && (
           <div className="grid2">
             <section className="card">
@@ -143,7 +184,6 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
                 <p className="muted">{club.country} · {club.league}</p>
                 <p className="muted">Estádio: {club.stadium} ({fmtNum(club.capacity)} lugares)</p>
                 <p className="muted">Reputação {club.reputation} · Torcida {fmtNum(club.fans)}</p>
-                <p className="muted">Saldo: {fmtNum(club.balance)}</p>
               </section>
             ) : (
               <section className="card">
@@ -153,11 +193,6 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
               </section>
             )}
             <section className="card">
-              <h2>Elenco</h2>
-              <p>{squad.length} jogadores · força média {avg}</p>
-              <p className="muted">Folha salarial mensal: {fmtNum(payroll)}</p>
-            </section>
-            <section className="card">
               <h2>Próxima partida</h2>
               {next ? (
                 <>
@@ -166,16 +201,6 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
                   <p className="muted small">{next.competitionName}</p>
                 </>
               ) : <p className="muted">Nenhuma partida agendada.</p>}
-            </section>
-            <section className="card">
-              <h2>Classificação</h2>
-              {pos ? (
-                <>
-                  <p><strong>{pos.position}º de {pos.total}</strong> · {pos.points} pts em {pos.played} jogo(s)</p>
-                  {pos.played === 0 && <p className="muted small">Sem partidas disputadas: posição ainda sem significado.</p>}
-                  <button className="secondary" onClick={() => { setNote(null); setView('competitions'); }}>Ver tabela</button>
-                </>
-              ) : <p className="muted">Clube sem competição nesta temporada.</p>}
             </section>
             {lastSim && lastSim.results.length > 0 && (
               <section className="card wide scroll">
@@ -188,10 +213,6 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
                   </tr>))}</tbody></table>
               </section>
             )}
-            <section className="card">
-              <h2>Estado do desenvolvimento</h2>
-              <p className="muted">A diretoria cobra objetivos e controla orçamentos (aba Diretoria). Os jogadores evoluem todo dia 1º do mês conforme o treino (aba Treinamento). Seu time joga com o esquema tático ativo (aba Táticas). Os dados desta tela vêm do banco do seu save.</p>
-            </section>
           </div>
         )}
 
@@ -220,7 +241,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
               <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. estimado</th><th>Condição</th><th>Moral</th><th>Salário</th><th>Contrato até</th></tr></thead>
               <tbody>
                 {squad.map((p) => (
-                  <tr key={p.id}><td>{p.position}</td><td>{p.name}</td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
+                  <tr key={p.id}><td>{p.position}</td><td><button className="link" onClick={() => setPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
                     <td>{Math.round(p.condition)}%</td><td>{Math.round(p.morale)}</td><td>{fmtNum(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td></tr>
                 ))}
               </tbody>

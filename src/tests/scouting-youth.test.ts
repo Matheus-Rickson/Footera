@@ -257,6 +257,15 @@ test('Ficha: jogador de outro clube mostra estimativas e permite negociar/observ
   assert.ok(Object.values(own.attributes!.technical).every((r) => r.low === r.high));
   const alienYouth = String(db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL AND youth_club_id <> ? LIMIT 1').get(clubId)!.id);
   assert.throws(() => getPlayerProfile(db, alienYouth), ScoutError);
+  // dados da ficha nova: o próprio clube vê personalidade, moral e evolução; de outro clube, só com 50%+ de conhecimento e nunca a evolução da força
+  assert.ok(own.personality && own.morale !== null && own.history && own.history.at(-1)!.overall === Number(db.prepare('SELECT overall FROM players WHERE id = ?').get(mine)!.overall));
+  const fresh = searchMarket(db, {}).find((x) => x.clubId !== null && x.id !== other.id)!;
+  const f0 = getPlayerProfile(db, fresh.id);
+  assert.deepEqual([f0.personality, f0.morale, f0.history], [null, null, null], 'sem conhecimento: personalidade, moral e evolução ocultas');
+  db.prepare('INSERT INTO scout_knowledge (player_id, knowledge, updated_on) VALUES (?, 60, ?)').run(fresh.id, '2026-07-01');
+  const f1 = getPlayerProfile(db, fresh.id);
+  assert.ok(f1.personality && f1.morale !== null); assert.equal(f1.history, null, 'evolução da força de outro clube revelaria o valor real');
+  assert.ok(Array.isArray(f1.lastMatches) && Array.isArray(f1.transfers) && f1.nationalityName.length > 0);
   const myYouth = String(db.prepare('SELECT id FROM players WHERE youth_club_id = ? LIMIT 1').get(clubId)!.id);
   assert.equal(getPlayerProfile(db, myYouth).youth, true);
 });

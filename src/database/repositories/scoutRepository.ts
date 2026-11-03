@@ -38,7 +38,18 @@ export function toScoutedDto(db: SqlDb, r: Record<string, unknown>, date: string
     id: p.id, name: `${p.firstName} ${p.lastName}`, age: ageOn(p.birthDate, date), nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions, foot: p.foot,
     clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd,
     estOverall: est.overall, estPotential: est.potential, knowledge: Math.floor(knowledge), shortlisted,
+    nationalityName: countryName(db, p.nationality), heightCm: p.heightCm, weightKg: p.weightKg, status: publicStatus(db, p.id, date),
   };
+}
+
+const countryName = (db: SqlDb, code: string) => { const r = db.prepare('SELECT name FROM countries WHERE code = ?').get(code); return r ? S(r.name) : code; };
+/** Situação pública do jogador: lesão em curso, suspensão e cartões nas competições da temporada atual. */
+function publicStatus(db: SqlDb, playerId: string, date: string): MarketPlayerDto['status'] {
+  const ps = db.prepare('SELECT injury_until, suspension_matches FROM player_status WHERE player_id = ?').get(playerId);
+  const cards = db.prepare(`SELECT COALESCE(SUM(pss.yellow_cards), 0) AS y, COALESCE(SUM(pss.red_cards), 0) AS r FROM player_season_stats pss
+    JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND c.season = ?`).get(playerId, getCareerState(db).season)!;
+  const injury = ps?.injury_until == null ? null : S(ps.injury_until);
+  return { injuredUntil: injury && injury > date ? injury : null, suspension: ps ? N(ps.suspension_matches) : 0, yellows: N(cards.y), reds: N(cards.r) };
 }
 
 export function getScoutingOverview(db: SqlDb): ScoutingOverviewDto {
@@ -158,7 +169,30 @@ export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto 
   const s = db.prepare(`SELECT COALESCE(SUM(pss.appearances), 0) AS apps, COALESCE(SUM(pss.goals), 0) AS goals, COALESCE(SUM(pss.assists), 0) AS assists, COALESCE(SUM(pss.rating_sum), 0) AS rs
     FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND c.season = ?`).get(p.id, st.season)!;
   const stats = { appearances: N(s.apps), goals: N(s.goals), assists: N(s.assists), avgRating: N(s.apps) > 0 ? Math.round((N(s.rs) / N(s.apps)) * 100) / 100 : null };
+  const k0 = own ? 100 : knowledgeMap(db).get(p.id) ?? 0;
+  const known = own || k0 >= 50;
+  // últimos jogos do clube atual em que o jogador entrou em campo (nota, minutos, gols e assistências são públicos)
+  const lastMatches: PlayerProfileDto['lastMatches'] = [];
+  if (p.clubId) {
+    for (const m of db.prepare(`SELECT f.id, f.match_date, f.home_club_id, f.home_goals, f.away_goals, h.name AS hn, a.name AS an, mt.report_json FROM fixtures f
+      JOIN matches mt ON mt.fixture_id = f.id JOIN clubs h ON h.id = f.home_club_id JOIN clubs a ON a.id = f.away_club_id
+      WHERE f.status = 'played' AND (f.home_club_id = ? OR f.away_club_id = ?) ORDER BY f.match_date DESC LIMIT 12`).all(p.clubId, p.clubId)) {
+      const rp = (JSON.parse(S(m.report_json)) as { players: Array<{ id: string; minutes?: number; rating?: number; goals?: number; assists?: number }> }).players.find((x) => x.id === p.id);
+      if (!rp || !rp.minutes) continue;
+      const home = S(m.home_club_id) === p.clubId;
+      lastMatches.push({ fixtureId: S(m.id), date: S(m.match_date), opponent: home ? S(m.an) : S(m.hn), home, score: `${N(m.home_goals)} x ${N(m.away_goals)}`,
+        minutes: rp.minutes, rating: rp.rating ?? 0, goals: rp.goals ?? 0, assists: rp.assists ?? 0 });
+      if (lastMatches.length >= 5) break;
+    }
+  }
+  const transfers = db.prepare(`SELECT t.date, t.fee, f.name AS fn, c.name AS tn FROM transfers t LEFT JOIN clubs f ON f.id = t.from_club_id JOIN clubs c ON c.id = t.to_club_id
+    WHERE t.player_id = ? ORDER BY t.date DESC, t.id DESC`).all(p.id).map((t) => ({ date: S(t.date), from: t.fn == null ? null : S(t.fn), to: S(t.tn), fee: N(t.fee) }));
+  const history = own ? [...db.prepare('SELECT season, overall_after FROM player_development WHERE player_id = ? ORDER BY season').all(p.id).map((h) => ({ season: N(h.season), overall: N(h.overall_after) })),
+    { season: st.season, overall: p.overall }] : null;
   const base = {
+    birthDate: p.birthDate, nationalityName: countryName(db, p.nationality), condition: Math.round(p.condition),
+    morale: known ? Math.round(p.morale) : null, personality: known ? { professionalism: p.personality.professionalism, ambition: p.personality.ambition, loyalty: p.personality.loyalty } : null,
+    history, lastMatches, transfers,
     id: p.id, name: `${p.firstName} ${p.lastName}`, age: ageOn(p.birthDate, st.gameDate), nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions,
     foot: p.foot, heightCm: p.heightCm, weightKg: p.weightKg, clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), own, youth: youthOf !== null,
     marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, stats,

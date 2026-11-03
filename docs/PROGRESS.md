@@ -482,3 +482,93 @@ transferência e folha **e autonomia da diretoria para barrar negociações cara
 ## v0.8.0 — Fase 8 completa (8A ciclo de carreira, 8B olheiros/base, 8C treino/comissão/médico/infra, 8D diretoria/empregos)
 - Versão do `package.json` (exibida no rodapé do app) subiu de 0.7.1 para 0.8.0; o branch `main` foi avançado até esta versão.
 - Próximo: fase de lapidação (sem funcionalidades novas), com prioridades a definir com o usuário.
+
+## Lapidação — 1ª frente: telas e textos + nova interface (estado: implementado; telas revisadas por capturas automáticas do app real; aguardando verificação do usuário)
+
+Pedido do usuário: além da revisão de telas e textos, refatorar a interface para um visual contemporâneo de SaaS, limpo, com **tema escuro (padrão) e claro** à escolha.
+Sem novas funcionalidades de jogo.
+
+### Feito
+- **Design system** (`styles.css` reescrito): tokens de cor por tema (`data-theme`), tipografia Segoe UI Variable (fonte do sistema: a CSP não permite fontes externas),
+  cartões, botões (primário/secundário/perigo/link), campos com anel de foco, avisos (sucesso/alerta/erro), tabelas com cabeçalho fixo e hover, barras e medidores,
+  gráfico e relatório de partida usando os tokens (o gramado do campo continua verde nos dois temas), barras de rolagem discretas, layout responsivo.
+- **Tema** (`renderer/theme.ts`): escuro por padrão; alternância no rodapé do menu e na tela inicial; a escolha fica salva no computador (aplicada antes do 1º quadro).
+- **Navegação:** menu agrupado (Clube, Competição, Mercado, Desenvolvimento, Gestão, Carreira) com ícones (`lucide-react`, MIT, embutido), escudo com as iniciais do clube,
+  rodapé fixo (tema e menu principal); item desativado "Configurações e salvamento" removido do menu (volta na Fase 10). Barra superior com título, data e ações com ícones.
+- **Visão geral:** indicadores (classificação com atalho para a tabela, caixa, elenco, folha) e remoção de cartões repetidos e do texto técnico "Estado do desenvolvimento".
+- **Tela inicial:** marca, perfil, "Última carreira" com Continuar, ações com ícones; "Editor de dados" e "Configurações" (pendentes, sem fase definida) saíram do menu.
+- Textos corrigidos: olheiro de país (não é mais "ao acaso"), efeito do departamento médico com uma casa decimal (antes "hoje" e "próximo nível" pareciam iguais),
+  "Meus jogos" sem destaque em todas as linhas, nomes de jogadores com peso médio.
+
+### Verificação
+- Typecheck completo limpo; 147 testes; teste de guarda do CSS pegou uma classe duplicada durante a reescrita (corrigida).
+- **Capturas automáticas do app real** (build de produção, cópia dos dados do usuário numa pasta temporária, apagada depois): todas as 20 telas no tema escuro e
+  várias no claro foram revisadas visualmente.
+- Diagnóstico durante as capturas: as chamadas ao motor levam 5–30 ms (a suspeita inicial de lentidão por clique não se confirmou); as interrupções eram do
+  próprio roteiro de captura (janela fechada de fora e janela fora da tela sem repintar), não do jogo.
+
+### 2ª rodada: ficha do jogador redesenhada + tema escuro azul meia-noite
+- **Tema escuro** passou do cinza-neutro para azul meia-noite (fundo `#070d1c`, superfícies `#0d1630`…`#172549`, bordas e textos azulados). Tema claro inalterado.
+- **Ficha do jogador** refeita com base na referência enviada pelo usuário: cabeçalho com avatar de iniciais, selo **NÍVEL** (próprio: força; outros clubes: estimativa
+  "~ mín–máx"), nacionalidade, clube, posição em abreviação PT (GOL/ZAG/LE/LD/VOL/MC/MEI/PE/PD/ATA), pé, idade e nascimento, personalidade (Profissionalismo,
+  Ambição, Fidelidade em Baixa/Média/Alta), altura/peso, condição e moral; faixa com valor, salário/pretensão, fim de contrato, potencial e botões
+  (Observar, Fazer proposta, Voltar). Abas: **Visão geral** (6 grupos em barras + radar hexagonal, mapa de posições natural/familiar, gráfico de evolução,
+  estatísticas da temporada, últimos 5 jogos com nota), **Atributos** (23 atributos 1–20) e **Histórico** (transferências e força por temporada).
+- Nomes do **Elenco** viraram links para a ficha.
+- **Regra 7 preservada:** personalidade e moral de jogadores de outros clubes só aparecem com ≥ 50% de conhecimento dos olheiros (senão "?"); evolução por temporada só
+  do próprio clube. Teste novo cobre os três casos; mutações (liberar sempre; histórico para todos) foram detectadas.
+- **Adaptações da referência:** não há histórico de valor de mercado nem reputação por estrelas (o jogo não guarda esses dados; nada foi inventado) e não há fotos (avatar de iniciais).
+- Capturas do app real revisadas: ficha própria (3 abas), ficha de jogador observado, tema claro. Ajuste feito após a revisão: placar/nomes dos últimos jogos quebravam linha.
+- 147 testes passando; typecheck completo limpo. **Telas ainda não verificadas pelo usuário no `npm run dev`.**
+
+### 3ª rodada: tela de Transferências e janela de negociação (com base na referência do usuário)
+- **Mercado** em tabela larga: avatar de iniciais + nome (abre a ficha completa) + **sinalizações** (binóculo = lista de observação; cruz = lesionado, com data;
+  suspenso; cartões amarelos/vermelhos nas competições da temporada), clube, nacionalidade, posição e secundárias em siglas, idade, nível e potencial
+  **estimados** (faixas), pé, altura, peso, valor, salário, contrato, conhecimento dos olheiros; coluna de ações fixa à direita (Observar / Negociar).
+  Barra de busca por nome e filtros em "chips" (posição — grupos ou posição exata —, idade, valor máximo, só livres, limpar); a busca roda sozinha ao mudar os
+  filtros, e os filtros continuam valendo ao voltar da ficha. Abas no topo (Mercado, Propostas recebidas, Meus jogadores, Histórico) e situação da janela/caixa/elenco.
+- **Janela de negociação** em 3 etapas: **Proposta** (taxa ao clube: o clube aceita, contrapropõe ou recusa; nada é gravado), **Contrato** (salário e temporadas;
+  folha após a contratação × teto da diretoria) e **Assinatura**. Jogador livre pula a taxa. A proposta final reavalia a taxa pela mesma regra (`clubTerms`),
+  então a etapa 1 não cria atalho nenhum. Abre também pela ficha ("Fazer proposta") e pelos Olheiros ("Negociar").
+- **"Disposição do clube" e "Interesse do jogador"** usam só dados públicos que o motor já usa: contrato restante, idade e caixa do vendedor (os descontos de
+  `askingPrice`; zero se o clube não pode liberar o jogador) e prestígio relativo dos clubes (o fator de `wageDemand`). Não usam força real nem ambição oculta.
+- **Adaptações da referência:** sem bandeiras e fotos (o jogo não tem as imagens), sem reputação em estrelas do jogador (não existe esse dado),
+  sem "Detalhado"/"Salvar filtros"/menu "⋮" (seriam botões sem função).
+- Backend: `proposeFee`, `getNegotiation` (IPC validado com Zod), `MarketPlayerDto` com nacionalidade, altura, peso e situação pública. 2 testes novos (149 no total);
+  mutação: **4 defeitos injetados, 4 detectados** (etapa 1 aceitando sempre; clube sem poder vender com disposição > 0; lesão vencida ainda sinalizada; cartões de outra temporada).
+- Capturas do app real revisadas (tema escuro e claro): mercado, negociação de livre (etapa Contrato) e etapa Proposta com recusa — esta última numa cópia
+  temporária do save com a data alterada para janeiro (cópia apagada). **Não verificado pelo usuário no `npm run dev`.**
+
+### 4ª rodada: acompanhamento da partida (centro de jogo) no estilo da referência
+- **Layout:** placar com minuto e situação (Pré-jogo / Ao vivo / Pausado / Encerrado) e barra de progresso; à esquerda e à direita, campo de cada time com
+  iniciais, **nota ao vivo**, nome e ícones (gol, assistência, cartões, entrada/saída, lesão) e tabela (posição, nome, força — só do seu clube —, **condição**,
+  **nota**, minutos, gols, e "Saíram"); no centro, **Eventos** (mandante à esquerda, visitante à direita, placar no gol, intervalo/fim), **campo animado**
+  e **Estatísticas** (posse, xG, finalizações, no alvo, escanteios, faltas, impedimentos, cartões, passes, precisão, desarmes, defesas). Controles:
+  Iniciar/Pausar, 1×/2×/4×, Ir para o fim, Assistir do início. Abaixo de 1400 px de largura, o centro vai para cima e os times ficam lado a lado.
+- **Dados ao vivo reais:** o motor passou a registrar, nas partidas do usuário, a **linha do tempo minuto a minuto** (`MatchTick`: estatísticas acumuladas,
+  posse, nota parcial e condição de cada jogador). Só observa: nenhum sorteio novo — teste confirma resultado idêntico com e sem registro (24 partidas,
+  com prorrogação e pênaltis), e o último minuto bate com a nota final e com a condição gravada (fórmulas extraídas para `rateReport` e `conditionAfter`).
+  Jogos de outros clubes não guardam (relatório resumido). Partidas antigas: acompanhamento pelos eventos; notas/estatísticas aparecem no fim (aviso na tela).
+- **Campo animado (onde ficava o "momentum"):** é uma **representação** — o motor simula por lances, não por coordenadas. Cada minuto vira 3 quadros
+  em que bola e jogadores se deslocam conforme o lance real daquele minuto (gol, finalização, escanteio, impedimento, falta) ou a posse registrada;
+  substituições, expulsões e lesões mudam quem está em campo. A tela diz isso abaixo do campo.
+- Sem dados para: fotos/escudos, função tática por jogador ("FUN") e banco não utilizado (o relatório só guarda quem entrou em campo).
+- Testes: 3 novos (152 no total). Mutação: **8 injetadas, 7 detectadas + 1 equivalente** (guarda redundante no repositório: o motor já só gera a linha do
+  tempo nas partidas do usuário). Uma sobrevivente inicial (lesão sem substituto) revelou lacuna; caso construído adicionado e passou a ser detectada.
+- Capturas do app real (1600 e 1920 px, escuro e claro) com uma cópia temporária do save (apagada). **Não verificado pelo usuário no `npm run dev`.**
+- **Modo foco (pedido do usuário após o 1º teste, que funcionou):** durante o acompanhamento da partida o menu lateral e a barra superior de ações
+  (Próxima rodada, Avançar 1 dia…) somem e a partida ocupa a tela toda; "Voltar" devolve o painel normal. Isso também impede avançar o tempo no meio do jogo.
+  Conferido por captura em 1920×1080; aguardando verificação do usuário.
+
+## v0.8.1 — FOOTERA (nome, logo e instalador) + lapidação de interface
+- **Marca:** a tela inicial mostra o logo enviado pelo usuário (`footera.jpg` convertido em máscara transparente que segue a cor do tema), **FOOTERA** e
+  "Build your club. Create your legacy."; título da janela "FOOTERA". Ícone do Windows (`build/icon.ico`, 16–256 px): o mesmo traço em verde sobre azul meia-noite.
+- **Instalador:** `npm run package` → `release/FOOTERA Setup 0.8.1.exe` (NSIS, escolhe a pasta, x64). Saída movida de `dist/` (que é a pasta da tela compilada)
+  para `release/`. Dependências de tela (React, lucide, zod) passaram a `devDependencies`: já vão embutidas pelo Vite/esbuild, então o pacote não leva `node_modules`.
+  Sem assinatura digital (o SmartScreen avisa). No Windows, sem privilégio de link simbólico, o electron-builder falha ao extrair `winCodeSign`; contornado
+  extraindo o pacote manualmente em `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0` (só arquivos de macOS ficam de fora).
+- **Saves preservados:** com o nome do produto trocado, o Electron passaria a usar outra pasta no app instalado; o `main.ts` fixa
+  `%APPDATA%\football-manager-simulator` quando empacotado.
+- Verificação: 152 testes; typecheck limpo; teste de fumaça do **conteúdo empacotado** (app.asar extraído rodando com uma cópia dos dados: tela inicial,
+  carreira, Elenco, ficha e Transferências). O `.exe` instalado em si **não foi executado** por mim (abriria os saves reais na sua área de trabalho).
+- Checklist completo de validação: `docs/CHECKLIST_VALIDACAO.md`.
