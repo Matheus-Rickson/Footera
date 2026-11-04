@@ -1,4 +1,5 @@
 import type { Attributes, Position } from '../../shared/types.ts';
+import type { TalkTone } from './teamTalk.ts';
 
 export interface MatchPlayer {
   id: string; name: string; position: Position; secondaryPositions: Position[];
@@ -29,7 +30,19 @@ export interface MatchConditions { weather: 'clear' | 'rain' | 'heat' | 'cold'; 
 export interface MatchOptions {
   seed: string; knockout?: boolean; neutral?: boolean; conditions?: MatchConditions;
   /** registra a linha do tempo minuto a minuto (só observa: não muda nenhum sorteio nem o resultado) */ timeline?: boolean;
+  /**
+   * Partida acompanhada pelo técnico: até o minuto registrado `until` (índice da linha do tempo, exclusivo) o time `team`
+   * não faz substituições automáticas (nem por lesão) — quem decide é o técnico, pelas intervenções. Depois, o auxiliar assume.
+   */
+  control?: { team: 0 | 1; until: number };
+  /** decisões do técnico, aplicadas no início do minuto registrado `tick` (o que veio antes não muda) */
+  interventions?: Intervention[];
 }
+
+export type Intervention =
+  | { tick: number; kind: 'sub'; team: 0 | 1; out: string; in: string; /** posição de quem entra (padrão: a de quem sai) */ slot?: Position;
+      /** reorganiza o time na formação que melhor encaixa quem entra (sugestão do auxiliar) */ reshape?: boolean }
+  | { tick: number; kind: 'talk'; team: 0 | 1; tone: TalkTone };
 
 /** Ordem dos números em `MatchTick.s` (estatísticas acumuladas da equipe; xg em centésimos). */
 export const TICK_STATS = ['shots', 'shotsOnTarget', 'xg', 'corners', 'fouls', 'yellowCards', 'redCards', 'offsides', 'passes', 'passesCompleted', 'tackles', 'interceptions', 'saves'] as const;
@@ -41,7 +54,7 @@ export interface MatchTick { minute: number; label: string; ev: number; held: [n
 
 export type EventType =
   | 'goal' | 'shot' | 'corner' | 'foul' | 'yellow_card' | 'red_card' | 'offside' | 'penalty_awarded'
-  | 'substitution' | 'injury' | 'period_end' | 'shootout_kick';
+  | 'substitution' | 'injury' | 'period_end' | 'shootout_kick' | 'team_talk' | 'formation_change';
 export type ChanceType = 'buildup' | 'cross' | 'long' | 'counter' | 'corner' | 'freekick' | 'penalty';
 export type ShotOutcome = 'goal' | 'saved' | 'off_target' | 'blocked' | 'post';
 
@@ -62,6 +75,8 @@ export interface MatchEvent {
   detail?: string; // 'halftime' | 'fulltime' | 'extra1' | 'extra2' | 'second_yellow' | lesão: dias etc.
   days?: number;
   scored?: boolean; // shootout
+  /** mudança de formação: nova função e lugar de cada jogador em campo (só exibição do lugar; a função muda o jogo) */
+  moves?: Array<{ id: string; slot: Position; x: number; y: number }>;
 }
 
 export interface TeamStats {
@@ -93,4 +108,15 @@ export interface MatchOutcome {
   duration: number;
   manOfTheMatch: string | null;
   timeline: MatchTick[] | null;
+  /** variação de moral causada pela conversa no vestiário (só durante esta partida; jogadores relacionados: em campo e no banco) */
+  moraleDelta: Record<string, number>;
+  /** trocas que o auxiliar sugere ao técnico (só para o time sob controle): no minuto registrado `tick`, com o motivo */
+  suggestions: SubSuggestion[];
+}
+
+export interface SubSuggestion {
+  tick: number; team: 0 | 1; out: string; in: string; slot: Position;
+  kind: 'injury' | 'chase' | 'protect' | 'fresh'; reason: string;
+  /** quando quem entra é de outra posição: a formação que o auxiliar propõe e quem muda de função */
+  reshape: { from: string; to: string; changes: Array<{ id: string; from: Position; to: Position }> } | null;
 }

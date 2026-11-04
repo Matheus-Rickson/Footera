@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { NewSeasonReportDto, SeasonStatusDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>; onOpenContracts: () => void }
 export const OUTCOME_LABEL = { champion: 'Campeão', promoted: 'Acesso', relegated: 'Rebaixado' } as const;
@@ -70,7 +71,7 @@ export function SeasonView({ profileId, careerId, refreshKey, onChanged, onOpenC
           <h2>Contratos que vencem em {fmtDate(st.turnoverDate)}</h2>
           {st.expiring.length === 0 ? <p className="muted">Nenhum: todo o elenco tem contrato para a próxima temporada.</p> : (
             <>
-              <table><tbody>{st.expiring.map((c) => <tr key={c.id}><td>{c.position}</td><td>{c.name}</td><td>{c.age} anos</td><td className="right">{fmtNum(c.salary)}/mês</td></tr>)}</tbody></table>
+              <table><tbody>{st.expiring.map((c) => <tr key={c.id}><td><PosPill pos={c.position} /></td><td>{c.name}</td><td>{c.age} anos</td><td className="right">{fmtNum(c.salary)}/mês</td></tr>)}</tbody></table>
               <button className="secondary" onClick={onOpenContracts}>Renovar contratos</button>
             </>
           )}

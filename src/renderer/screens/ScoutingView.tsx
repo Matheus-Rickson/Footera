@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MarketPlayerDto, ScoutAssignment, ScoutingOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>; onOpenPlayer: (id: string) => void; onNegotiate: (p: MarketPlayerDto) => void }
 const range = (r: { low: number; high: number }) => (r.low === r.high ? `${r.low}` : `${r.low}–${r.high}`);
@@ -34,7 +35,7 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
       <thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Clube</th><th className="right">Valor</th><th>Força (est.)</th><th>Potencial (est.)</th><th>Conhecimento</th><th /></tr></thead>
       <tbody>{rows.map((p) => (
         <tr key={p.id}>
-          <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.position}</td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td>
+          <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td>
           <td>{range(p.estOverall)}</td><td>{range(p.estPotential)}</td><td><KnowledgeBar value={p.knowledge} /></td>
           <td className="row"><button className="secondary" onClick={() => onNegotiate(p)}>Negociar</button>{removable || !p.shortlisted
             ? <button className="secondary" disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.setShortlisted(profileId, careerId, p.id, !p.shortlisted)); return null; })}>{p.shortlisted ? 'Remover' : 'Observar'}</button>

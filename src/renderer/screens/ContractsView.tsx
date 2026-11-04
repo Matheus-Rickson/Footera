@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ContractRowDto, RenewResultDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { PosPill, posLabel } from '../playerUi.tsx';
 import { YearsPicker } from './YearsPicker.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
@@ -48,7 +49,7 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
       {sel && (
         <section className="card offer">
           <h2>Renovar com {sel.name}</h2>
-          <p className="muted small">{sel.position} · {sel.age} anos · força {sel.overall} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)} · aceita até {sel.maxYears} temporada(s)</p>
+          <p className="muted small">{posLabel(sel.position)} · {sel.age} anos · força {sel.overall} · salário atual {fmtNum(sel.salary)}/mês · contrato até {fmtDate(sel.contractEnd)} · aceita até {sel.maxYears} temporada(s)</p>
           <div className="row">
             <label>Novo salário (por mês)<input type="number" min={1} value={wage} onChange={(e) => setWage(Number(e.target.value))} /></label>
             <YearsPicker label="Temporadas a mais" value={years} max={sel.maxYears} onChange={setYears} />
@@ -70,7 +71,7 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
           <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th className="right">Salário</th><th>Contrato até</th><th>Meses</th><th /></tr></thead>
           <tbody>{rows.map((c) => (
             <tr key={c.id} className={c.expiresThisSeason ? 'expiring' : sel?.id === c.id ? 'mine' : ''}>
-              <td>{c.position}</td><td>{c.name}</td><td>{c.age}</td><td>{c.overall}</td><td className="right">{fmtNum(c.salary)}</td><td>{fmtDate(c.contractEnd)}</td><td>{c.monthsLeft}</td>
+              <td><PosPill pos={c.position} /></td><td>{c.name}</td><td>{c.age}</td><td>{c.overall}</td><td className="right">{fmtNum(c.salary)}</td><td>{fmtDate(c.contractEnd)}</td><td>{c.monthsLeft}</td>
               <td><button className="secondary" disabled={!c.canRenew || busy} title={c.canRenew ? '' : 'Só com até 24 meses restantes de contrato'} onClick={() => choose(c)}>Renovar</button></td>
             </tr>))}</tbody>
         </table>

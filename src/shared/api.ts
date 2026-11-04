@@ -2,6 +2,7 @@
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
 import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
+import type { TalkTone } from '../game/match-engine/teamTalk.ts';
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -139,6 +140,23 @@ export interface MatchReportDto {
   timeline: MatchTick[] | null;
   /** força atual dos jogadores do clube do usuário que aparecem na partida */ levels: Record<string, number>;
   userClubId: string;
+}
+
+/** Decisão do técnico na partida ao vivo, aplicada no início do minuto registrado `tick` (índice da linha do tempo). */
+export type LiveInterventionInput =
+  | { tick: number; kind: 'sub'; out: string; in: string; slot?: Position; reshape?: boolean }
+  | { tick: number; kind: 'talk'; tone: TalkTone };
+export interface LiveOptionsInput { interventions: LiveInterventionInput[]; /** null = o técnico decide até o fim; número = o auxiliar assume a partir desse minuto registrado */ controlUntil: number | null }
+/** Prévia (não gravada) da partida do usuário com as decisões até agora. */
+export interface LiveMatchDto {
+  report: MatchReportDto; side: 0 | 1; subsMax: number; notes: string[];
+  /** banco do seu time no início da partida (jogadores do seu clube: força real) */
+  bench: Array<{ id: string; name: string; position: Position; overall: number; condition: number }>;
+  /** moral de cada relacionado do seu time antes do jogo e a variação causada pela conversa no vestiário (só nesta partida) */
+  morale: Record<string, { before: number; delta: number }>;
+  /** trocas sugeridas pelo auxiliar, com o motivo (o técnico decide) */
+  suggestions: Array<{ tick: number; out: string; in: string; slot: Position; kind: 'injury' | 'chase' | 'protect' | 'fresh'; reason: string;
+    /** formação proposta quando quem entra é de outra posição */ reshape: { from: string; to: string; changes: Array<{ id: string; from: Position; to: Position }> } | null }>;
 }
 
 export interface SquadRow {
@@ -304,6 +322,8 @@ export interface GameApi {
   activateScheme(profileId: string, careerId: string, schemeId: string): Promise<IpcResult<true>>;
   autoLineup(profileId: string, careerId: string, formation: string): Promise<IpcResult<string[]>>;
   simulateMatchday(profileId: string, careerId: string): Promise<IpcResult<SimulationSummaryDto>>;
+  previewLiveMatch(profileId: string, careerId: string, live: LiveOptionsInput): Promise<IpcResult<LiveMatchDto>>;
+  finishLiveMatch(profileId: string, careerId: string, live: LiveOptionsInput): Promise<IpcResult<SimulationSummaryDto>>;
   getMatchReport(profileId: string, careerId: string, fixtureId: string): Promise<IpcResult<MatchReportDto>>;
   listRound(profileId: string, careerId: string, competitionId: string, round: number): Promise<IpcResult<FixtureDto[]>>;
   getSeasonStatus(profileId: string, careerId: string): Promise<IpcResult<SeasonStatusDto>>;

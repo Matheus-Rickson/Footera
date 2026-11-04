@@ -572,3 +572,58 @@ Sem novas funcionalidades de jogo.
 - Verificação: 152 testes; typecheck limpo; teste de fumaça do **conteúdo empacotado** (app.asar extraído rodando com uma cópia dos dados: tela inicial,
   carreira, Elenco, ficha e Transferências). O `.exe` instalado em si **não foi executado** por mim (abriria os saves reais na sua área de trabalho).
 - Checklist completo de validação: `docs/CHECKLIST_VALIDACAO.md`.
+
+## v0.8.2 — posições em português e tema escuro grafite (pedido do usuário após validar a 0.8.1 com sucesso)
+- **Posições:** siglas e nomes em português centralizados em `src/shared/positions.ts` (GOL, ZAG, LE, LD, VOL, MC, MEI, PE, PD, ATA), usados por todas as telas
+  (selo `PosPill` nas tabelas; `posLabel` em textos, opções das Táticas e campo de escalação) e pelos textos do motor (aviso de escalação ajustada com o nome
+  da posição, notícia da peneira, promovidos na virada). O código interno continua GK/CB/…. Notícias já gravadas em saves antigos não são reescritas.
+  Teste de guarda: nenhuma tela nem repositório exibe a sigla interna (exceto colocação "12º"); mutações (sigla crua na Base, na peneira e na virada) detectadas.
+- **Tema escuro:** de azul meia-noite para grafite neutro a partir da cor de referência (`#191a1b`): fundo `#161718`, superfícies `#1d1e20`…`#2a2b2f`, bordas
+  `#303236`/`#3f4247`; sobreposição do modal, faixa "GOL!", selo de nota e cor inicial da janela neutralizados. Tema claro inalterado.
+- 153 testes; typecheck limpo; capturas do app real (Elenco, Táticas, Base, Transferências, partida) revisadas. **Não verificado pelo usuário.**
+
+## v0.8.3 — técnico na partida ao vivo: vestiário, substituições e placar compacto (pedido do usuário após validar a 0.8.2)
+- **Tela sem rolagem:** placar numa faixa compacta (times, placar, minuto e ações na mesma linha; dados da partida embaixo); as três colunas ocupam a altura
+  da janela e as listas (tabelas, eventos, estatísticas) rolam por dentro. Abaixo de 1400 px de largura volta ao layout empilhado com rolagem.
+- **Como funciona agora o "Acompanhar ao vivo":** a partida do seu clube NÃO é gravada antes. O jogo mostra uma prévia (`previewUserMatch`, não grava nada)
+  e cada decisão do técnico vira uma intervenção num minuto exato; o motor resimula a partida inteira com ela — determinístico, então tudo até aquele
+  minuto fica idêntico e só o que vem depois muda. No fim (ou ao pular/sair, quando o auxiliar assume o restante) a rodada inteira é gravada de forma
+  atômica com as mesmas decisões (`simulateMatchday(db, live)`): teste confirma que o gravado é exatamente o que foi visto.
+  Se o jogo for fechado no meio, nada é gravado e a partida continua pendente. "Simular rodada" continua como antes (o auxiliar decide tudo).
+- **Substituições do técnico:** durante o ao vivo o seu time não troca sozinho (nem por lesão). Botão "Substituições (n/5)" pausa o jogo; escolha quem sai
+  e quem entra (assume a posição; aviso quando fica fora da posição natural). Lesão de jogador seu pausa o jogo e abre a janela de substituição.
+  Limite de 5 trocas; decisões impossíveis (jogador já saiu, banco esgotado) são recusadas com mensagem.
+- **Vestiário (intervalo):** o jogo pausa sozinho no fim do 1º tempo. 12 falas prontas em 4 tons — Incentivar, Cobrar, Encorajar, Consolar — e
+  "Não falar nada". Efeito na moral de todos os relacionados (titulares e banco) por regra pura (`teamTalk.ts`): depende do tom, do placar no intervalo e
+  da compostura do jogador (cobrança abala quem tem compostura baixa; incentivo com o time perdendo soa desconectado; consolo com o time bem acomoda).
+  A moral muda a força em campo no 2º tempo (fator já existente, ±3%) e fica gravada depois do jogo (somada ao efeito do resultado). A janela mostra a reação
+  (motivados / indiferentes / abalados e variação média).
+- Testes: 4 novos (157 no total). Mutação: **9 injetadas, 9 detectadas** (uma sobreviveu na primeira rodada — limite de 5 trocas — e ganhou teste próprio).
+- Capturas do app real (1920×1080): ao vivo, vestiário aberto automaticamente no intervalo, reação do elenco, substituição no intervalo, fim gravado.
+  **Não exercitado em captura:** a pausa automática por lesão (depende de uma lesão acontecer no jogo; a regra está coberta pelos testes do motor).
+  **Não verificado pelo usuário.**
+
+## v0.8.4 — placar alinhado, conversa só na partida e auxiliar que sugere trocas (pedido do usuário após testar a 0.8.3)
+- **Placar** centralizado sobre a coluna do meio (mesma grade das colunas de baixo): dados da partida à esquerda, botões à direita; nomes longos com "…".
+- **Vestiário:** decisão do usuário — o efeito na moral vale **só nesta partida** (2º tempo); não é mais gravado depois do jogo (a 0.8.3 gravava).
+- **Auxiliar técnico:** no ao vivo o seu time não troca sozinho; nos mesmos momentos em que o auxiliar trocaria (58', 66', 74', 82' e lesões), o jogo pausa
+  e abre "Sugestão do auxiliar" com a troca (sai → entra, posição) e a justificativa calculada do estado real: cansaço (condição e nota), rendimento,
+  buscar o resultado (perdendo, entra um atacante), segurar o resultado (vencendo, entra um defensor) ou lesão (dias fora). O técnico faz a troca,
+  escolhe outra ou recusa. O motor calcula a sugestão com a mesma regra das trocas automáticas, sem executar (`suggestFor`): teste confirma que a 1ª
+  sugestão é exatamente a 1ª troca que o auxiliar faria sozinho. Aceitar aplica a troca no minuto seguinte, na posição sugerida.
+  Ao pular para o fim ou sair no meio, o auxiliar continua decidindo o restante (alguém precisa decidir; o aviso diz isso).
+- Testes: 158; typecheck limpo. Mutação: 5 injetadas, 5 detectadas. Capturas do app real (1920×1080): placar centralizado, vestiário, sugestão aceita.
+  **Não verificado pelo usuário.**
+
+## v0.8.5 — auxiliar propõe a formação quando quem entra é de outra posição (pedido do usuário após validar a 0.8.4)
+- Quando a troca sugerida traz um jogador de outra posição, o auxiliar escolhe, entre as formações conhecidas (4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 3-4-3,
+  5-3-2, 4-1-4-1), a que encaixa quem entra **na posição dele** com a menor perda de rendimento para quem precisa mudar de função (`planReshape`).
+  A sugestão mostra "Formação: 4-3-3 → 4-2-3-1" (ou "com ajustes", se a formação se mantém) e quem muda (ex.: Felipe Ramos MC → VOL); o motivo explica.
+  "Fazer a troca e mudar a formação" aplica tudo: a função de cada jogador muda no motor (afeta o jogo) e o campo/rótulo da formação na tela acompanham
+  (evento `formation_change`). Com expulsos (menos de 10 na linha) não reorganiza. As trocas automáticas da IA (outros clubes) não mudaram.
+- Testes: 161; typecheck limpo. Mutação: 8 injetadas, 7 detectadas; sobrevive a inversão da prioridade de quem entra na ordem de encaixe (praticamente
+  equivalente: a regra "quem entra joga na posição dele" é garantida por uma exigência explícita, que tem teste e mutação detectada).
+  Uma captura revelou um caso real (meia entrando num 4-3-3 ficaria improvisado) que virou regra + teste. **Não verificado pelo usuário.**
+
+- **Verificação do usuário (0.8.2–0.8.5):** testes manuais concluídos no app instalado — posições em português, tema grafite, placar centralizado, vestiário
+  (efeito só na partida), sugestões do auxiliar com motivo e reorganização da formação (4-3-3 → 4-2-3-1 aplicada e refletida no campo, tabela e placar).

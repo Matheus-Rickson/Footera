@@ -2,9 +2,8 @@ import { Ban, Binoculars, Cross } from 'lucide-react';
 import type { MarketPlayerDto, Range } from '../shared/api.ts';
 import type { Position } from '../shared/types.ts';
 import { fmtDate } from './util.ts';
-
-export const POS_LABEL: Record<Position, string> = { GK: 'GOL', CB: 'ZAG', LB: 'LE', RB: 'LD', DM: 'VOL', CM: 'MC', AM: 'MEI', LW: 'PE', RW: 'PD', ST: 'ATA' };
-export const POS_NAME: Record<Position, string> = { GK: 'Goleiro', CB: 'Zagueiro', LB: 'Lateral esquerdo', RB: 'Lateral direito', DM: 'Volante', CM: 'Meio-campista', AM: 'Meia', LW: 'Ponta esquerda', RW: 'Ponta direita', ST: 'Atacante' };
+import { POS_LABEL, POS_NAME } from '../shared/positions.ts';
+export { POS_LABEL, POS_NAME, posLabel } from '../shared/positions.ts';
 export const FOOT_LABEL: Record<string, string> = { right: 'Destro', left: 'Canhoto', both: 'Ambidestro' };
 export const fmtRange = (r: Range) => (r.low === r.high ? `${r.low}` : `${r.low}–${r.high}`);
 export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');

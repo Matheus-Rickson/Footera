@@ -1,4 +1,5 @@
 import type { SqlDb } from '../types.ts';
+import { posLabel } from '../../shared/positions.ts';
 import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
@@ -98,7 +99,7 @@ export function youthIntake(db: SqlDb, date: string): number {
   }
   setMeta(db, `youth_intake_${season}`, JSON.stringify({ date, ids: mine.map((p) => p.id) }));
   addNews(db, date, 'youth', mine.length ? `Peneira: ${mine.length} jovem(ns) chega(m) às categorias de base` : 'Peneira: a base está lotada e não recebeu jovens',
-    mine.length ? mine.map((p) => `${nameOf(p)} (${p.position}, ${ageOn(p.birthDate, date)} anos, pot. est. ${p.potentialEstimated})`).join(', ') : `Limite de ${YOUTH_CAP.user} jogadores na base.`);
+    mine.length ? mine.map((p) => `${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, date)} anos, pot. est. ${p.potentialEstimated})`).join(', ') : `Limite de ${YOUTH_CAP.user} jogadores na base.`);
   return total;
 }
 

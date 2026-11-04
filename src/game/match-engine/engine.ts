@@ -7,6 +7,14 @@ import type {
   ShotOutcome, TeamSheet, TeamStats, TeamTactics,
 } from './types.ts';
 import { TICK_STATS } from './types.ts';
+import type { Intervention } from './types.ts';
+import { talkDelta } from './teamTalk.ts';
+import type { SubSuggestion } from './types.ts';
+import { POS_NAME } from '../../shared/positions.ts';
+import { UserError } from '../../shared/errors.ts';
+
+/** Decisão do técnico impossível naquele momento (jogador já saiu, banco esgotado…). */
+export class MatchInterventionError extends UserError {}
 
 /** Constantes de calibração (ajustadas contra médias reais de futebol — ver docs e testes de calibração). */
 export const K = {
@@ -27,7 +35,7 @@ interface Live {
 }
 interface Ratings { att: number; mid: number; def: number; gk: number; pass: number; aggression: number }
 interface TeamState {
-  idx: Side; sheet: TeamSheet; active: Live[]; all: Live[]; bench: MatchPlayer[]; subsUsed: number;
+  idx: Side; sheet: TeamSheet; active: Live[]; all: Live[]; bench: MatchPlayer[]; subsUsed: number; formation: string;
   stats: TeamStats; held: number; goals: number; r: Ratings;
 }
 
@@ -103,10 +111,10 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
 
   const mk = (sheet: TeamSheet, idx: Side): TeamState => {
     const all = sheet.lineup.map((l) => ({
-      p: l.player, slot: l.slot, x: l.x, y: l.y, fatigue: 0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0),
+      p: { ...l.player }, slot: l.slot, x: l.x, y: l.y, fatigue: 0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0),
     }));
     return {
-      idx, sheet, active: [...all], all, bench: [...sheet.bench], subsUsed: 0, stats: emptyStats(), held: 0, goals: 0,
+      idx, sheet, active: [...all], all, bench: sheet.bench.map((b) => ({ ...b })), subsUsed: 0, formation: sheet.formation, stats: emptyStats(), held: 0, goals: 0,
       r: { att: 0, mid: 0, def: 0, gk: 0, pass: 0, aggression: 0 },
     };
   };
@@ -209,7 +217,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     emit('injury', t.idx, { player: l.p.id, days });
     const wasGk = l.slot === 'GK';
     const repl = bestBenchFor(t, l.slot);
-    if (repl && t.subsUsed < 5) doSub(t, l, repl, l.slot, 'injury');
+    if (repl && t.subsUsed < 5 && controlled(t)) suggestions.push(suggestion(t, l, repl, l.slot, 'injury', days));
+    if (repl && t.subsUsed < 5 && !controlled(t)) doSub(t, l, repl, l.slot, 'injury');
     else { l.rep.subbedOutAt = clock.minute; removeFromPitch(t, l); if (wasGk) ensureGoalkeeper(t); }
   };
 
@@ -406,6 +415,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   };
 
   const aiSubs = (t: TeamState, minute: number): void => {
+    if (controlled(t)) { suggestions.push(...suggestFor(t, minute)); return; } // o técnico decide: o auxiliar só sugere
     if (t.subsUsed >= 5 || !t.bench.length) return;
     const o = T[1 - t.idx as Side];
     const lead = t.goals - o.goals;
@@ -432,9 +442,110 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     }
   };
 
+  /** As mesmas escolhas de `aiSubs`, calculadas sem executar (não muda nada no jogo), com o motivo para o técnico. */
+  /**
+   * Formação que melhor acomoda o time em campo (já com quem entra): entre as formações conhecidas, a que exige a menor perda
+   * de rendimento de quem precisa mudar de função. Quem já tem lugar na formação fica; os demais vão para as vagas restantes.
+   * Só lê o estado (usada na sugestão e, se o técnico aceitar, para aplicar).
+   */
+  const planReshape = (players: Array<{ id: string; p: MatchPlayer; slot: Position; x: number }>, current: string, keepFirst: string) => {
+    const outfield = players.filter((x) => x.slot !== 'GK');
+    if (outfield.length !== 10) return null; // com expulsos, não reorganiza
+    let best: { id: string; cost: number; moved: number; assign: Map<string, { slot: Position; x: number; y: number }> } | null = null;
+    for (const f of FORMATIONS) {
+      const slots = f.slots.filter((s) => s.pos !== 'GK').map((s) => ({ ...s }));
+      const order = [...outfield].sort((a, b) => (a.id === keepFirst ? -1 : b.id === keepFirst ? 1 : 0));
+      const kept: Array<[typeof outfield[number], typeof slots[number]]> = [], left: typeof outfield = [];
+      for (const pl of order) { const k = slots.findIndex((s) => s.pos === pl.slot); if (k >= 0) kept.push([pl, slots.splice(k, 1)[0]!]); else left.push(pl); }
+      if (outfield.some((x) => x.id === keepFirst) && !kept.some(([pl]) => pl.id === keepFirst)) continue; // quem entra joga na posição dele
+      // vagas restantes: tenta todas as combinações (poucas pessoas) e fica com a de menor perda
+      let bestLeft: { cost: number; pairs: Array<[typeof outfield[number], typeof slots[number]]> } | null = null;
+      const permute = (i: number, rest: typeof slots, acc: Array<[typeof outfield[number], typeof slots[number]]>, cost: number) => {
+        if (bestLeft && cost >= bestLeft.cost) return;
+        if (i === left.length) { bestLeft = { cost, pairs: [...acc] }; return; }
+        rest.forEach((s, k) => { const pl = left[i]!; permute(i + 1, rest.filter((_, j) => j !== k), [...acc, [pl, s]], cost + effective(pl.p, pl.slot) - effective(pl.p, s.pos)); });
+      };
+      if (left.length > 5) continue;
+      permute(0, slots, [], 0);
+      if (!bestLeft) continue;
+      const bl = bestLeft as { cost: number; pairs: Array<[typeof outfield[number], typeof slots[number]]> };
+      const all = [...kept, ...bl.pairs];
+      // mesma função: preserva a ordem esquerda→direita
+      const assign = new Map<string, { slot: Position; x: number; y: number }>();
+      for (const pos of new Set(all.map(([, s]) => s.pos))) {
+        const ps = all.filter(([, s]) => s.pos === pos).map(([pl]) => pl).sort((a, b) => a.x - b.x);
+        const ss = all.filter(([, s]) => s.pos === pos).map(([, s]) => s).sort((a, b) => a.x - b.x);
+        ps.forEach((pl, k) => assign.set(pl.id, { slot: pos, x: ss[k]!.x, y: ss[k]!.y }));
+      }
+      const cost = bl.cost, moved = bl.pairs.length;
+      const better = !best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) < 1e-9 && (f.id === current || (best.id !== current && moved < best.moved)));
+      if (better) best = { id: f.id, cost, moved, assign };
+    }
+    return best;
+  };
+
+  const suggestFor = (t: TeamState, minute: number): SubSuggestion[] => {
+    const out: SubSuggestion[] = [];
+    if (t.subsUsed >= 5 || !t.bench.length) return out;
+    const lead = t.goals - T[1 - t.idx as Side].goals;
+    let limit = minute <= 62 ? 1 : 2, used = t.subsUsed;
+    const active = [...t.active], bench = [...t.bench];
+    const take = (l: Live, b: MatchPlayer, slot: Position, kind: SubSuggestion['kind']) => {
+      active.splice(active.indexOf(l), 1); bench.splice(bench.indexOf(b), 1); used++; limit--;
+      out.push(suggestion(t, l, b, slot, kind));
+    };
+    const outfield = active.filter((l) => l.slot !== 'GK');
+    if (minute >= 66 && lead < 0) {
+      const o = [...outfield.filter((l) => ZONE[l.slot].def > 0 || l.slot === 'DM')].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
+      const i = bench.filter((b) => b.position === 'ST' || b.position === 'LW' || b.position === 'RW' || b.position === 'AM').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      if (o && i) take(o, i, i.position, 'chase');
+    } else if (minute >= 74 && lead > 0) {
+      const o = [...outfield.filter((l) => ZONE[l.slot].att >= 0.85)].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
+      const i = bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      if (o && i) take(o, i, i.position, 'protect');
+    }
+    const best = (slot: Position) => [...bench.filter((b) => (slot === 'GK' ? b.position === 'GK' : b.position !== 'GK'))].sort((a, b) => effective(b, slot) - effective(a, slot))[0] ?? null;
+    while (limit > 0 && used < 5 && bench.length) {
+      const pick = active.filter((l) => l.slot !== 'GK')
+        .map((l) => ({ l, cur: effective(l.p, l.slot) * fatigueMul(l), bench: best(l.slot) }))
+        .filter((c) => c.bench && effective(c.bench, c.l.slot) > c.cur * 1.02)
+        .sort((a, b) => a.cur / effective(a.bench!, a.l.slot) - b.cur / effective(b.bench!, b.l.slot))[0];
+      if (!pick) break;
+      take(pick.l, pick.bench!, pick.l.slot, 'fresh');
+    }
+    return out;
+  };
+  /** Sugestão com a justificativa do auxiliar, a partir do estado real do jogo (placar, condição, nota, posição). */
+  function suggestion(t: TeamState, l: Live, b: MatchPlayer, slot: Position, kind: SubSuggestion['kind'], injuryDays = 0): SubSuggestion {
+    const o = T[1 - t.idx as Side], lead = t.goals - o.goals;
+    const mins = clamp(clock.minute - (l.rep.subbedInAt ?? 0), 0, 120);
+    const cond = Math.round(conditionAfter(l.p.condition, l.p.attributes.physical.stamina, mins, conditions.weather));
+    const rating = rateReport(l.rep, mins, t.goals, o.goals).toFixed(1).replace('.', ',');
+    const pos = (p: Position) => POS_NAME[p].toLowerCase();
+    const reason = kind === 'injury' ? `${l.p.name} se lesionou (cerca de ${injuryDays} dia(s) fora) e não tem condição de continuar. ${b.name} é a melhor opção do banco para jogar como ${pos(slot)}.`
+      : kind === 'chase' ? `Estamos perdendo por ${-lead}. Sugiro tirar ${l.p.name} (${pos(l.slot)}, nota ${rating}) e colocar ${b.name}, ${pos(b.position)}, para ter mais força no ataque e buscar o resultado.`
+      : kind === 'protect' ? `Estamos vencendo por ${lead}. Para segurar o resultado, ${b.name} (${pos(b.position)}) pode entrar no lugar de ${l.p.name}, que é mais ofensivo.`
+      : fatigueMul(l) < 0.93 ? `${l.p.name} está cansado (condição ${cond}%, nota ${rating}) e o rendimento caiu. ${b.name} entra descansado para jogar como ${pos(slot)}.`
+      : `${b.name} deve render mais que ${l.p.name} (nota ${rating}, condição ${cond}%) como ${pos(slot)} neste momento do jogo.`;
+    let reshape: SubSuggestion['reshape'] = null, extra = '';
+    if (slot !== l.slot) {
+      const after = [...t.active.filter((x) => x !== l).map((x) => ({ id: x.p.id, p: x.p, slot: x.slot, x: x.x })), { id: b.id, p: b, slot, x: l.x }];
+      const plan = planReshape(after, t.formation, b.id);
+      if (plan) {
+        const changes = after.filter((x) => x.slot !== 'GK' && plan.assign.get(x.id)!.slot !== x.slot && x.id !== b.id).map((x) => ({ id: x.id, from: x.slot, to: plan.assign.get(x.id)!.slot }));
+        reshape = { from: t.formation, to: plan.id, changes };
+        const names = changes.map((c) => `${t.active.find((x) => x.p.id === c.id)!.p.name} passa a ${pos(c.to)}`);
+        extra = plan.id !== t.formation ? ` Para encaixar ${b.name}, o time muda de ${t.formation} para ${plan.id}${names.length ? ` (${names.join('; ')})` : ''}.`
+          : names.length ? ` Para encaixar ${b.name}, o time mantém o ${plan.id} com ajustes: ${names.join('; ')}.` : '';
+      }
+    }
+    return { tick: tickNo, team: t.idx, out: l.p.id, in: b.id, slot, kind, reason: reason + extra, reshape };
+  }
+
   const SUB_MINUTES = new Set([58, 66, 74, 82]);
   const tick = (minute: number, label: string, etFactor: number, added: boolean): void => {
     clock.minute = minute; clock.label = label;
+    for (const iv of interventions) if (iv.tick === tickNo) applyIntervention(iv);
     refresh(T[0], T[1]); refresh(T[1], T[0]);
     for (const t of T) addFatigue(t, etFactor > 1 ? 1.15 : 1);
     for (const t of T) {
@@ -452,7 +563,43 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const n = Math.floor(mean) + (rng.next() < mean - Math.floor(mean) ? 1 : 0);
     for (let i = 0; i < n; i++) phase();
     if (timeline) snapshot();
+    tickNo++;
   };
+
+  // ---------- decisões do técnico (sem sorteio: não deslocam a sequência aleatória) ----------
+  let tickNo = 0;
+  const interventions: Intervention[] = opts.interventions ?? [];
+  const moraleDelta: Record<string, number> = {};
+  const suggestions: SubSuggestion[] = [];
+  function controlled(t: TeamState): boolean { return !!opts.control && opts.control.team === t.idx && tickNo < opts.control.until; }
+  function applyIntervention(iv: Intervention): void {
+    const t = T[iv.team], o = T[1 - iv.team as Side];
+    if (iv.kind === 'talk') {
+      for (const p of [...t.active.map((l) => l.p), ...t.bench]) {
+        const d = talkDelta(iv.tone, t.goals - o.goals, p.attributes.mental.composure);
+        p.morale = clamp(p.morale + d, 10, 100);
+        moraleDelta[p.id] = (moraleDelta[p.id] ?? 0) + d;
+      }
+      emit('team_talk', iv.team, { detail: iv.tone });
+      return;
+    }
+    const out = t.active.find((l) => l.p.id === iv.out);
+    const inP = t.bench.find((b) => b.id === iv.in);
+    if (!out) throw new MatchInterventionError('O jogador escolhido para sair não está mais em campo.');
+    if (!inP) throw new MatchInterventionError('O jogador escolhido para entrar não está disponível no banco.');
+    if (t.subsUsed >= 5) throw new MatchInterventionError('O time já fez as 5 substituições permitidas.');
+    doSub(t, out, inP, iv.slot ?? out.slot, 'coach');
+    if (iv.reshape) reorganize(t, inP.id);
+  }
+  /** Aplica a formação escolhida por `planReshape`: muda a função (e o lugar) de cada jogador em campo. */
+  function reorganize(t: TeamState, keepFirst: string): void {
+    const plan = planReshape(t.active.map((l) => ({ id: l.p.id, p: l.p, slot: l.slot, x: l.x })), t.formation, keepFirst);
+    if (!plan) return;
+    const from = t.formation;
+    for (const l of t.active) { const a = plan.assign.get(l.p.id); if (a) { l.slot = a.slot; l.x = a.x; l.y = a.y; l.rep.slot = a.slot; } }
+    t.formation = plan.id;
+    emit('formation_change', t.idx, { detail: `${from}>${plan.id}`, moves: t.active.map((l) => ({ id: l.p.id, slot: l.slot, x: l.x, y: l.y })) });
+  }
 
   // ---------- linha do tempo (opcional; só lê o estado, nunca sorteia) ----------
   const timeline: MatchTick[] | null = opts.timeline ? [] : null;
@@ -566,7 +713,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       clubId: t.sheet.clubId, name: t.sheet.name, formation: t.sheet.formation,
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
-    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline,
+    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions,
   };
 }
 

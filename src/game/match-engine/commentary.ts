@@ -2,10 +2,11 @@ import type { MatchEvent } from './types.ts';
 
 export interface CommentaryLine {
   i: number; minute: number; label: string; text: string; team: 0 | 1 | null;
-  kind: 'goal' | 'shot' | 'card' | 'sub' | 'foul' | 'corner' | 'offside' | 'injury' | 'penalty' | 'period' | 'shootout';
+  kind: 'goal' | 'shot' | 'card' | 'sub' | 'foul' | 'corner' | 'offside' | 'injury' | 'penalty' | 'period' | 'shootout' | 'talk' | 'tactic';
   major: boolean;
   /** dados do evento de origem, para a tela marcar jogadores (gol, cartão, substituição) e posicionar os lances */
   type: MatchEvent['type']; player?: string; player2?: string; detail?: string; chance?: MatchEvent['chance']; outcome?: MatchEvent['outcome']; scored?: boolean;
+  moves?: MatchEvent['moves'];
 }
 export interface CommentaryContext {
   teamNames: [string, string];
@@ -25,7 +26,7 @@ export function commentate(events: readonly MatchEvent[], ctx: CommentaryContext
     const base = {
       i: e.i, minute: e.minute, label: e.label, team: e.team as 0 | 1 | null, type: e.type,
       ...(e.player ? { player: e.player } : {}), ...(e.player2 ? { player2: e.player2 } : {}), ...(e.detail ? { detail: e.detail } : {}),
-      ...(e.chance ? { chance: e.chance } : {}), ...(e.outcome ? { outcome: e.outcome } : {}), ...(e.scored !== undefined ? { scored: e.scored } : {}),
+      ...(e.chance ? { chance: e.chance } : {}), ...(e.outcome ? { outcome: e.outcome } : {}), ...(e.scored !== undefined ? { scored: e.scored } : {}), ...(e.moves ? { moves: e.moves } : {}),
     };
     const push = (kind: CommentaryLine['kind'], text: string, major: boolean) => out.push({ ...base, kind, text, major });
     switch (e.type) {
@@ -70,6 +71,16 @@ export function commentate(events: readonly MatchEvent[], ctx: CommentaryContext
         const t = e.detail === 'halftime' ? `Fim do primeiro tempo. ${sc}.` : e.detail === 'fulltime' ? `Fim de jogo. ${sc}.`
           : e.detail === 'extra1' ? `Fim do primeiro tempo da prorrogação. ${sc}.` : `Fim da prorrogação. ${sc}.`;
         out.push({ ...base, team: null, kind: 'period', text: t, major: true });
+        break;
+      }
+      case 'team_talk': {
+        const what: Record<string, string> = { incentivar: 'incentivar o grupo', cobrar: 'cobrar mais empenho', encorajar: 'encorajar o time a buscar o resultado', consolar: 'consolar os jogadores' };
+        push('talk', `No vestiário, o técnico do ${team} decidiu ${what[e.detail ?? ''] ?? 'conversar com o elenco'}.`, true);
+        break;
+      }
+      case 'formation_change': {
+        const [from, to] = (e.detail ?? '').split('>');
+        push('tactic', `O ${team} muda a formação: de ${from} para ${to}.`, true);
         break;
       }
       case 'shootout_kick': push('shootout', `${nm(e.player)} (${team}) ${e.scored ? 'converte a cobrança' : 'desperdiça a cobrança'} na disputa de pênaltis.`, true); break;

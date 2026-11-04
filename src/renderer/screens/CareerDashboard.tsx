@@ -6,6 +6,7 @@ import {
 import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
+import { PosPill } from '../playerUi.tsx';
 import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
 import { MatchReport } from './MatchReport.tsx';
 import { MatchesView } from './MatchesView.tsx';
@@ -55,7 +56,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const [view, setView] = useState<View>('overview');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
-  const [match, setMatch] = useState<{ fixtureId: string; autoplay: boolean } | null>(null);
+  const [match, setMatch] = useState<{ fixtureId: string; autoplay: boolean } | { live: true } | null>(null);
   const [player, setPlayer] = useState<string | null>(null);
   const [preselect, setPreselect] = useState<MarketPlayerDto | null>(null);
   const [lastSim, setLastSim] = useState<SimulationSummaryDto | null>(null);
@@ -73,6 +74,8 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const negotiate = (p: MarketPlayerDto) => { setPlayer(null); setMatch(null); setNote(null); setPreselect({ ...p }); setView('transfers'); };
 
   async function simulate(live: boolean) {
+    // ao vivo: a partida do seu clube só é gravada no fim, com as suas decisões (substituições e vestiário)
+    if (live && next && next.status === 'scheduled' && next.date <= summary.gameDate) { setNote(null); setPlayer(null); setMatch({ live: true }); return; }
     setBusy(true); setNote(null); setMatch(null);
     try {
       const r = await unwrap(window.api.simulateMatchday(profileId, careerId));
@@ -150,7 +153,10 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         )}
 
         {player && !match && <PlayerProfile profileId={profileId} careerId={careerId} playerId={player} onClose={() => setPlayer(null)} onNegotiate={negotiate} />}
-        {match && <MatchReport profileId={profileId} careerId={careerId} fixtureId={match.fixtureId} autoplay={match.autoplay} onBack={() => setMatch(null)} />}
+        {match && ('live' in match
+          ? <MatchReport profileId={profileId} careerId={careerId} live autoplay onBack={() => setMatch(null)}
+              onLiveFinished={async (r) => { setLastSim(r); await onRefresh(); if (r.notes.length) setNote({ kind: 'info', text: r.notes.join(' ') }); }} />
+          : <MatchReport profileId={profileId} careerId={careerId} fixtureId={match.fixtureId} autoplay={match.autoplay} onBack={() => setMatch(null)} />)}
 
         {!match && !player && view === 'overview' && club && (
           <div className="stats">
@@ -241,7 +247,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
               <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. estimado</th><th>Condição</th><th>Moral</th><th>Salário</th><th>Contrato até</th></tr></thead>
               <tbody>
                 {squad.map((p) => (
-                  <tr key={p.id}><td>{p.position}</td><td><button className="link" onClick={() => setPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
+                  <tr key={p.id}><td><PosPill pos={p.position} /></td><td><button className="link" onClick={() => setPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
                     <td>{Math.round(p.condition)}%</td><td>{Math.round(p.morale)}</td><td>{fmtNum(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td></tr>
                 ))}
               </tbody>

@@ -7,7 +7,7 @@ import { rowToPlayer } from '../database/repositories/worldRepository.ts';
 import {
   advanceTime, countPending, ensureSeason, getCareerState, getClubCalendar, getCompetitionTable, getNextFixture, listCompetitions, listRound,
 } from '../database/repositories/competitionRepository.ts';
-import { getMatchReport, simulateMatchday } from '../database/repositories/matchRepository.ts';
+import { getMatchReport, previewUserMatch, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { ensureFinance, getFinanceOverview } from '../database/repositories/financeRepository.ts';
 import { getNegotiation, getTransfersOverview, makeOffer, proposeFee, respondOffer, searchMarket, setListed } from '../database/repositories/transferRepository.ts';
 import {
@@ -36,7 +36,7 @@ import type {
   BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
-  AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
+  AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPlayerDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, LiveOptionsInput, LiveMatchDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
 } from '../shared/api.ts';
 
 const careersDir = (base: string, profileId: string) => path.join(base, 'saves', profileId);
@@ -236,6 +236,12 @@ export const advanceCareer = (base: string, profileId: string, careerId: string,
 
 export const simulateCareerMatchday = (base: string, profileId: string, careerId: string): Promise<SimulationSummaryDto> =>
   withPreparedCareer(base, profileId, careerId, (db) => simulateMatchday(db));
+/** Partida ao vivo: prévia sem gravar nada, com as decisões do técnico até agora. */
+export const previewCareerLiveMatch = (base: string, profileId: string, careerId: string, live: LiveOptionsInput): Promise<LiveMatchDto> =>
+  withClubCareer(base, profileId, careerId, (db) => previewUserMatch(db, live));
+/** Partida ao vivo: grava a rodada inteira (atômica) com as decisões do técnico. */
+export const finishCareerLiveMatch = (base: string, profileId: string, careerId: string, live: LiveOptionsInput): Promise<SimulationSummaryDto> =>
+  withPreparedCareer(base, profileId, careerId, (db) => simulateMatchday(db, live));
 
 export const getReport = (base: string, profileId: string, careerId: string, fixtureId: string): Promise<MatchReportDto> =>
   withPreparedCareer(base, profileId, careerId, (db) => getMatchReport(db, fixtureId));

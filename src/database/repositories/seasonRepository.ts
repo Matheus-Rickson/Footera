@@ -1,4 +1,5 @@
 import type { SqlDb } from '../types.ts';
+import { posLabel } from '../../shared/positions.ts';
 import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
@@ -281,7 +282,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     for (let g = st.clubId ? userShortage(mine) : null, guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
       const p = promoteBestOfGroup(db, st.clubId, g, date) ?? generate(autoRng, st.clubId, autoRng.pick(GROUP_POSITIONS[g]), autoRng.int(17, 18), false);
       mine.push(p);
-      report.autoPromoted.push(`${nameOf(p)} (${p.position})`);
+      report.autoPromoted.push(`${nameOf(p)} (${posLabel(p.position)})`);
     }
     if (report.autoPromoted.length) addNews(db, date, 'youth', 'Elenco incompleto: jovens promovidos às pressas', `Para ter o mínimo de jogadores por setor: ${report.autoPromoted.join(', ')}.`);
 

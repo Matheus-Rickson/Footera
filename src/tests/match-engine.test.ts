@@ -230,3 +230,145 @@ test('Linha do tempo: só observa (resultado idêntico), cobre cada minuto e ter
     assert.equal(rateReport(live.players[0]!, live.players[0]!.minutes, live.homeGoals, live.awayGoals), live.players[0]!.rating);
   }
 });
+
+test('Técnico ao vivo: decisões só mudam o jogo a partir do minuto escolhido; sem substituição automática sob controle; erros claros', async () => {
+  const { MatchInterventionError } = await import('../game/match-engine/engine.ts');
+  for (let i = 0; i < 12; i++) {
+    const [a, b] = pairOf(i), seed = `iv-${i}`, side = (i % 2) as 0 | 1;
+    const base = { seed, timeline: true as const };
+    // controle até o fim: o time do técnico nunca troca sozinho (nem por lesão)
+    const ctl = simulateMatch(sheet(a), sheet(b), { ...base, control: { team: side, until: 10_000 } });
+    assert.ok(!ctl.events.some((e) => e.type === 'substitution' && e.team === side), 'sem troca automática sob controle');
+    // controle que termina no início = jogo normal (auxiliar decide tudo)
+    assert.deepEqual(simulateMatch(sheet(a), sheet(b), { ...base, control: { team: side, until: 0 } }), simulateMatch(sheet(a), sheet(b), base));
+    // substituição do técnico no minuto registrado T: tudo antes de T é idêntico
+    const T = 55 + i;
+    const tl = ctl.timeline!;
+    const onPitch = ctl.lineups[side]!.slots.map((s) => s.playerId).filter((id) => !ctl.events.some((e) => e.i < tl[T - 1]!.ev && e.team === side && (e.type === 'red_card' || e.type === 'injury') && e.player === id));
+    const outId = onPitch.find((id) => id !== ctl.lineups[side]!.slots[0]!.playerId)!;
+    const benchId = (side === 0 ? sheet(a) : sheet(b)).bench[0]!.id;
+    const sub = simulateMatch(sheet(a), sheet(b), { ...base, control: { team: side, until: 10_000 }, interventions: [{ tick: T, kind: 'sub', team: side, out: outId, in: benchId }] });
+    assert.deepEqual(sub.timeline!.slice(0, T), tl.slice(0, T), 'minutos anteriores à decisão não mudam');
+    assert.deepEqual(sub.events.slice(0, tl[T - 1]!.ev), ctl.events.slice(0, tl[T - 1]!.ev));
+    const ev = sub.events.find((e) => e.type === 'substitution' && e.team === side)!;
+    assert.deepEqual([ev.player, ev.player2, ev.detail], [benchId, outId, 'coach']);
+    assert.equal(sub.players.find((p) => p.id === benchId)!.subbedInAt, sub.timeline![T]!.minute);
+    // impossíveis: quem já saiu, quem não está no banco, sexta troca
+    assert.throws(() => simulateMatch(sheet(a), sheet(b), { ...base, interventions: [{ tick: T, kind: 'sub', team: side, out: outId, in: benchId }, { tick: T + 1, kind: 'sub', team: side, out: outId, in: (side === 0 ? sheet(a) : sheet(b)).bench[1]!.id }] }), MatchInterventionError);
+    assert.throws(() => simulateMatch(sheet(a), sheet(b), { ...base, interventions: [{ tick: T, kind: 'sub', team: side, out: onPitch[3]!, in: 'ninguem' }] }), MatchInterventionError);
+    // determinismo com decisões: mesmas decisões = mesmo jogo
+    assert.deepEqual(simulateMatch(sheet(a), sheet(b), { ...base, control: { team: side, until: 10_000 }, interventions: [{ tick: T, kind: 'sub', team: side, out: outId, in: benchId }] }), sub);
+  }
+});
+
+test('Conversa no vestiário: efeito pelo tom e placar, vale para todos os relacionados, entra no relatório e só muda o 2º tempo', async () => {
+  const { talkDelta, TALK_MESSAGES, TALK_TONES } = await import('../game/match-engine/teamTalk.ts');
+  assert.equal(TALK_MESSAGES.length, 12); assert.deepEqual(Object.keys(TALK_TONES), ['incentivar', 'cobrar', 'encorajar', 'consolar']);
+  assert.ok(talkDelta('incentivar', 1, 12) > 0 && talkDelta('incentivar', -1, 12) < 0);
+  assert.ok(talkDelta('cobrar', -1, 14) > 0 && talkDelta('cobrar', -1, 6) < 0 && talkDelta('cobrar', 2, 14) < 0, 'cobrança: acorda quem perde, abala os frágeis, irrita quem ganha');
+  assert.ok(talkDelta('encorajar', -1, 10) > talkDelta('encorajar', 2, 10));
+  assert.ok(talkDelta('consolar', -3, 10) > 0 && talkDelta('consolar', 1, 10) < 0);
+  const [a, b] = pairOf(3);
+  const moraleBefore = sheet(a).lineup.map((l) => l.player.morale);
+  const plain = simulateMatch(sheet(a), sheet(b), { seed: 'talk', timeline: true, control: { team: 0, until: 10_000 } });
+  const H = plain.timeline!.findIndex((t) => t.ev > plain.events.find((e) => e.type === 'period_end')!.i) + 1; // 1º minuto do 2º tempo
+  const talk = simulateMatch(sheet(a), sheet(b), { seed: 'talk', timeline: true, control: { team: 0, until: 10_000 }, interventions: [{ tick: H, kind: 'talk', team: 0, tone: 'encorajar' }] });
+  assert.deepEqual(talk.timeline!.slice(0, H), plain.timeline!.slice(0, H), '1º tempo idêntico');
+  const htDiff = plain.timeline![H - 1]!;
+  const goals = plain.events.filter((e) => e.type === 'goal' && e.i < htDiff.ev);
+  const diff = goals.filter((g) => g.team === 0).length - goals.filter((g) => g.team === 1).length;
+  const squad = [...sheet(a).lineup.map((l) => l.player), ...sheet(a).bench];
+  assert.equal(Object.keys(talk.moraleDelta).length, squad.length, 'titulares e banco');
+  for (const p of squad) assert.equal(talk.moraleDelta[p.id], talkDelta('encorajar', diff, p.attributes.mental.composure));
+  assert.ok(talk.events.some((e) => e.type === 'team_talk' && e.detail === 'encorajar'));
+  assert.deepEqual(plain.moraleDelta, {});
+  assert.deepEqual(sheet(a).lineup.map((l) => l.player.morale), moraleBefore, 'as fichas de quem chamou não são alteradas');
+});
+
+test('Técnico ao vivo: no máximo 5 substituições (a sexta é recusada com mensagem clara)', async () => {
+  const { MatchInterventionError } = await import('../game/match-engine/engine.ts');
+  const [a, b] = pairOf(5);
+  const sh = sheet(a);
+  assert.ok(sh.bench.length >= 6, 'banco com pelo menos 6');
+  const outs = sh.lineup.filter((l) => l.slot !== 'GK').map((l) => l.player.id);
+  const subs = (k: number) => Array.from({ length: k }, (_, j) => ({ tick: 50 + j, kind: 'sub' as const, team: 0 as const, out: outs[j]!, in: sh.bench[j]!.id }));
+  // escolhe uma semente em que nenhum dos que sairiam foi expulso/lesionado antes (o erro tem que ser o do limite)
+  const ok = simulateMatch(sh, sheet(b), { seed: 'lim', control: { team: 0, until: 10_000 }, interventions: subs(5) });
+  assert.equal(ok.events.filter((e) => e.type === 'substitution' && e.team === 0).length, 5);
+  assert.throws(() => simulateMatch(sh, sheet(b), { seed: 'lim', control: { team: 0, until: 10_000 }, interventions: subs(6) }),
+    (e) => e instanceof MatchInterventionError && /5 substituições/.test(e.message));
+});
+
+test('Auxiliar: sob controle do técnico sugere (sem executar) as mesmas trocas que faria sozinho, com motivo; aceitar aplica a troca', async () => {
+  let compared = 0, injuries = 0;
+  for (let i = 0; i < 40; i++) {
+    const [a, b] = pairOf(i), seed = `sg-${i}`, side = (i % 2) as 0 | 1;
+    const auto = simulateMatch(sheet(a), sheet(b), { seed, timeline: true });
+    const ctl = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 } });
+    assert.ok(!ctl.events.some((e) => e.type === 'substitution' && e.team === side), 'o auxiliar não troca sozinho');
+    for (const s of ctl.suggestions) {
+      assert.equal(s.team, side); assert.ok(s.reason.length > 30);
+      assert.ok(ctl.players.some((p) => p.id === s.out), 'quem sairia estava em campo');
+    }
+    for (const s of ctl.suggestions.filter((x) => x.kind === 'injury')) { injuries++; assert.match(s.reason, /lesionou/); }
+    // até a primeira troca do auxiliar (sem lesão antes), os dois jogos são idênticos: a 1ª sugestão = a 1ª troca automática
+    const firstAuto = auto.events.find((e) => e.type === 'substitution' && e.team === side);
+    const injBefore = firstAuto && auto.events.some((e) => e.type === 'injury' && e.team === side && e.i < firstAuto.i);
+    if (firstAuto && !firstAuto.detail && !injBefore) {
+      const sg = ctl.suggestions.find((x) => x.kind !== 'injury')!;
+      assert.deepEqual([sg.out, sg.in, ctl.timeline![sg.tick]!.minute], [firstAuto.player2, firstAuto.player, firstAuto.minute], `semente ${seed}`);
+      // aceitar a sugestão no minuto seguinte: a troca acontece, na posição sugerida
+      const acc = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 }, interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: sg.slot }] });
+      assert.ok(acc.events.some((e) => e.type === 'substitution' && e.player === sg.in && e.player2 === sg.out && e.detail === 'coach'));
+      assert.equal(acc.players.find((p) => p.id === sg.in)!.slot, sg.slot);
+      compared++;
+    }
+  }
+  assert.ok(compared >= 10, `comparações: ${compared}`);
+  assert.ok(injuries >= 1, 'pelo menos uma sugestão por lesão nas sementes testadas');
+});
+
+test('Auxiliar: troca de outra posição vem com a formação reorganizada; aceitar muda a função de cada jogador para a nova formação', async () => {
+  const { FORMATIONS } = await import('../game/match-engine/formations.ts');
+  let checked = 0;
+  for (let i = 0; i < 60 && checked < 6; i++) {
+    const [a, b] = pairOf(i), seed = `rs-${i}`, side = (i % 2) as 0 | 1;
+    const ctl = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 } });
+    const sg = ctl.suggestions.find((s) => (s.kind === 'chase' || s.kind === 'protect') && s.reshape && s.reshape.to !== s.reshape.from);
+    for (const s of ctl.suggestions.filter((x) => x.kind === 'fresh' || x.kind === 'injury')) assert.equal(s.reshape, null, 'mesma posição: sem mudança de formação');
+    if (!sg) continue;
+    const target = FORMATIONS.find((f) => f.id === sg.reshape!.to)!;
+    assert.ok(target, 'formação conhecida');
+    assert.match(sg.reason, new RegExp(`para ${sg.reshape!.to}`));
+    const acc = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 },
+      interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: sg.slot, reshape: true }] });
+    assert.deepEqual(acc.timeline!.slice(0, sg.tick + 1), ctl.timeline!.slice(0, sg.tick + 1), 'antes da decisão, nada muda');
+    const fc = acc.events.find((e) => e.type === 'formation_change' && e.team === side)!;
+    assert.ok(fc, 'evento de mudança de formação');
+    assert.equal(fc.detail, `${sg.reshape!.from}>${sg.reshape!.to}`);
+    const slots = fc.moves!.map((m) => m.slot).sort();
+    assert.deepEqual(slots, target.slots.map((s) => s.pos).sort(), 'o time ocupa exatamente as funções da nova formação');
+    assert.equal(fc.moves!.find((m) => m.id === sg.in)!.slot, sg.slot, 'quem entra joga na posição dele');
+    for (const c of sg.reshape!.changes) assert.equal(fc.moves!.find((m) => m.id === c.id)!.slot, c.to, 'mudanças anunciadas = aplicadas');
+    assert.deepEqual(simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 },
+      interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: sg.slot, reshape: true }] }), acc, 'determinístico');
+    checked++;
+  }
+  assert.ok(checked >= 3, `casos com reorganização: ${checked}`);
+});
+
+test('Auxiliar: em toda sugestão aceita, quem entra termina exatamente na posição anunciada (nunca improvisado pela reorganização)', () => {
+  let n = 0;
+  for (let i = 0; i < 60; i++) {
+    const [a, b] = pairOf(i), seed = `pk-${i}`, side = (i % 2) as 0 | 1;
+    const ctl = simulateMatch(sheet(a), sheet(b), { seed, control: { team: side, until: 10_000 } });
+    for (const sg of ctl.suggestions.filter((s) => s.kind === 'chase' || s.kind === 'protect').slice(0, 1)) {
+      const acc = simulateMatch(sheet(a), sheet(b), { seed, control: { team: side, until: 10_000 },
+        interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: sg.slot, ...(sg.reshape ? { reshape: true } : {}) }] });
+      assert.equal(acc.players.find((p) => p.id === sg.in)!.slot, sg.slot, `semente ${seed}`);
+      if (sg.reshape && sg.reshape.to === sg.reshape.from && sg.reshape.changes.length) assert.match(sg.reason, /mantém o/);
+      n++;
+    }
+  }
+  assert.ok(n >= 8, `casos: ${n}`);
+});

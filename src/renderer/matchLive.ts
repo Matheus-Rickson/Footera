@@ -35,7 +35,7 @@ export interface LiveState {
   score: [number, number]; shootout: [number, number] | null;
   lines: CommentaryLine[]; tickLines: CommentaryLine[];
   /** em campo (na ordem da escalação) e os que já saíram (substituídos, expulsos, lesionados) */
-  teams: [{ onPitch: LivePlayer[]; gone: LivePlayer[] }, { onPitch: LivePlayer[]; gone: LivePlayer[] }];
+  teams: [{ onPitch: LivePlayer[]; gone: LivePlayer[]; formation: string }, { onPitch: LivePlayer[]; gone: LivePlayer[]; formation: string }];
   stats: [TeamStats, TeamStats] | null;
 }
 
@@ -67,6 +67,7 @@ export function liveAt(r: MatchReportDto, ticks: LiveTick[], step: number): Live
     const lineup = r.lineups[t]!;
     const pitch = lineup.slots.map((s) => ({ id: s.playerId, slot: s.slot, x: s.x, y: s.y }));
     const gone: string[] = [];
+    let formation = lineup.formation;
     const flags = new Map<string, { goals: number; assists: number; yellow: number; red: boolean; injured: boolean; subIn: boolean; subOut: boolean }>();
     const f = (id: string) => flags.get(id) ?? (flags.set(id, { goals: 0, assists: 0, yellow: 0, red: false, injured: false, subIn: false, subOut: false }), flags.get(id)!);
     const leave = (id: string) => { const k = pitch.findIndex((p) => p.id === id); if (k >= 0) pitch.splice(k, 1); if (!gone.includes(id)) gone.push(id); };
@@ -79,6 +80,10 @@ export function liveAt(r: MatchReportDto, ticks: LiveTick[], step: number): Live
         f(l.player).injured = true;
         const replaced = r.commentary.some((x) => x.type === 'substitution' && x.player2 === l.player && x.i === l.i + 1);
         if (!replaced) leave(l.player);
+      }
+      if (l.type === 'formation_change' && l.moves) {
+        formation = (l.detail ?? '').split('>')[1] ?? formation;
+        for (const m of l.moves) { const k = pitch.findIndex((p) => p.id === m.id); if (k >= 0) pitch[k] = { ...pitch[k]!, slot: m.slot, x: m.x, y: m.y }; }
       }
       if (l.type === 'substitution' && l.player && l.player2) {
         const k = pitch.findIndex((p) => p.id === l.player2);
@@ -101,6 +106,7 @@ export function liveAt(r: MatchReportDto, ticks: LiveTick[], step: number): Live
       return { id, name: rep.name, team: t, slot, x, y, rating: step === 0 ? null : rating, condition: step === 0 ? null : condition, minutes, ...fl, onPitch };
     };
     return {
+      formation,
       onPitch: pitch.map((p) => live(p.id, p.x, p.y, p.slot, true)).filter((p): p is LivePlayer => !!p),
       gone: gone.map((id) => { const rep = byId.get(id); return rep ? live(id, 0, 0, rep.slot, false) : null; }).filter((p): p is LivePlayer => !!p),
     };

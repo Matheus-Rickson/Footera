@@ -4,7 +4,7 @@ import { openDatabase } from '../database/connection.ts';
 import { createCareer } from '../services/careerService.ts';
 import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState, getCompetitionTable, listCompetitions } from '../database/repositories/competitionRepository.ts';
-import { getMatchReport, simulateMatchday } from '../database/repositories/matchRepository.ts';
+import { getMatchReport, previewUserMatch, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { addDays } from '../shared/date.ts';
 import type { SqlDb } from '../database/types.ts';
 import type { Coach } from '../shared/types.ts';
@@ -262,4 +262,71 @@ test('Ao vivo: placar, eventos, jogadores em campo e estatísticas em cada minut
   const base = liveAt(r, ticksOf(r), ticksOf(r).length).teams[0].onPitch.length;
   assert.equal(end2.teams[0].onPitch.length, base - 2);
   assert.ok(end2.teams[0].gone.some((p) => p.id === hurt && p.injured) && end2.teams[0].gone.some((p) => p.id === sent && p.red));
+});
+
+test('Ao vivo com o técnico: prévia não grava nada; a rodada gravada reproduz a prévia (subs + conversa); a conversa não fica no save', async () => {
+  const { db, clubId } = await setup(8, 'live-coach');
+  toFirstMatchday(db);
+  const snap = () => JSON.stringify([n(db, 'SELECT COUNT(*) AS n FROM matches'), db.prepare('SELECT id, morale, condition_pct FROM players WHERE club_id = ? ORDER BY id').all(clubId), n(db, 'SELECT COALESCE(SUM(amount), 0) AS n FROM finance_ledger')]);
+  const before = snap();
+  const p0 = previewUserMatch(db, { interventions: [], controlUntil: null });
+  assert.equal(snap(), before, 'prévia não grava');
+  const r0 = p0.report, side = p0.side;
+  assert.ok(r0.timeline && p0.bench.length > 0 && p0.subsMax === 5);
+  assert.ok(!r0.commentary.some((l) => l.type === 'substitution' && l.team === side), 'sob controle do técnico, nenhuma troca automática');
+  const H = r0.timeline!.findIndex((t) => t.ev > r0.commentary.find((l) => l.kind === 'period')!.i) + 1;
+  const subbed = new Set(r0.commentary.filter((l) => l.team === side && (l.type === 'red_card' || l.type === 'injury')).map((l) => l.player));
+  const outId = r0.lineups[side]!.slots.map((x) => x.playerId).find((id) => !subbed.has(id) && id !== r0.lineups[side]!.slots[0]!.playerId)!;
+  const live = { interventions: [{ tick: H, kind: 'talk' as const, tone: 'cobrar' as const }, { tick: H, kind: 'sub' as const, out: outId, in: p0.bench[0]!.id }], controlUntil: null };
+  const p1 = previewUserMatch(db, live);
+  assert.deepEqual(p1.report.timeline!.slice(0, H), r0.timeline!.slice(0, H), '1º tempo igual');
+  assert.ok(p1.report.commentary.some((l) => l.type === 'team_talk'));
+  const moraleOf = () => new Map(db.prepare('SELECT id, morale FROM players WHERE club_id = ?').all(clubId).map((r) => [String(r.id), Number(r.morale)]));
+  const m0 = moraleOf();
+  const sum = simulateMatchday(db, live);
+  const saved = getMatchReport(db, sum.userMatch!.fixtureId);
+  const strip = (r: typeof saved) => ({ ...r, attendance: null });
+  assert.deepEqual(strip(saved), strip(p1.report), 'o que foi visto ao vivo é exatamente o que fica gravado');
+  const m1 = moraleOf(), mine = side === 0 ? saved.homeGoals - saved.awayGoals : saved.awayGoals - saved.homeGoals;
+  const res = mine > 0 ? 3 : mine < 0 ? -3 : 0;
+  assert.ok(Object.values(p1.morale).some((mo) => mo.delta !== 0), 'a conversa mexeu na moral durante o jogo');
+  for (const id of Object.keys(p1.morale)) {
+    const playedIt = saved.players.some((x) => x.id === id);
+    // a conversa vale só nesta partida: depois do jogo, só o efeito do resultado
+    assert.equal(m1.get(id), Math.max(10, Math.min(100, m0.get(id)! + (playedIt ? res : 0))), `moral de ${id}`);
+  }
+  // auxiliar assume no fim: controle só até o minuto escolhido (ex.: "ir para o fim" no minuto 30)
+  const { db: db2 } = await setup(8, 'live-coach');
+  toFirstMatchday(db2);
+  const half = previewUserMatch(db2, { interventions: [], controlUntil: 30 });
+  assert.deepEqual(half.report.timeline!.slice(0, 30), r0.timeline!.slice(0, 30));
+  const sum2 = simulateMatchday(db2, { interventions: [], controlUntil: 30 });
+  assert.deepEqual({ ...getMatchReport(db2, sum2.userMatch!.fixtureId), attendance: null }, { ...half.report, attendance: null });
+});
+
+test('Ao vivo: aceitar a sugestão com nova formação atualiza o campo e o rótulo da formação na tela; o gravado é igual ao visto', async () => {
+  const { liveAt, ticksOf } = await import('../renderer/matchLive.ts');
+  const { db } = await setup(8, 'live-reshape');
+  let done = false;
+  for (let round = 0; round < 12 && !done; round++) {
+    advanceTime(db, 'nextMatchday');
+    const p0 = previewUserMatch(db, { interventions: [], controlUntil: null });
+    const sg = p0.suggestions.find((s) => s.reshape && s.reshape.to !== s.reshape.from);
+    if (!sg) { simulateMatchday(db); continue; }
+    const live = { interventions: [{ tick: sg.tick + 1, kind: 'sub' as const, out: sg.out, in: sg.in, slot: sg.slot, reshape: true }], controlUntil: null };
+    const p1 = previewUserMatch(db, live);
+    const r = p1.report, ticks = ticksOf(r);
+    const before = liveAt(r, ticks, sg.tick + 1), after = liveAt(r, ticks, sg.tick + 2);
+    assert.equal(before.teams[p1.side].formation, sg.reshape!.from);
+    assert.equal(after.teams[p1.side].formation, sg.reshape!.to);
+    const fc = r.commentary.find((l) => l.type === 'formation_change')!;
+    for (const m of fc.moves!) {
+      const pl = after.teams[p1.side].onPitch.find((x) => x.id === m.id);
+      if (pl) assert.deepEqual([pl.slot, pl.x, pl.y], [m.slot, m.x, m.y], 'campo da tela na nova formação');
+    }
+    const sum = simulateMatchday(db, live);
+    assert.deepEqual({ ...getMatchReport(db, sum.userMatch!.fixtureId), attendance: null }, { ...r, attendance: null });
+    done = true;
+  }
+  assert.ok(done, 'encontrou uma sugestão com mudança de formação em 12 rodadas');
 });

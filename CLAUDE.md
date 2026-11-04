@@ -2,7 +2,7 @@
 
 Jogo de gerenciamento de futebol offline (estilo Football Manager/Brasfoot), **em português do Brasil**.
 Stack: Electron + React + TypeScript + Vite + SQLite (`node:sqlite`, fallback `better-sqlite3`) + Zod. Alvo: Windows.
-Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa: 8A–8D; 0.8.1 = nome FOOTERA, logo, instalador e lapidação de interface).
+Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa: 8A–8D; 0.8.1 = nome FOOTERA, logo, instalador e lapidação de interface; 0.8.2 = posições em português em todas as telas e tema escuro grafite; 0.8.3 = técnico ao vivo: vestiário, substituições, placar compacto; 0.8.4 = placar alinhado, conversa só na partida, auxiliar sugere trocas com motivo; 0.8.5 = auxiliar propõe a formação para encaixar quem entra).
 
 ## Comandos
 - `npm test` — testes (`node:test`, não Vitest). Rode sempre antes de dizer que algo funciona.
@@ -42,7 +42,7 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
 - 8A e 8B commitadas (branches `fase-8a-ciclo-de-carreira` e `fase-8b-olheiros-base`) e verificadas pelo usuário.
 - 8C (treino/comissão/médico/infra) commitada no branch `fase-8c-treino-staff-medico-infra` e verificada pelo usuário.
 - 8D (diretoria/objetivos/empregos) commitada no branch `fase-8d-diretoria-empregos`; Diretoria e veto verificados pelo usuário (demissão/propostas só por testes). O treinador pode ficar sem clube (`clubId = ''`).
-- Lapidação em andamento (branch `lapidacao-ui`, v0.8.1): nova interface (tema escuro azul meia-noite padrão + claro), ficha do jogador, Transferências com
+- Lapidação em andamento (branch `lapidacao-ui`, v0.8.1): nova interface (tema escuro grafite padrão + claro), ficha do jogador, Transferências com
   negociação em 3 etapas, centro de jogo ao vivo (linha do tempo minuto a minuto no motor, só observa) em tela cheia, marca FOOTERA e instalador.
-  Validação do usuário pelo `docs/CHECKLIST_VALIDACAO.md`. Saves do app instalado ficam em `%APPDATA%ootball-manager-simulator` (fixado no main.ts).
+  Validação do usuário pelo `docs/CHECKLIST_VALIDACAO.md`. Saves do app instalado ficam em `%APPDATA%\football-manager-simulator` (fixado no main.ts).
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

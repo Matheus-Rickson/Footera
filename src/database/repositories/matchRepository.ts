@@ -1,13 +1,15 @@
 import type { SqlDb } from '../types.ts';
+import { POS_NAME } from '../../shared/positions.ts';
 import { withTransaction } from '../types.ts';
 import { createRng, clamp } from '../../game/rng.ts';
 import { conditionAfter, simulateMatch } from '../../game/match-engine/engine.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
-import type { MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
+import type { Intervention, MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
 import { addDays } from '../../shared/date.ts';
 import type { Coach, Player } from '../../shared/types.ts';
-import type { MatchReportDto, MatchSummaryDto, SchemeDto, SimulationSummaryDto } from '../../shared/api.ts';
+import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, MatchSummaryDto, SchemeDto, SimulationSummaryDto } from '../../shared/api.ts';
+import { UserError } from '../../shared/errors.ts';
 import { getActiveScheme } from './tacticsRepository.ts';
 import { makePoster, recordGate, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
@@ -53,7 +55,12 @@ function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string): Mat
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub };
 }
 
-function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[]; post: Poster }): MatchSummaryDto {
+interface Ctx { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[] }
+/** Decisões do técnico na partida acompanhada ao vivo. `controlUntil` null = o técnico decide a partida toda. */
+export interface LiveOptions { interventions: LiveInterventionInput[]; controlUntil: number | null }
+
+/** Monta os dois times (escalação, táticas) exatamente como na simulação definitiva. Só lê o banco. */
+function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
   const home = loadSquad(db, f.homeId, f.date), away = loadSquad(db, f.awayId, f.date);
   const hs = clubState(db, f.homeId), as = clubState(db, f.awayId);
   const mk = (sq: Squad, id: string, name: string, st: ReturnType<typeof clubState>): TeamSheet => {
@@ -66,7 +73,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
       const wanted = sq.players.find((p) => p.id === x.wantedId);
       const s0 = sq.status.get(x.wantedId);
       const why = s0?.injuryUntil && s0.injuryUntil > f.date ? 'lesionado' : (s0?.suspension ?? 0) > 0 ? 'suspenso' : 'indisponível';
-      ctx.notes.push(`Escalação ajustada: ${wanted ? `${wanted.firstName} ${wanted.lastName}` : 'jogador escolhido'} (${why}) foi substituído por ${x.chosen.name} como ${r.sheet.lineup[x.slotIndex]!.slot}.`);
+      ctx.notes.push(`Escalação ajustada: ${wanted ? `${wanted.firstName} ${wanted.lastName}` : 'jogador escolhido'} (${why}) foi substituído por ${x.chosen.name} como ${POS_NAME[r.sheet.lineup[x.slotIndex]!.slot].toLowerCase()}.`);
     }
     return r.sheet;
   };
@@ -76,20 +83,39 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
     id === ctx.userClub ? (ctx.scheme ? ctx.scheme.settings : tacticsForMethodology(ctx.coach.methodology)) : aiTactics(own.lineup, opp.lineup, N(rep(id)), isHome);
   const tH = tactics(hSheet, aSheet, f.homeId, true), tA = tactics(aSheet, hSheet, f.awayId, false);
   hSheet = { ...hSheet, tactics: tH }; aSheet = { ...aSheet, tactics: tA };
+  return { home, away, hSheet, aSheet, tH, tA };
+}
 
+function runFixture(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixture>, live?: LiveOptions): MatchOutcome {
   const involves = f.homeId === ctx.userClub || f.awayId === ctx.userClub;
-  const out = simulateMatch(hSheet, aSheet, { seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves });
+  const side: 0 | 1 = f.homeId === ctx.userClub ? 0 : 1;
+  const ivs: Intervention[] = (live?.interventions ?? []).map((iv) => ({ ...iv, team: side }));
+  return simulateMatch(prep.hSheet, prep.aSheet, {
+    seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves,
+    ...(live && involves ? { control: { team: side, until: live.controlUntil ?? Number.MAX_SAFE_INTEGER }, interventions: ivs } : {}),
+  });
+}
 
-  applyResult(db, f.id, out.homeGoals, out.awayGoals);
-  const report: StoredReport = {
+function storedOf(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixture>, out: MatchOutcome): StoredReport {
+  const involves = f.homeId === ctx.userClub || f.awayId === ctx.userClub;
+  return {
     v: 1, detail: involves ? 'full' : 'compact',
-    home: { clubId: f.homeId, name: f.homeName, formation: hSheet.formation }, away: { clubId: f.awayId, name: f.awayName, formation: aSheet.formation },
+    home: { clubId: f.homeId, name: f.homeName, formation: prep.hSheet.formation }, away: { clubId: f.awayId, name: f.awayName, formation: prep.aSheet.formation },
     homeGoals: out.homeGoals, awayGoals: out.awayGoals, decidedIn: out.decidedIn, shootout: out.shootout, winner: out.winner,
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
     lineups: out.lineups, events: involves ? out.events : out.events.filter((e) => COMPACT_TYPES.has(e.type)), manOfTheMatch: out.manOfTheMatch,
-    tactics: [tH, tA], ...(involves && out.timeline ? { timeline: out.timeline } : {}),
+    tactics: [prep.tH, prep.tA], ...(involves && out.timeline ? { timeline: out.timeline } : {}),
   };
+}
+
+function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live?: LiveOptions): MatchSummaryDto {
+  const prep = prepareFixture(db, f, ctx);
+  const { home, away, hSheet, aSheet } = prep;
+  const out = runFixture(f, ctx, prep, live);
+
+  applyResult(db, f.id, out.homeGoals, out.awayGoals);
+  const report = storedOf(f, ctx, prep, out);
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
   recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
@@ -126,6 +152,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
       upStatus.run(p.id, injuryUntil, injuredDays > 0 ? `Lesão (${injuredDays} dias)` : null, susp, y);
     }
   }
+  // a conversa no vestiário vale só durante esta partida (out.moraleDelta não é gravado)
   for (const [sq, id] of [[home, f.homeId], [away, f.awayId]] as const) {
     for (const pid of sq.suspendedOut) { const st = statusOf(sq, pid); upStatus.run(pid, st.injuryUntil, null, Math.max(0, st.suspension - 1), st.yellows); }
     const sheet = id === f.homeId ? hSheet : aSheet;
@@ -135,21 +162,33 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: { seed: string; userClub: st
   return summaryOf(f, out.homeGoals, out.awayGoals, ctx.userClub);
 }
 
-/** Simula TODAS as partidas pendentes até a data atual do jogo, de forma atômica (tudo ou nada). */
-export function simulateMatchday(db: SqlDb): SimulationSummaryDto {
-  const st = getCareerState(db);
-  const seed = S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
-  const coach = JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as Coach;
-  const rows = db.prepare(
+function pendingFixtures(db: SqlDb, date: string): FixtureRow[] {
+  return db.prepare(
     `SELECT f.id, f.competition_id, c.name AS competition_name, f.round, f.match_date, f.home_club_id, f.away_club_id, h.name AS home_name, a.name AS away_name
        FROM fixtures f JOIN competitions c ON c.id = f.competition_id JOIN clubs h ON h.id = f.home_club_id JOIN clubs a ON a.id = f.away_club_id
-      WHERE f.status = 'scheduled' AND f.match_date <= ? ORDER BY f.match_date, f.id`).all(st.gameDate)
+      WHERE f.status = 'scheduled' AND f.match_date <= ? ORDER BY f.match_date, f.id`).all(date)
     .map((r): FixtureRow => ({ id: S(r.id), competitionId: S(r.competition_id), competitionName: S(r.competition_name), round: N(r.round), date: S(r.match_date),
       homeId: S(r.home_club_id), awayId: S(r.away_club_id), homeName: S(r.home_name), awayName: S(r.away_name) }));
-  const scheme = getActiveScheme(db), notes: string[] = [];
+}
+function contextOf(db: SqlDb): Ctx {
+  return {
+    seed: S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value),
+    coach: JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as Coach,
+    userClub: getCareerState(db).clubId, scheme: getActiveScheme(db), notes: [],
+  };
+}
+
+/**
+ * Simula TODAS as partidas pendentes até a data atual do jogo, de forma atômica (tudo ou nada).
+ * `live`: decisões do técnico na partida do usuário acompanhada ao vivo (as outras partidas não mudam).
+ */
+export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSummaryDto {
+  const st = getCareerState(db);
+  const rows = pendingFixtures(db, st.gameDate);
+  const ctx = contextOf(db), notes = ctx.notes;
   const results = withTransaction(db, () => {
     const post = makePoster(db, st.clubId);
-    const out = rows.map((f) => simulateOne(db, f, { seed, userClub: st.clubId, coach, scheme, notes, post }));
+    const out = rows.map((f) => simulateOne(db, f, { ...ctx, post }, live));
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
     return out;
   });
@@ -162,6 +201,11 @@ export function getMatchReport(db: SqlDb, fixtureId: string): MatchReportDto {
     JOIN competitions c ON c.id = f.competition_id WHERE m.fixture_id = ?`).get(fixtureId);
   if (!m) throw new Error('Relatório não encontrado: a partida ainda não foi disputada.');
   const r = JSON.parse(S(m.report_json)) as StoredReport;
+  return dtoFromStored(db, r, { fixtureId, competitionName: S(m.competition_name), date: S(m.match_date), round: N(m.round),
+    attendance: m.attendance == null ? null : { attendance: N(m.attendance), capacity: N(m.capacity), revenue: N(m.gate_revenue) } });
+}
+
+function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'fixtureId' | 'competitionName' | 'date' | 'round' | 'attendance'>): MatchReportDto {
   const zero = { starter: false, subbedInAt: null, subbedOutAt: null, goals: 0, assists: 0, shots: 0, shotsOnTarget: 0, passes: 0, passesCompleted: 0, keyPasses: 0, tackles: 0, interceptions: 0, fouls: 0, yellow: 0, red: 0, saves: 0, goalsConceded: 0, xg: 0, injuredDays: 0 };
   const players = r.players.map((p) => ({ ...zero, ...p })) as PlayerReport[];
   const names = new Map(players.map((p) => [p.id, p.name]));
@@ -172,9 +216,32 @@ export function getMatchReport(db: SqlDb, fixtureId: string): MatchReportDto {
   const levels: Record<string, number> = {};
   for (const row of db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(userClub)) if (names.has(S(row.id))) levels[S(row.id)] = N(row.overall);
   return {
-    fixtureId, competitionName: S(m.competition_name), date: S(m.match_date), round: N(m.round), detail: r.detail, home: r.home, away: r.away,
+    ...meta, detail: r.detail, home: r.home, away: r.away,
     homeGoals: r.homeGoals, awayGoals: r.awayGoals, decidedIn: r.decidedIn, shootout: r.shootout, conditions: r.conditions, duration: r.duration,
     stats: r.stats, players, lineups: r.lineups, commentary, manOfTheMatch: mom, tactics: r.tactics ?? null, timeline: r.timeline ?? null, levels, userClubId: userClub,
-    attendance: m.attendance == null ? null : { attendance: N(m.attendance), capacity: N(m.capacity), revenue: N(m.gate_revenue) },
+  };
+}
+
+/**
+ * Prévia da partida do usuário de hoje com as decisões do técnico até agora. NÃO grava nada: a partida só é gravada
+ * (com a rodada inteira, de forma atômica) por `simulateMatchday(db, live)` com as mesmas decisões — e o resultado é idêntico.
+ */
+export function previewUserMatch(db: SqlDb, live: LiveOptions): LiveMatchDto {
+  const st = getCareerState(db);
+  const f = pendingFixtures(db, st.gameDate).find((x) => x.homeId === st.clubId || x.awayId === st.clubId);
+  if (!f) throw new UserError('Não há partida do seu clube para acompanhar hoje.');
+  const ctx = contextOf(db);
+  const prep = prepareFixture(db, f, ctx);
+  const out = runFixture(f, ctx, prep, live);
+  const side: 0 | 1 = f.homeId === st.clubId ? 0 : 1;
+  const mine = side === 0 ? prep.hSheet : prep.aSheet;
+  const overall = new Map(db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(st.clubId).map((r) => [S(r.id), N(r.overall)] as const));
+  const squad = [...mine.lineup.map((l) => l.player), ...mine.bench];
+  return {
+    report: dtoFromStored(db, storedOf(f, ctx, prep, out), { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, attendance: null }),
+    side, subsMax: 5, notes: ctx.notes,
+    bench: mine.bench.map((p) => ({ id: p.id, name: p.name, position: p.position, overall: overall.get(p.id) ?? 0, condition: Math.round(p.condition) })),
+    morale: Object.fromEntries(squad.map((p) => [p.id, { before: Math.round(p.morale), delta: out.moraleDelta[p.id] ?? 0 }])),
+    suggestions: out.suggestions.map(({ team: _t, ...s }) => s),
   };
 }

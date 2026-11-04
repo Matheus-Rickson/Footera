@@ -1,4 +1,7 @@
-export interface PitchSlot { key: string; pos: string; x: number; y: number; label: string; warn?: boolean }
+import type { Position } from '../../shared/types.ts';
+import { posLabel } from '../../shared/positions.ts';
+
+export interface PitchSlot { key: string; pos: Position; x: number; y: number; label: string; warn?: boolean }
 
 /** Campo simplificado (SVG). x: 0 = esquerda; y: 0 = próprio gol, 100 = gol adversário. */
 export function PitchView({ slots, ariaLabel }: { slots: PitchSlot[]; ariaLabel: string }) {
@@ -12,7 +15,7 @@ export function PitchView({ slots, ariaLabel }: { slots: PitchSlot[]; ariaLabel:
         return (
           <g key={s.key}>
             <circle cx={cx} cy={cy} r="4.2" className={s.warn ? 'dot-off' : 'dot-ok'} />
-            <text x={cx} y={cy + 1.4} textAnchor="middle" className="pitch-pos">{s.pos}</text>
+            <text x={cx} y={cy + 1.4} textAnchor="middle" className="pitch-pos">{posLabel(s.pos)}</text>
             <text x={cx} y={cy + 8.5} textAnchor="middle" className="pitch-name">{s.label}</text>
           </g>
         );

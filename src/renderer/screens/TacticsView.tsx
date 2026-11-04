@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SchemeDto, TacticsOverviewDto } from '../../shared/api.ts';
 import type { TeamTactics } from '../../game/match-engine/types.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
+import { posLabel } from '../playerUi.tsx';
 import { PitchView } from './PitchView.tsx';
 
 interface Draft { id: string | null; name: string; formation: string; settings: TeamTactics; lineup: string[] | null; builtin: boolean }
@@ -141,11 +142,11 @@ export function TacticsView({ profileId, careerId }: Props) {
           <div className="slots">
             {slotInfo.map(({ s, i, natural, unavailable }) => (
               <div className="slot" key={i}>
-                <span className="slotpos">{s.pos}</span>
-                <select aria-label={`Jogador para ${s.pos} (posição ${i + 1})`} value={ids[i] ?? ''} disabled={readOnly || draft.lineup === null || busy} onChange={(e) => assign(i, e.target.value)}>
+                <span className="slotpos">{posLabel(s.pos)}</span>
+                <select aria-label={`Jogador para ${posLabel(s.pos)} (posição ${i + 1})`} value={ids[i] ?? ''} disabled={readOnly || draft.lineup === null || busy} onChange={(e) => assign(i, e.target.value)}>
                   {(ov.squad).map((q) => (
                     <option key={q.id} value={q.id} disabled={!!q.unavailable && q.id !== ids[i]}>
-                      {q.name} · {q.position} · {q.slotScores[s.pos]}{q.unavailable ? (q.unavailable.kind === 'injured' ? ' · lesionado' : ' · suspenso') : ''}
+                      {q.name} · {posLabel(q.position)} · {q.slotScores[s.pos]}{q.unavailable ? (q.unavailable.kind === 'injured' ? ' · lesionado' : ' · suspenso') : ''}
                     </option>
                   ))}
                 </select>

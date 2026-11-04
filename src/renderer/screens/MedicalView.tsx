@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MedicalOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, unwrap } from '../util.ts';
+import { PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer: (id: string) => void }
 const INTENSITY_LABEL = { light: 'leve', normal: 'normal', hard: 'forte' } as const;
@@ -24,14 +25,14 @@ export function MedicalView({ profileId, careerId, refreshKey, onOpenPlayer }: P
           <h2>Lesionados ({ov.injured.length})</h2>
           {ov.injured.length === 0 ? <p className="muted">Ninguém lesionado.</p> : (
             <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Lesão</th><th>Volta em</th></tr></thead>
-              <tbody>{ov.injured.map((p) => <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.position}</td><td className="muted">{p.note}</td><td>{fmtDate(p.until)} ({p.daysLeft} dia(s))</td></tr>)}</tbody></table>
+              <tbody>{ov.injured.map((p) => <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td className="muted">{p.note}</td><td>{fmtDate(p.until)} ({p.daysLeft} dia(s))</td></tr>)}</tbody></table>
           )}
         </section>
         <section className="card">
           <h2>Em risco ({ov.atRisk.length})</h2>
           {ov.atRisk.length === 0 ? <p className="muted">Ninguém abaixo de 70% de condição.</p> : (
             <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Condição</th><th>Risco no treino</th></tr></thead>
-              <tbody>{ov.atRisk.map((p) => <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.position}</td><td className="neg">{p.condition}%</td><td>{p.dailyRisk}% por dia</td></tr>)}</tbody></table>
+              <tbody>{ov.atRisk.map((p) => <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td className="neg">{p.condition}%</td><td>{p.dailyRisk}% por dia</td></tr>)}</tbody></table>
           )}
         </section>
       </div>

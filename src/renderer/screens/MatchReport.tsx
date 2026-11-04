@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, Ban, Cross, FastForward, Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
-import type { MatchReportDto } from '../../shared/api.ts';
+import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSummaryDto } from '../../shared/api.ts';
 import type { TeamStats } from '../../game/match-engine/types.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
 import { initials, PosPill } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
+import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
 
-interface Props { profileId: string; careerId: string; fixtureId: string; autoplay: boolean; onBack: () => void }
+interface Props {
+  profileId: string; careerId: string; fixtureId?: string; autoplay: boolean; onBack: () => void;
+  /** partida do usuário ao vivo, ainda não gravada (o técnico decide) */ live?: boolean;
+  onLiveFinished?: (summary: SimulationSummaryDto) => Promise<void> | void;
+}
 type Speed = 1 | 2 | 4;
 const TICK_MS: Record<Speed, number> = { 1: 1000, 2: 500, 4: 220 };
 const WEATHER: Record<string, string> = { clear: 'tempo bom', rain: 'chuva', heat: 'calor intenso', cold: 'frio' };
@@ -87,12 +92,12 @@ function Stat({ label, a, b, fmt = (v: number) => String(v) }: { label: string; 
   );
 }
 
-function StatsCard({ stats }: { stats: [TeamStats, TeamStats] | null }) {
-  if (!stats) return <section className="card"><h2>Estatísticas</h2><p className="muted small">Esta partida foi gravada antes do acompanhamento minuto a minuto: as estatísticas aparecem no fim do jogo.</p></section>;
+function StatsCard({ stats, tactics, names }: { stats: [TeamStats, TeamStats] | null; tactics: MatchReportDto['tactics']; names: [string, string] }) {
+  if (!stats) return <section className="card mc-stats"><h2>Estatísticas</h2><p className="muted small">Esta partida foi gravada antes do acompanhamento minuto a minuto: as estatísticas aparecem no fim do jogo.</p></section>;
   const [h, a] = stats;
   const pct = (s: TeamStats) => (s.passes ? Math.round((s.passesCompleted / s.passes) * 100) : 0);
   return (
-    <section className="card">
+    <section className="card mc-stats">
       <h2>Estatísticas</h2>
       <div className="mc-poss">
         <div className="mc-stat-top"><span className="mc-pill mc-bar-home">{Math.round(h.possession)}%</span><span>Posse de bola</span><span className="mc-pill mc-bar-away">{Math.round(a.possession)}%</span></div>
@@ -110,6 +115,10 @@ function StatsCard({ stats }: { stats: [TeamStats, TeamStats] | null }) {
       <Stat label="Precisão de passes" a={pct(h)} b={pct(a)} fmt={(v) => `${v}%`} />
       <Stat label="Desarmes" a={h.tackles} b={a.tackles} />
       <Stat label="Defesas do goleiro" a={h.saves} b={a.saves} />
+      {tactics && tactics.map((t, i) => (
+        <p key={i} className="muted small"><strong>{names[i]}:</strong> mentalidade {MENTALITY_LABEL[t.mentality]?.toLowerCase()}, saída {BUILDUP_LABEL[t.buildUp]?.toLowerCase()},
+          ritmo {t.tempo}, amplitude {t.width}, linha defensiva {t.defensiveLine}, pressão {t.pressing}.</p>
+      ))}
     </section>
   );
 }
@@ -148,69 +157,139 @@ function EventsCard({ st, minor, setMinor }: { st: LiveState; minor: boolean; se
   );
 }
 
-export function MatchReport({ profileId, careerId, fixtureId, autoplay, onBack }: Props) {
-  const [r, setR] = useState<MatchReportDto | null>(null);
+/**
+ * Centro de jogo. Dois modos:
+ * - relatório (`fixtureId`): partida já gravada, para rever (ou acompanhar o replay logo depois de simular);
+ * - ao vivo (`live`): a partida do usuário ainda NÃO foi gravada. O técnico decide substituições e a conversa do intervalo;
+ *   cada decisão gera uma nova prévia (idêntica até o minuto da decisão). No fim — ou ao pular/sair, quando o auxiliar
+ *   assume o restante — a rodada inteira é gravada de uma vez com essas decisões.
+ */
+export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = false, onBack, onLiveFinished }: Props) {
+  const [viewed, setViewed] = useState<MatchReportDto | null>(null);
+  const [preview, setPreview] = useState<LiveMatchDto | null>(null);
+  const [saved, setSaved] = useState<MatchReportDto | null>(null);
+  const [ivs, setIvs] = useState<LiveInterventionInput[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [playing, setPlaying] = useState(autoplay);
+  const [playing, setPlaying] = useState(autoplay || live);
   const [speed, setSpeed] = useState<Speed>(1);
   const [minor, setMinor] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState<null | { kind: 'talk' } | { kind: 'subs'; reason: string | null } | { kind: 'assistant'; items: LiveMatchDto['suggestions'] }>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [talkDone, setTalkDone] = useState(false);
+  const [handledInjuries, setHandledInjuries] = useState<Set<number>>(new Set());
+  const [handledSugg, setHandledSugg] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let stale = false;
-    unwrap(window.api.getMatchReport(profileId, careerId, fixtureId)).then((d) => {
-      if (stale) return;
-      setR(d); setStep(autoplay ? 0 : ticksOf(d).length);
-    }).catch((e) => { if (!stale) setError(errMsg(e)); });
+    const load = live
+      ? unwrap(window.api.previewLiveMatch(profileId, careerId, { interventions: [], controlUntil: null })).then((d) => { if (!stale) setPreview(d); })
+      : unwrap(window.api.getMatchReport(profileId, careerId, fixtureId!)).then((d) => { if (!stale) { setViewed(d); setStep(autoplay ? 0 : ticksOf(d).length); } });
+    load.catch((e) => { if (!stale) setError(errMsg(e)); });
     return () => { stale = true; };
-  }, [profileId, careerId, fixtureId, autoplay]);
+  }, [profileId, careerId, fixtureId, autoplay, live]);
 
+  const r = saved ?? preview?.report ?? viewed;
+  const deciding = live && !saved && preview !== null; // o técnico ainda pode interferir
+  const side = preview?.side ?? 0;
   const ticks = useMemo(() => (r ? ticksOf(r) : []), [r]);
   const finished = r !== null && step >= ticks.length;
+  const st = useMemo(() => (r ? liveAt(r, ticks, step) : null), [r, ticks, step]);
+  const htStep = useMemo(() => {
+    if (!r) return -1;
+    const ht = r.commentary.find((l) => l.kind === 'period');
+    return ht ? ticks.findIndex((t) => t.ev > ht.i) + 1 : -1;
+  }, [r, ticks]);
+
+  const finish = useCallback(async (controlUntil: number | null) => {
+    setBusy(true); setPlaying(false);
+    try {
+      const sum = await unwrap(window.api.finishLiveMatch(profileId, careerId, { interventions: ivs, controlUntil }));
+      const rep = await unwrap(window.api.getMatchReport(profileId, careerId, sum.userMatch!.fixtureId));
+      setSaved(rep);
+      if (controlUntil !== null) setStep(ticksOf(rep).length);
+      await onLiveFinished?.(sum);
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+  }, [profileId, careerId, ivs, onLiveFinished]);
+
+  // relógio da partida
   useEffect(() => {
-    if (!playing || !r) return;
-    if (finished) { setPlaying(false); return; }
+    if (!playing || !r || dialog || busy) return;
+    if (finished) { setPlaying(false); if (deciding) void finish(null); return; }
     const t = setTimeout(() => setStep((n) => n + 1), TICK_MS[speed]);
     return () => clearTimeout(t);
-  }, [playing, step, speed, r, finished]);
-  const st = useMemo(() => (r ? liveAt(r, ticks, step) : null), [r, ticks, step]);
+  }, [playing, step, speed, r, finished, dialog, busy, deciding, finish]);
+
+  // pausas automáticas: intervalo (vestiário) e lesão de jogador seu (o técnico escolhe quem entra)
+  useEffect(() => {
+    if (!deciding || !st || finished) return;
+    if (step === htStep && !talkDone) { setPlaying(false); setDialogError(null); setDialog({ kind: 'talk' }); return; }
+    // o auxiliar indica trocas (no lugar das trocas automáticas): o jogo pausa para o técnico decidir
+    const skey = (s: LiveMatchDto['suggestions'][number]) => `${s.tick}:${s.out}:${s.in}`;
+    const pending = (preview?.suggestions ?? []).filter((s) => s.tick === step - 1 && !handledSugg.has(skey(s)));
+    if (pending.length) {
+      setHandledSugg((h) => { const n = new Set(h); pending.forEach((s) => n.add(skey(s))); return n; });
+      const injured = new Set(pending.filter((s) => s.kind === 'injury').map((s) => s.out));
+      setHandledInjuries((h) => { const n = new Set(h); st.tickLines.filter((l) => l.type === 'injury' && injured.has(l.player ?? '')).forEach((l) => n.add(l.i)); return n; });
+      setPlaying(false); setDialogError(null); setDialog({ kind: 'assistant', items: pending });
+      return;
+    }
+    const inj = st.tickLines.find((l) => l.type === 'injury' && l.team === side && !handledInjuries.has(l.i));
+    if (inj) {
+      setHandledInjuries((s) => new Set(s).add(inj.i));
+      setPlaying(false); setDialogError(null);
+      setDialog({ kind: 'subs', reason: `${r!.players.find((p) => p.id === inj.player)?.name ?? 'Um jogador'} se lesionou e deixou o campo. Escolha quem entra (ou volte ao jogo com um a menos).` });
+    }
+  }, [deciding, st, step, htStep, talkDone, side, handledInjuries, handledSugg, preview, finished, r]);
+
+  async function decide(next: LiveInterventionInput[]): Promise<boolean> {
+    setBusy(true); setDialogError(null);
+    try { setPreview(await unwrap(window.api.previewLiveMatch(profileId, careerId, { interventions: next, controlUntil: null }))); setIvs(next); return true; }
+    catch (e) { setDialogError(errMsg(e)); return false; } finally { setBusy(false); }
+  }
+  const resume = () => { setDialog(null); setPlaying(true); };
 
   if (error) return <section className="card"><p className="error" role="alert">{error}</p><button className="secondary" onClick={onBack}>Voltar</button></section>;
-  if (!r || !st) return <p className="muted">Carregando partida…</p>;
+  if (!r || !st) return <p className="muted">{live ? 'Preparando a partida…' : 'Carregando partida…'}</p>;
   const tick = step > 0 ? ticks[Math.min(step, ticks.length) - 1]! : null;
   const prevTick = step > 1 ? ticks[Math.min(step, ticks.length) - 2]! : null;
-  const status = finished ? 'Encerrado' : !st.started ? 'Pré-jogo' : playing ? 'Ao vivo' : 'Pausado';
+  const status = busy && live && !saved ? 'Gravando' : finished ? 'Encerrado' : !st.started ? 'Pré-jogo' : playing ? 'Ao vivo' : 'Pausado';
   const progress = Math.min(100, (st.minute / (r.decidedIn === 'regular' ? 90 : 120)) * 100);
+  const subsUsed = ivs.filter((i) => i.kind === 'sub').length;
+  const entered = new Set(r.players.filter((p) => p.team === side && !p.starter).map((p) => p.id));
+  const benchLeft = (preview?.bench ?? []).filter((b) => !entered.has(b.id) && !ivs.some((i) => i.kind === 'sub' && i.in === b.id));
+  const said = ivs.find((i): i is Extract<LiveInterventionInput, { kind: 'talk' }> => i.kind === 'talk')?.tone ?? null;
+  const leave = () => { if (deciding && !finished) { if (window.confirm('Sair agora encerra a partida: o auxiliar decide o restante e a rodada é gravada. Continuar?')) void finish(step).then(onBack); } else onBack(); };
 
   return (
     <div className="mc">
       <section className="card mc-head">
-        <div className="mc-meta muted small">
-          <span>{r.competitionName} · rodada {r.round} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
-          <div className="row">
-            {!finished && <button className="secondary" onClick={() => setPlaying((p) => !p)}>{playing ? <><Pause size={15} aria-hidden="true" />Pausar</> : <><Play size={15} aria-hidden="true" />{st.started ? 'Continuar' : 'Iniciar'}</>}</button>}
-            {!finished && <div className="mc-speed" role="radiogroup" aria-label="Velocidade">{([1, 2, 4] as Speed[]).map((s) => <button key={s} role="radio" aria-checked={speed === s} className={speed === s ? '' : 'secondary'} onClick={() => setSpeed(s)}>{s}×</button>)}</div>}
-            {!finished && <button className="secondary" onClick={() => { setStep(ticks.length); setPlaying(false); }}><SkipForward size={15} aria-hidden="true" />Ir para o fim</button>}
-            {finished && <button className="secondary" onClick={() => { setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
-            <button className="secondary" onClick={onBack}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
-          </div>
-        </div>
         <div className="mc-board">
-          <div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{r.home.formation}</small></div>
+          <div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{st.teams[0].formation}</small></div>
           <div className="mc-score"><b>{st.score[0]}</b>
             <div className="mc-clock"><span className={`mc-status ${status === 'Ao vivo' ? 'on' : ''}`}>{status}</span><strong>{finished ? 'Fim' : st.minuteLabel}</strong>
-              {st.shootout && <span className="small muted">pênaltis {st.shootout[0]} x {st.shootout[1]}</span>}</div>
+              {st.shootout && <span className="small muted">pên. {st.shootout[0]} x {st.shootout[1]}</span>}</div>
             <b>{st.score[1]}</b></div>
-          <div className="mc-team mc-team-away"><span className="mc-team-name">{r.away.name}</span><small className="muted">{r.away.formation}</small></div>
+          <div className="mc-team mc-team-away"><span className="mc-team-name">{r.away.name}</span><small className="muted">{st.teams[1].formation}</small></div>
+        </div>
+        <div className="mc-actions">
+          {!finished && <button className="secondary" disabled={busy} onClick={() => setPlaying((p) => !p)}>{playing ? <><Pause size={15} aria-hidden="true" />Pausar</> : <><Play size={15} aria-hidden="true" />{st.started ? 'Continuar' : 'Iniciar'}</>}</button>}
+          {!finished && <div className="mc-speed" role="radiogroup" aria-label="Velocidade">{([1, 2, 4] as Speed[]).map((s) => <button key={s} role="radio" aria-checked={speed === s} className={speed === s ? '' : 'secondary'} onClick={() => setSpeed(s)}>{s}×</button>)}</div>}
+          {deciding && !finished && <button className="secondary" disabled={busy} onClick={() => { setPlaying(false); setDialogError(null); setDialog({ kind: 'subs', reason: null }); }}><ArrowLeftRight size={15} aria-hidden="true" />Substituições ({subsUsed}/{preview!.subsMax})</button>}
+          {!finished && <button className="secondary" disabled={busy} title={deciding ? 'O auxiliar decide o restante da partida' : ''} onClick={() => { if (deciding) void finish(step); else { setStep(ticks.length); setPlaying(false); } }}><SkipForward size={15} aria-hidden="true" />Ir para o fim</button>}
+          {finished && <button className="secondary" onClick={() => { setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
+          <button className="secondary" disabled={busy} onClick={leave}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
+        </div>
+        <div className="mc-meta muted small">
+          <span>{r.competitionName} · rodada {r.round} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
+          {finished && <span>{DECIDED[r.decidedIn] ? `Encerrado${DECIDED[r.decidedIn]}` : 'Encerrado'}{r.manOfTheMatch ? ` · Craque: ${r.manOfTheMatch.name}` : ''}{r.attendance ? ` · Público ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%) · renda ${r.attendance.revenue.toLocaleString('pt-BR')}` : ''}</span>}
+          {!finished && deciding && <span>Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
+          {r.detail === 'compact' && <span className="notice-text">Relatório resumido (jogo de outros clubes): só eventos-chave.</span>}
+          {!r.timeline && r.detail === 'full' && <span>Partida antiga: notas e estatísticas aparecem no fim.</span>}
         </div>
         <div className="mc-progress"><i style={{ width: `${progress}%` }} /></div>
-        {finished && (
-          <p className="muted small center">Encerrado{DECIDED[r.decidedIn]}{r.shootout ? ` (${r.shootout.home} x ${r.shootout.away} nos pênaltis)` : ''}
-            {r.manOfTheMatch ? ` · Craque do jogo: ${r.manOfTheMatch.name}` : ''}
-            {r.attendance ? ` · Público: ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}% do estádio), renda de ${r.attendance.revenue.toLocaleString('pt-BR')}` : ''}</p>
-        )}
-        {r.detail === 'compact' && <p className="notice small">Relatório resumido: para jogos de outros clubes só os eventos-chave (gols, cartões, substituições, lesões) foram guardados. Estatísticas e notas finais estão completas.</p>}
-        {!r.timeline && r.detail === 'full' && <p className="muted small center">Partida gravada antes do acompanhamento minuto a minuto: notas, condição e estatísticas aparecem no fim do jogo.</p>}
+        {preview && preview.notes.length > 0 && !st.started && <p className="notice small">{preview.notes.join(' ')}</p>}
       </section>
 
       <div className="mc-grid">
@@ -220,28 +299,38 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, onBack }
         </div>
         <div className="mc-col">
           <EventsCard st={st} minor={minor} setMinor={setMinor} />
-          <section className="card">
-            <div className="bar"><h2>Ao vivo</h2><span className="row small muted"><span className="mc-key mc-dot-home" />{shortName(r.home.name)}<span className="mc-key mc-dot-away" />{shortName(r.away.name)}</span></div>
+          <section className="card mc-live-card">
+            <div className="bar"><h2>Ao vivo</h2><span className="row small muted" title="Representação dos lances: a bola e os jogadores se movem conforme os lances reais de cada minuto (gols, finalizações, escanteios, faltas) e a posse registrada; as posições exatas são ilustrativas, pois o motor simula por lances, não por coordenadas.">
+              <span className="mc-key mc-dot-home" />{shortName(r.home.name)}<span className="mc-key mc-dot-away" />{shortName(r.away.name)}<FastForward size={12} aria-hidden="true" />representação</span></div>
             <LivePitch teams={[st.teams[0].onPitch, st.teams[1].onPitch]} names={[r.home.name, r.away.name]} tick={tick} prevTick={prevTick} tickLines={st.tickLines}
-              tickMs={playing && !finished ? TICK_MS[speed] : null} finished={finished} />
-            <p className="muted small"><FastForward size={12} aria-hidden="true" /> Representação dos lances: a bola e os jogadores se movem conforme os lances reais de cada minuto (gols, finalizações, escanteios, faltas) e a posse registrada; as posições exatas são ilustrativas, pois o motor simula por lances, não por coordenadas.</p>
+              tickMs={playing && !finished && !dialog ? TICK_MS[speed] : null} finished={finished} />
           </section>
-          <StatsCard stats={st.stats} />
-          {finished && r.tactics && (
-            <section className="card">
-              <h2>Táticas</h2>
-              {r.tactics.map((t, i) => (
-                <p key={i} className="muted small"><strong>{i === 0 ? r.home.name : r.away.name}:</strong> mentalidade {MENTALITY_LABEL[t.mentality]?.toLowerCase()}, saída {BUILDUP_LABEL[t.buildUp]?.toLowerCase()},
-                  ritmo {t.tempo}, amplitude {t.width}, linha defensiva {t.defensiveLine}, pressão {t.pressing}.</p>
-              ))}
-            </section>
-          )}
+          <StatsCard stats={st.stats} tactics={finished ? r.tactics : null} names={[r.home.name, r.away.name]} />
         </div>
         <div className="mc-col">
           <section className="card mc-pitch-card"><TeamPitch players={st.teams[1].onPitch} side={1} /></section>
           <TeamTable name={r.away.name} team={st.teams[1]} levels={r.levels} />
         </div>
       </div>
+
+      {dialog?.kind === 'talk' && preview && (
+        <TeamTalkModal score={st.score} side={side} live={preview} said={said} busy={busy} error={dialogError}
+          onSay={(tone) => void decide([...ivs, { tick: step, kind: 'talk', tone }]).then((ok) => { if (ok) setTalkDone(true); })}
+          onSkip={() => { setTalkDone(true); resume(); }}
+          onSubs={() => { setTalkDone(true); setDialogError(null); setDialog({ kind: 'subs', reason: null }); }}
+          onContinue={() => { setTalkDone(true); resume(); }} />
+      )}
+      {dialog?.kind === 'assistant' && preview && (
+        <AssistantModal items={dialog.items} busy={busy} error={dialogError} left={preview.subsMax - subsUsed}
+          names={new Map([...r.players.map((p) => [p.id, p.name] as const), ...preview.bench.map((b) => [b.id, b.name] as const)])}
+          positions={new Map(st.teams[side].onPitch.map((p) => [p.id, p.slot] as const))}
+          onAccept={(s) => decide([...ivs, { tick: step, kind: 'sub', out: s.out, in: s.in, slot: s.slot, ...(s.reshape ? { reshape: true } : {}) }])}
+          onOther={() => { setDialogError(null); setDialog({ kind: 'subs', reason: null }); }} onClose={resume} />
+      )}
+      {dialog?.kind === 'subs' && preview && (
+        <SubsModal onPitch={st.teams[side].onPitch} bench={benchLeft} used={subsUsed} max={preview.subsMax} reason={dialog.reason} busy={busy} error={dialogError}
+          onConfirm={(out, inn) => void decide([...ivs, { tick: step, kind: 'sub', out, in: inn }])} onClose={resume} />
+      )}
     </div>
   );
 }

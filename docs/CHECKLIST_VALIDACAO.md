@@ -1,18 +1,18 @@
-# Checklist de validação — FOOTERA v0.8.1
+# Checklist de validação — FOOTERA v0.8.5
 
 Validação manual de tudo o que foi implementado até aqui (Fases 1–8 e lapidação de interface).
 Marque `[x]` no que funcionar e anote o que falhar (tela, passos, o que apareceu).
 Itens com **(já verificado)** foram conferidos por você em versões anteriores; vale repassar rápido, porque a interface mudou.
 
-Testes automáticos desta versão: `npm test` → 152 de 152 passando; typecheck completo limpo.
+Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck completo limpo.
 
 ---
 
 ## 0. Instalação (novo nesta versão)
-- [ ] `FOOTERA Setup 0.8.1.exe` instala (o instalador permite escolher a pasta). O Windows pode mostrar o aviso do SmartScreen porque o instalador não é assinado digitalmente: "Mais informações" → "Executar assim mesmo".
+- [ ] `FOOTERA Setup 0.8.5.exe` instala (por cima da versão anterior, sem desinstalar) (o instalador permite escolher a pasta). O Windows pode mostrar o aviso do SmartScreen porque o instalador não é assinado digitalmente: "Mais informações" → "Executar assim mesmo".
 - [ ] O atalho e o executável aparecem como **FOOTERA**, com o ícone verde da prancheta tática.
 - [ ] O jogo instalado mostra **as mesmas carreiras** que você já tinha (a pasta dos saves continua `%APPDATA%\football-manager-simulator`).
-- [ ] O rodapé da tela inicial mostra `v0.8.1`.
+- [ ] O rodapé da tela inicial mostra `v0.8.5`.
 - [ ] A desinstalação (Configurações do Windows → Aplicativos) remove o jogo e **mantém** os saves.
 
 ## 1. Tela inicial e perfis
@@ -27,11 +27,15 @@ Testes automáticos desta versão: `npm test` → 152 de 152 passando; typecheck
 - [ ] Um `.txt` renomeado para `.png` é recusado; data de nascimento recente é bloqueada. **(já verificado)**
 
 ## 3. Interface geral (lapidação)
-- [ ] Tema escuro **azul meia-noite** por padrão; "Tema claro/escuro" no rodapé do menu alterna e fica salvo.
+- [ ] Tema escuro **grafite** (cinza neutro, como a referência enviada) por padrão; "Tema claro/escuro" no rodapé do menu alterna e fica salvo.
 - [ ] Menu lateral agrupado (Clube, Competição, Mercado, Desenvolvimento, Gestão, Carreira), com ícones e item ativo destacado.
 - [ ] Barra superior com título, data e ações (Avançar 1 dia / Próxima rodada / Simular / Acompanhar ao vivo / Iniciar nova temporada).
 - [ ] Visão geral: indicadores de classificação (com "ver tabela"), caixa, elenco e folha; próxima partida; resultados da rodada.
 - [ ] Nenhum botão sem função; textos em português e sem cortes nas telas que você usar.
+
+- [ ] **Posições em português em todas as telas** (GOL, ZAG, LE, LD, VOL, MC, MEI, PE, PD, ATA): Elenco, Contratos, Táticas (lista, opções e campo), Treinamento,
+      Departamento médico, Categorias de base, Olheiros, Transferências, Temporada, ficha, negociação e partida. Também no aviso "Escalação ajustada",
+      na notícia da peneira e nos promovidos da virada (notícias antigas já gravadas continuam como estavam).
 
 ## 4. Calendário e competições
 - [ ] Calendário com 38 jogos, alternando casa e fora. **(já verificado)**
@@ -51,6 +55,21 @@ Testes automáticos desta versão: `npm test` → 152 de 152 passando; typecheck
 - [ ] Partidas → relatório de um jogo **antigo** (antes desta versão): abre no fim, com aviso de que as notas e estatísticas ao vivo não existem para ele.
 - [ ] Relatório de jogo de outros clubes: aviso de relatório resumido.
 - [ ] A condição dos jogadores no Elenco, depois do jogo, bate com a mostrada no fim da partida.
+
+- [ ] **Placar centralizado** sobre a coluna dos Eventos; botões à direita.
+- [ ] **Sem barra de rolagem** na tela da partida (em tela cheia, 1920×1080): placar compacto em uma faixa; tabelas, eventos e estatísticas rolam por dentro.
+- [ ] **Vestiário:** no fim do 1º tempo o jogo pausa sozinho e abre o vestiário; escolher uma fala → "Falar com o elenco" mostra motivados/indiferentes/abalados;
+      "Não falar nada" também funciona; "Voltar ao jogo" continua.
+- [ ] A conversa vale **só nesta partida**: aparece nos Eventos e não muda a moral gravada no Elenco depois do jogo (só o resultado muda).
+- [ ] **Substituições:** botão "Substituições (n/5)" pausa; escolher quem sai e quem entra → "Confirmar"; o jogador muda no campo e na tabela ("Saíram");
+      aviso quando entra fora da posição; no máximo 5 trocas.
+- [ ] Durante o ao vivo o seu time **não** troca sozinho: nos momentos de troca (58', 66', 74', 82') e em lesões, abre **Sugestão do auxiliar**
+      com a troca e o motivo (cansaço, rendimento, buscar/segurar o resultado, lesão); "Fazer esta troca", "Escolher outra troca" ou "Agora não".
+- [ ] Sugestão com jogador de **outra posição**: mostra a nova formação (ex.: 4-3-3 → 4-2-3-1) e quem muda de função; "Fazer a troca e mudar a formação"
+      atualiza o campo, as posições na tabela e o rótulo da formação no placar; o evento aparece nos Eventos.
+- [ ] "Ir para o fim" e "Voltar" no meio do jogo: o auxiliar decide o resto e a rodada é gravada (Voltar pede confirmação).
+- [ ] Fechar o jogo no meio do ao vivo: ao reabrir, a partida continua pendente (nada foi gravado).
+- [ ] "Simular rodada" (sem acompanhar) continua funcionando como antes.
 
 ## 6. Táticas e escalação
 - [ ] 7 esquemas padrão; duplicar, editar formação/controles/escalação manual, salvar, ativar. **(já verificado)**

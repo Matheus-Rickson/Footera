@@ -8,7 +8,7 @@ import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
-  simulateCareerMatchday, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
+  simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
@@ -97,6 +97,15 @@ function registerHandlers(): void {
   handle('career:table', ref.extend({ competitionId: z.string().min(1).max(100) }), (i) => getTable(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('career:advance', ref.extend({ mode: z.enum(['day', 'nextMatchday']) }), (i) => advanceCareer(dataDir(), i.profileId, i.careerId, i.mode));
   handle('career:simulate', ref, (i) => simulateCareerMatchday(dataDir(), i.profileId, i.careerId));
+  const liveSchema = ref.extend({ live: z.object({
+    interventions: z.array(z.discriminatedUnion('kind', [
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('sub'), out: z.string().min(1).max(60), in: z.string().min(1).max(60), slot: z.enum(['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST']).optional(), reshape: z.boolean().optional() }),
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('talk'), tone: z.enum(['incentivar', 'cobrar', 'encorajar', 'consolar']) }),
+    ])).max(12),
+    controlUntil: z.number().int().min(0).max(400).nullable(),
+  }) });
+  handle('career:live-preview', liveSchema, (i) => previewCareerLiveMatch(dataDir(), i.profileId, i.careerId, i.live));
+  handle('career:live-finish', liveSchema, (i) => finishCareerLiveMatch(dataDir(), i.profileId, i.careerId, i.live));
   handle('career:match', ref.extend({ fixtureId: z.string().min(1).max(200) }), (i) => getReport(dataDir(), i.profileId, i.careerId, i.fixtureId));
   handle('career:round', ref.extend({ competitionId: z.string().min(1).max(100), round: z.number().int().min(1).max(200) }),
     (i) => getRound(dataDir(), i.profileId, i.careerId, i.competitionId, i.round));
@@ -167,7 +176,7 @@ function registerHandlers(): void {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#070d1c', title: 'FOOTERA',
+    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#161718', title: 'FOOTERA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,

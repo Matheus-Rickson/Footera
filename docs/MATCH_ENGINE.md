@@ -15,6 +15,13 @@ por jogador, a nota parcial (`rateReport`, a mesma fórmula da nota final, com o
 fórmula que grava a condição pós-jogo). Só lê o estado: não sorteia nada, então o resultado é idêntico com ou sem registro (há teste).
 O campo animado da tela de acompanhamento é uma representação desses dados: o motor não tem coordenadas de jogadores.
 
+**Técnico ao vivo (`opts.control` e `opts.interventions`):** sob controle, o time do técnico não faz substituições automáticas (nem por lesão) até o
+minuto registrado `control.until`; depois o auxiliar assume. Intervenções (substituição; conversa do intervalo) são aplicadas no início do minuto
+registrado indicado, sem sorteio — por isso o jogo até ali é idêntico e a mesma lista de decisões sempre dá o mesmo resultado. A conversa altera a
+moral dos relacionados (`teamTalk.ts`), que entra na força (±3%) só nesta partida (`moraleDelta` não é gravado). Sob controle, nos momentos em que o
+auxiliar trocaria, ele apenas sugere (`suggestions`, com motivo): mesma regra de `aiSubs`, calculada sem executar. Se quem entra é de outra posição,
+a sugestão traz a formação que o encaixa (`planReshape`); aceitar com `reshape` muda a função dos jogadores e emite `formation_change`.
+
 Finalização: tipo de chance (jogada, cruzamento, bola longa, contra-ataque, escanteio, falta, pênalti) → xG = base × habilidade do finalizador ×
 (ataque/defesa) × goleiro × clima → bloqueio / para fora / trave / defesa / gol. Gols esperados somam coerentemente com os gols reais.
 

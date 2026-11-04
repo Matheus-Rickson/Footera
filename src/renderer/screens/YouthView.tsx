@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { YouthOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
 
@@ -45,7 +46,7 @@ export function YouthView({ profileId, careerId, refreshKey, onChanged }: Props)
             <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. estimado</th><th className="right">Salário</th><th /></tr></thead>
             <tbody>{ov.players.map((p) => (
               <tr key={p.id} className={p.leavesAtTurnover ? 'expiring' : ''}>
-                <td>{p.position}</td><td>{p.name}</td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td><td className="right">{fmtNum(p.salary)}</td>
+                <td><PosPill pos={p.position} /></td><td>{p.name}</td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td><td className="right">{fmtNum(p.salary)}</td>
                 <td className="row">
                   <button disabled={busy || full} title={full ? 'Elenco principal cheio (30)' : ''} onClick={() => void act(p.id, p.name, 'promote')}>Promover</button>
                   {confirmRelease === p.id
