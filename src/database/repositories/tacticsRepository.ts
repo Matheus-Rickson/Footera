@@ -1,9 +1,12 @@
 import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
-import { FORMATIONS, getFormation } from '../../game/match-engine/formations.ts';
+import { POS_ORDER } from '../../shared/positions.ts';
+import { ANCHORS, FORMATIONS, formationLabel, getFormation, isFormationId } from '../../game/match-engine/formations.ts';
 import { assignLineup, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
 import { roleRating } from '../../game/match-engine/roles.ts';
+import { familiarity, roleById, ROLES, roleSuitability } from '../../game/match-engine/playerRoles.ts';
+import { roleFocusMap } from './roleRepository.ts';
 import type { TeamTactics } from '../../game/match-engine/types.ts';
 import type { Coach, Methodology, Position } from '../../shared/types.ts';
 import type { SchemeDto, SchemeInput, TacticsOverviewDto, TacticsSquadPlayer } from '../../shared/api.ts';
@@ -13,8 +16,7 @@ import { loadSquad } from './squadRepository.ts';
 export class TacticsError extends UserError {}
 
 const S = (v: unknown) => String(v);
-const POSITIONS: Position[] = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST'];
-const POS_ORDER = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST'];
+const POSITIONS: Position[] = POS_ORDER;
 const NAME_RE = /^[\p{L}\p{N} _.()\-+/]+$/u;
 const MENTALITIES = ['defensive', 'balanced', 'attacking'];
 const BUILDUPS = ['short', 'mixed', 'long'];
@@ -30,7 +32,8 @@ function coachOf(db: SqlDb): Coach {
 function toDto(r: Record<string, unknown>, activeId: string | null): SchemeDto {
   return {
     id: S(r.id), name: S(r.name), formation: S(r.formation), settings: JSON.parse(S(r.settings_json)) as TeamTactics,
-    lineup: r.lineup_json == null ? null : (JSON.parse(S(r.lineup_json)) as string[]), builtin: Number(r.builtin) === 1, active: S(r.id) === activeId,
+    lineup: r.lineup_json == null ? null : (JSON.parse(S(r.lineup_json)) as string[]),
+    roles: r.roles_json == null ? null : (JSON.parse(S(r.roles_json)) as Array<string | null>), builtin: Number(r.builtin) === 1, active: S(r.id) === activeId,
   };
 }
 
@@ -94,7 +97,7 @@ function nextUserId(db: SqlDb): string {
 
 export function saveScheme(db: SqlDb, input: SchemeInput, now: Date = new Date()): SchemeDto {
   const name = cleanName(input.name);
-  if (!FORMATIONS.some((f) => f.id === input.formation)) throw new TacticsError('Formação desconhecida.');
+  if (!isFormationId(input.formation)) throw new TacticsError('Formação inválida: use uma pré-definição ou 11 posições do campo (com goleiro).');
   validateSettings(input.settings);
   if (input.lineup !== null) {
     if (!Array.isArray(input.lineup) || input.lineup.length !== 11) throw new TacticsError('A escalação precisa ter exatamente 11 jogadores.');
@@ -103,6 +106,18 @@ export function saveScheme(db: SqlDb, input: SchemeInput, now: Date = new Date()
     const own = new Set(db.prepare('SELECT id FROM players WHERE club_id = ?').all(st.clubId).map((r) => S(r.id)));
     if (input.lineup.some((id) => !own.has(id))) throw new TacticsError('A escalação contém jogador que não pertence ao seu clube.');
   }
+  const roles = input.roles ?? null;
+  if (roles !== null) {
+    if (!Array.isArray(roles) || roles.length !== 11) throw new TacticsError('As funções precisam acompanhar as 11 vagas da formação.');
+    const slots = getFormation(input.formation).slots;
+    roles.forEach((id, i) => {
+      if (id === null) return;
+      const role = roleById(id);
+      if (!role) throw new TacticsError('Função tática inválida.');
+      if (!role.positions.includes(slots[i]!.pos)) throw new TacticsError(`A função ${role.name} não é desta posição.`);
+    });
+  }
+  const rolesJson = roles && roles.some((r) => r !== null) ? JSON.stringify(roles) : null;
   return withTransaction(db, () => {
     const clash = findByName(db, name);
     const ts = now.toISOString();
@@ -111,14 +126,14 @@ export function saveScheme(db: SqlDb, input: SchemeInput, now: Date = new Date()
       if (!cur) throw new TacticsError('Esquema não encontrado.');
       if (Number(cur.builtin) === 1) throw new TacticsError('Esquemas padrão não podem ser editados. Duplique-o para criar a sua versão.');
       if (clash && clash !== input.id) throw new TacticsError('Já existe um esquema com esse nome.');
-      db.prepare('UPDATE tactic_schemes SET name = ?, formation = ?, settings_json = ?, lineup_json = ?, updated_at = ? WHERE id = ?')
-        .run(name, input.formation, JSON.stringify(input.settings), input.lineup ? JSON.stringify(input.lineup) : null, ts, input.id);
+      db.prepare('UPDATE tactic_schemes SET name = ?, formation = ?, settings_json = ?, lineup_json = ?, roles_json = ?, updated_at = ? WHERE id = ?')
+        .run(name, input.formation, JSON.stringify(input.settings), input.lineup ? JSON.stringify(input.lineup) : null, rolesJson, ts, input.id);
       return toDto(db.prepare('SELECT * FROM tactic_schemes WHERE id = ?').get(input.id)!, activeId(db));
     }
     if (clash) throw new TacticsError('Já existe um esquema com esse nome.');
     const id = nextUserId(db);
-    db.prepare('INSERT INTO tactic_schemes (id, name, formation, settings_json, lineup_json, builtin, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?)')
-      .run(id, name, input.formation, JSON.stringify(input.settings), input.lineup ? JSON.stringify(input.lineup) : null, ts, ts);
+    db.prepare('INSERT INTO tactic_schemes (id, name, formation, settings_json, lineup_json, roles_json, builtin, created_at, updated_at) VALUES (?,?,?,?,?,?,0,?,?)')
+      .run(id, name, input.formation, JSON.stringify(input.settings), input.lineup ? JSON.stringify(input.lineup) : null, rolesJson, ts, ts);
     return toDto(db.prepare('SELECT * FROM tactic_schemes WHERE id = ?').get(id)!, activeId(db));
   });
 }
@@ -129,7 +144,7 @@ export function duplicateScheme(db: SqlDb, id: string, now: Date = new Date()): 
   const base = `${src.name.replace(/ \(cópia\)( \d+)?$/, '')} (cópia)`.slice(0, 40);
   let name = base;
   for (let n = 2; findByName(db, name); n++) name = `${base.slice(0, 40 - String(n).length - 1)} ${n}`;
-  return saveScheme(db, { id: null, name, formation: src.formation, settings: src.settings, lineup: src.lineup }, now);
+  return saveScheme(db, { id: null, name, formation: src.formation, settings: src.settings, lineup: src.lineup, roles: src.roles }, now);
 }
 
 export function deleteScheme(db: SqlDb, id: string): void {
@@ -149,7 +164,7 @@ export function activateScheme(db: SqlDb, id: string): void {
 
 /** Melhor XI disponível (sem lesionados/suspensos) para a formação, alinhado às posições dela. */
 export function autoLineup(db: SqlDb, formationId: string): string[] {
-  if (!FORMATIONS.some((f) => f.id === formationId)) throw new TacticsError('Formação desconhecida.');
+  if (!isFormationId(formationId)) throw new TacticsError('Formação inválida.');
   const st = getCareerState(db);
   const squad = loadSquad(db, st.clubId, st.gameDate);
   return assignLineup(squad.available.map(toMatchPlayer), getFormation(formationId)).lineup.map((l) => l.player.id);
@@ -158,13 +173,19 @@ export function autoLineup(db: SqlDb, formationId: string): string[] {
 export function getTacticsOverview(db: SqlDb): TacticsOverviewDto {
   const st = getCareerState(db);
   const squad = loadSquad(db, st.clubId, st.gameDate);
+  const roleFocus = roleFocusMap(db);
   const players: TacticsSquadPlayer[] = squad.players.map((p) => {
     const s = squad.status.get(p.id);
     const unavailable = s?.injuryUntil && s.injuryUntil > st.gameDate ? { kind: 'injured' as const, until: s.injuryUntil }
       : (s?.suspension ?? 0) > 0 ? { kind: 'suspended' as const, matches: s!.suspension } : null;
     const mp = toMatchPlayer(p);
     const slotScores = Object.fromEntries(POSITIONS.map((pos) => [pos, Math.round(roleRating(mp, pos))])) as Record<Position, number>;
-    return { id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, secondaryPositions: p.secondaryPositions, overall: p.overall, condition: p.condition, unavailable, slotScores };
+    const roles = ROLES.map((r) => ({ id: r.id, suitability: roleSuitability(p.attributes, r), familiarity: familiarity(p, r) }));
+    return { id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, secondaryPositions: p.secondaryPositions, overall: p.overall, condition: p.condition, unavailable, slotScores, roles, roleFocus: roleFocus.get(p.id) ?? null };
   }).sort((a, b) => POS_ORDER.indexOf(a.position) - POS_ORDER.indexOf(b.position) || b.overall - a.overall);
-  return { schemes: listSchemes(db), squad: players, formations: FORMATIONS.map((f) => ({ id: f.id, slots: f.slots })) };
+  return {
+    schemes: listSchemes(db).map((s) => ({ ...s, formationLabel: formationLabel(s.formation) })), squad: players,
+    formations: FORMATIONS.map((f) => ({ id: f.id, slots: f.slots })), anchors: ANCHORS,
+    roleCatalog: ROLES.map((r) => ({ id: r.id, label: r.name, positions: r.positions, description: r.summary.join(' ') })),
+  };
 }

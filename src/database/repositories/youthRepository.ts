@@ -28,6 +28,11 @@ const getMeta = (db: SqlDb, key: string): string | null => { const r = db.prepar
 const setMeta = (db: SqlDb, key: string, value: string) => { db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(key, value); };
 
 export const GROUP_POSITIONS: Record<PositionGroup, Position[]> = { GK: ['GK'], DEF: ['CB', 'CB', 'LB', 'RB'], MID: ['DM', 'CM', 'CM', 'AM'], ATT: ['ST', 'ST', 'LW', 'RW'] };
+/** Universos criados a partir da v0.8.6 também têm ME/MD/AE/AD; saves anteriores continuam só com as 10 posições originais. */
+export const GROUP_POSITIONS_V2: Record<PositionGroup, Position[]> = { GK: ['GK'], DEF: ['CB', 'CB', 'LB', 'RB', 'LWB', 'RWB'], MID: ['DM', 'CM', 'CM', 'AM', 'LM', 'RM'], ATT: ['ST', 'ST', 'LW', 'RW'] };
+/** v3: também segundo atacante e centroavante no lugar do atacante genérico. */
+export const GROUP_POSITIONS_V3: Record<PositionGroup, Position[]> = { ...GROUP_POSITIONS_V2, ATT: ['CF', 'CF', 'SS', 'LW', 'RW'] };
+const groupPositions = (db: SqlDb) => { const v = db.prepare("SELECT value FROM meta WHERE key = 'position_set'").get()?.value; return v === 'v3' ? GROUP_POSITIONS_V3 : v === 'v2' ? GROUP_POSITIONS_V2 : GROUP_POSITIONS; };
 const ANY_GROUP: PositionGroup[] = ['DEF', 'MID', 'ATT', 'DEF', 'MID', 'ATT', 'GK'];
 
 export const youthOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FROM players WHERE youth_club_id = ? ORDER BY id').all(clubId).map(rowToPlayer);
@@ -70,7 +75,7 @@ export function ensureYouthAcademies(db: SqlDb): void {
     const rng = createRng(`youth-seed:${seedOf(db)}`);
     for (const r of db.prepare('SELECT id FROM clubs ORDER BY rowid').all()) {
       const c = rng.fork(S(r.id));
-      for (let i = 0, n = c.int(6, 8); i < n; i++) make(c, S(r.id), c.pick(GROUP_POSITIONS[c.pick(ANY_GROUP)]), c.int(15, 18), true);
+      for (let i = 0, n = c.int(6, 8); i < n; i++) make(c, S(r.id), c.pick(groupPositions(db)[c.pick(ANY_GROUP)]), c.int(15, 18), true);
     }
     setMeta(db, 'youth_seeded', st.gameDate);
   });
@@ -92,7 +97,7 @@ export function youthIntake(db: SqlDb, date: string): number {
     const room = (user ? YOUTH_CAP.user : YOUTH_CAP.ai) - youthOf(db, clubId).length;
     const n = Math.max(0, Math.min(intakeSize(level, user, c.next()), room));
     for (let i = 0; i < n; i++) {
-      const p = make(c, clubId, c.pick(GROUP_POSITIONS[c.pick(ANY_GROUP)]), c.int(15, 16), true);
+      const p = make(c, clubId, c.pick(groupPositions(db)[c.pick(ANY_GROUP)]), c.int(15, 16), true);
       total++;
       if (user) mine.push(p);
     }

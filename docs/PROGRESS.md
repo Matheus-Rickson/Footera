@@ -627,3 +627,85 @@ Sem novas funcionalidades de jogo.
 
 - **Verificação do usuário (0.8.2–0.8.5):** testes manuais concluídos no app instalado — posições em português, tema grafite, placar centralizado, vestiário
   (efeito só na partida), sugestões do auxiliar com motivo e reorganização da formação (4-3-3 → 4-2-3-1 aplicada e refletida no campo, tabela e placar).
+
+## Elenco redesenhado (pedido do usuário, com referência; sem gerar instalador nesta etapa)
+- Tabela no layout moderno, colunas na ordem pedida: **posição** (principal + até 2 secundárias), **força**, **jogador** (avatar de iniciais — o jogo
+  não tem fotos de jogadores — e sinal de lesão/suspensão), **nacionalidade** (bandeira SVG desenhada no próprio jogo + sigla; o universo atual só tem
+  Brasil e Inglaterra; outro código aparece como selo neutro, sem bandeira inventada), **idade**, **altura**, **condição** e **moral** (barras) e
+  **estatísticas da temporada** (jogos, minutos, gols, assistências, nota média, cartões amarelos e vermelhos — todas as competições pelo clube).
+- Filtro por setor (Todos, Goleiros, Defensores, Meio-campistas, Atacantes, com contagem), resumo (força, idade e condição médias) e ordenação por
+  qualquer coluna (clique no cabeçalho). Nome abre a ficha completa. Salário/contrato/potencial continuam em Contratos e na ficha.
+- `SquadRow` ganhou nacionalidade, altura, situação e estatísticas (consulta agregada em `openCareer`). Teste novo (162 no total); mutação: 4/4 detectadas.
+- Capturas do app real (1920×1080, escuro e claro) revisadas. **Não verificado pelo usuário.** Sem commit e sem instalador (o usuário pede quando quiser).
+
+## Táticas reestruturadas (pedido do usuário, com referência; sem instalador nesta etapa)
+- **Layout:** elenco à esquerda (escalado em qual vaga, posição, força, jogador, condição, quanto rende na vaga; lesão/suspensão) e campo à direita
+  com o time escalado. Barra com **pré-definições** (4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 3-4-3, 5-3-2, 4-1-4-1), esquemas salvos ("Salvar como…", excluir)
+  e estilo de jogo embaixo (mentalidade, saída de bola, ritmo, amplitude, linha defensiva, pressão).
+- **Nada travado, salvo na hora:** escolher uma pré-definição aplica formação + melhor escalação e tudo continua editável; cada mudança grava o esquema
+  ativo. Se o ativo for uma pré-definição antiga (somente leitura), a primeira mudança cria "Minha tática" e a ativa.
+- **Arrastar e soltar** (também por clique, para acessibilidade): jogador do elenco sobre um titular = troca; titular sobre titular = trocam de lugar;
+  titular numa âncora vazia = muda a formação (o goleiro fica no gol). Cores: natural / secundária / fora de posição; "!" = indisponível no momento.
+- **Âncoras do campo** (as marcações do print): goleiro + defesa (5) + alas/volantes (5) + meio (5) + meia-ofensiva (5) + ataque (3) = 24 posições, cada uma
+  com a função do motor. As 7 pré-definições foram reconstruídas sobre as âncoras com as **mesmas funções e a mesma ordem de vagas** (simulação e escalações
+  salvas intactas; 162 testes anteriores passaram sem mudança). Formação livre = "@" + 11 âncoras; o nome exibido é o da pré-definição quando as posições
+  coincidem, senão a contagem por linha (ex.: 5-1-2-1-1). Relatórios e partida mostram o nome, nunca o código.
+- Correção achada na captura: a validação do IPC limitava a formação a 20 caracteres (formação livre é maior).
+- Observação (sem mudança): "Melhor escalação" usa o mesmo algoritmo com que a IA escala todos os clubes (melhor rendimento por função); ele pode pôr um
+  zagueiro forte no ataque se, pelo modelo, render tanto quanto o atacante disponível. Mudá-lo alteraria a simulação de todos os times.
+- Testes: 163; typecheck limpo. Mutação: 3/3 detectadas (validação e nome da formação). Arrastar e soltar exercitado por captura do app real
+  (eventos de arrasto reais do navegador) nos temas escuro e claro. **Não verificado pelo usuário.** Sem commit e sem instalador.
+- **Ajustes pedidos após o 1º teste das Táticas (que funcionou):** a barra de estilo de jogo saiu da tela (só elenco e campo); clicar no gramado,
+  fora dos jogadores e das posições (ou Enter com o campo em foco), abre a janela "Estilo de jogo" com mentalidade, saída de bola, ritmo, amplitude,
+  linha defensiva e pressão (salvo automaticamente; dica abaixo do campo mostra a mentalidade atual). Âncoras renomeadas na tela: **ME/MD** (meia
+  esquerdo/direito) nas extremas do meio e **ALE/ALD** (ala esquerda/direita) nas extremas da linha dos alas — só o nome; a função no motor continua
+  ponta/lateral. Teste novo (164 no total). Capturas do app real revisadas. **Não verificado pelo usuário.**
+
+## v0.8.6 (em andamento) — ME, MD, AE e AD como funções próprias (pedido do usuário, com a descrição de cada posição)
+- Quatro posições novas no motor: **ME/MD** (meia esquerda/direita, LM/RM) e **AE/AD** (ala esquerda/direita, LWB/RWB), com atributos, peso em
+  ataque/meio/defesa, participação nos lances (finalização, cabeceio, desarme, faltas, passe e um novo peso de **cruzamento**) e desgaste próprios
+  (detalhes e calibração em `docs/MATCH_ENGINE.md`). Âncoras do campo nas Táticas passam a usá-las (siglas ME/MD/AE/AD); 4-4-2 e 4-1-4-1 ganham meias
+  abertos, 3-5-2 e 3-4-3 ganham alas. Mercado, Elenco, ficha (mapa de posições), filtros e validação aceitam as novas posições.
+- **Decisão do usuário: só carreiras novas** geram jogadores com essas posições (universo marcado com `position_set = v2`; a peneira dos saves antigos
+  continua com as 10 posições originais). Nos saves atuais ninguém muda de posição: ponta como meia aberto e lateral como ala rendem 95% (funções
+  parecidas, em amarelo nas Táticas); os demais, fora de posição (90%).
+- Calibração: gols/jogo 2,88 → 2,59, empates 23,6% → 28,3% — dentro das faixas de referência. Um defeito meu (referência de normalização derivada da
+  1ª pré-definição, que inflou para 3,56 gols/jogo) foi pego pelo teste de calibração e corrigido.
+- Testes: 167; typecheck limpo. Mutação: 9/9 detectadas. Capturas do app real (Táticas no save atual) revisadas. **Não verificado pelo usuário.**
+  Sem commit e sem instalador.
+
+## Depuração do motor de partidas (pedido do usuário) e ajustes aplicados
+- Bateria de 14.180 partidas (matriz 7×7 de formações com os mesmos clubes e sementes; espelho com mando e em campo neutro; esquerda × direita;
+  determinismo). Relatório completo: `docs/MATCH_ENGINE_DEBUG.md`. Sem anomalias, determinismo OK, xG calibrado, **sem viés de lado**.
+- Achados: (1) desequilíbrio estrutural entre formações (0,34 pt/jogo, causado pela soma de pesos de zona de cada função); (2) poucos gols e muitos 0x0
+  com estilo equilibrado; (3) acréscimos do 2º tempo longos.
+- **Aplicado (aprovado pelo usuário):** zonas normalizadas (dispersão 0,34 → 0,16); `K.chance` 0,068 → 0,080 (bateria: 2,42 → 2,64 gols/jogo,
+  0x0 10,4% → 8,3%; IA: 2,80 gols/jogo); acréscimos 3,4/6,7 → 2,4/4,5 min. Defeito corrigido no caminho: goleiro expulso/lesionado era trocado
+  automaticamente mesmo com o técnico no comando; agora o auxiliar sugere ("Sem goleiro"). Testes novos: equilíbrio de zonas, 0x0 e acréscimos na calibração, goleiro sob controle (169 no total); mutação 4/4 detectadas (uma só depois de apertar a faixa de acréscimos).
+- Simulação longa de 3 temporadas estável (margem mediana sem prêmio −0,3% a +1,3%; saldos consistentes). Vermelhos (0,17/jogo) seguem um pouco
+  acima da faixa de referência, como antes. **Não verificado pelo usuário em jogo.** Sem commit e sem instalador.
+
+## v0.8.6 (em andamento) — Funções táticas (pedido do usuário: "não confunda posição com função")
+- **Decisões do usuário:** dividir ATA em **SA** (segundo atacante) e **CA** (centroavante); familiaridade que se treina; funções valem para todos já
+  (inclusive saves atuais e clubes da IA). Universo novo marcado `position_set = v3` (a base também gera SA/CA); nos saves antigos o ATA exerce as
+  funções de SA e de CA.
+- **Motor** (`playerRoles.ts`, detalhes em `docs/MATCH_ENGINE.md`): 33 funções (3 por posição) com atributos exigidos, compatibilidade, domínio e efeitos
+  nos lances, no desgaste, na saída de bola e no risco de contra-ataque. Sem escolha, cada jogador exerce a de maior rendimento.
+- **Rebalanceamento** (a divisão SA/CA + funções desequilibrou as formações: dispersão 0,16 → 0,31): expoente de setor 0,5 → 0,35 e `K.chance`
+  0,080 → 0,070. Dispersão final 0,13; gols 2,69 (matriz equilibrada) e 2,93 com táticas da IA (v0.8.5 no mesmo script: 2,99).
+- **Banco (migração 011):** `player_roles` (domínio aprendido), `tactic_schemes.roles_json` (função por vaga), `player_training.role_focus`.
+- **Aprendizado:** +1,5 de domínio a cada 90 min jogados na função (todos os clubes); treino mensal da função escolhida (+10 × qualidade do auxiliar,
+  do centro de treinamento e intensidade; só o usuário). Limite 100.
+- **Telas (NÃO verificadas no Electron):** Táticas — cada crachá mostra a função da vaga (itálico = automática); clicar num jogador do campo abre uma
+  janela (popup) com as funções da vaga (Automática + 3 funções com descrição, compatibilidade e domínio) e "Função a treinar no mês". Ficha do jogador — card
+  **Funções** (só do próprio clube: de outros clubes revelaria atributos reais).
+- **Testes:** 179 (10 novos em `roles.test.ts`: catálogo, domínio inicial, rendimento, equilíbrio de zona, efeitos causais — lateral, centroavante e risco
+  nas costas —, função exercida/automática/determinismo, esquema com validação, aprendizado jogando, treino mensal com limite, privacidade na ficha).
+  Dois limites de testes antigos ajustados por medição (cruzamentos: corredor ≥ 60% e alas/meias abertos ≥ 33%; medido 69% e 43% em 1.200 jogos).
+- **Mutação:** 13/13 detectadas (duas só depois do teste causal isolado: risco nas costas e efeito de finalização da função).
+- Typecheck limpo. Sem commit e sem instalador (aguardando validação do usuário).
+- **Não executado:** simulação longa de várias temporadas com funções (soak) e capturas de tela do app.
+- **Compatibilidade evolui com o treino de função** (pedido do usuário após testar): com o foco de atributos em Equilibrado, a função treinada vira o foco
+  da evolução mensal (mesmos pesos do foco de atributos: ×1,35/×0,9). Um foco de atributos específico prevalece. Testei pesos maiores (×1,6/×0,8): a força
+  geral subia até +0,3/ano a mais que sem treino, por isso mantive os pesos já calibrados. Teste causal novo (mesmo save e mesmas sementes, só muda o treino);
+  a mutação que remove a regra foi detectada. 180 testes passando e typecheck limpo. Textos explicativos na janela de funções e na ficha (telas NÃO verificadas).

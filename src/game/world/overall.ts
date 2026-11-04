@@ -8,11 +8,21 @@ const WEIGHTS: Record<Position, Weights> = {
   CB: { marking: 3, tackling: 3, heading: 2, positioning: 2, strength: 2, jumping: 1.5, pace: 1, composure: 1 },
   LB: { tackling: 2, marking: 1.5, pace: 2.5, stamina: 2, crossing: 1.5, positioning: 1.5, workRate: 1 },
   RB: { tackling: 2, marking: 1.5, pace: 2.5, stamina: 2, crossing: 1.5, positioning: 1.5, workRate: 1 },
+  // ala: corredor inteiro — muita resistência, velocidade, cruzamento e marcação (AE) / posicionamento e defesa (AD)
+  LWB: { stamina: 3, pace: 2.5, crossing: 2.5, marking: 2, tackling: 1.5, workRate: 1.5 },
+  RWB: { stamina: 3, pace: 2.5, crossing: 2.5, positioning: 2, tackling: 2, workRate: 1 },
   DM: { tackling: 3, marking: 2, positioning: 2, passing: 2, stamina: 2, workRate: 1.5, decisions: 1.5 },
   CM: { passing: 3, vision: 2, stamina: 2, decisions: 2, tackling: 1.5, firstTouch: 1.5, workRate: 1.5 },
+  // meia aberto: ME = visão, passe, cruzamento, controle e resistência; MD = velocidade, passe, cruzamento, drible e recomposição
+  LM: { passing: 2.5, vision: 2, crossing: 2.5, firstTouch: 2, stamina: 2, workRate: 1 },
+  RM: { pace: 2, passing: 2.5, crossing: 2.5, dribbling: 2, workRate: 1.5, stamina: 1 },
   AM: { passing: 2.5, vision: 3, dribbling: 2.5, firstTouch: 2, longShots: 1.5, decisions: 1.5, finishing: 1 },
   LW: { dribbling: 3, pace: 3, crossing: 2, firstTouch: 1.5, finishing: 1.5, agility: 1.5 },
   RW: { dribbling: 3, pace: 3, crossing: 2, firstTouch: 1.5, finishing: 1.5, agility: 1.5 },
+  // segundo atacante: perto do centroavante, combina, finaliza e recua para construir
+  SS: { finishing: 2.5, firstTouch: 2, passing: 2, dribbling: 2, vision: 1.5, composure: 1.5, pace: 1.5 },
+  // centroavante: referência na área
+  CF: { finishing: 4, composure: 2, positioning: 2.5, heading: 2, strength: 1.5, firstTouch: 1.5 },
   ST: { finishing: 4, composure: 2, firstTouch: 2, pace: 2, heading: 1.5, positioning: 2, strength: 1 },
 };
 

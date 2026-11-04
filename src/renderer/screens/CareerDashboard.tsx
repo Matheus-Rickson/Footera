@@ -21,6 +21,7 @@ import { HistoryView, NewsView, TrophiesView } from './CareerRecordsView.tsx';
 import { ScoutingView } from './ScoutingView.tsx';
 import { YouthView } from './YouthView.tsx';
 import { PlayerProfile } from './PlayerProfile.tsx';
+import { SquadView } from './SquadView.tsx';
 import { TrainingView } from './TrainingView.tsx';
 import { StaffView } from './StaffView.tsx';
 import { MedicalView } from './MedicalView.tsx';
@@ -241,19 +242,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
 
-        {!match && !player && view === 'squad' && (
-          <section className="card scroll tall">
-            <table>
-              <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. estimado</th><th>Condição</th><th>Moral</th><th>Salário</th><th>Contrato até</th></tr></thead>
-              <tbody>
-                {squad.map((p) => (
-                  <tr key={p.id}><td><PosPill pos={p.position} /></td><td><button className="link" onClick={() => setPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
-                    <td>{Math.round(p.condition)}%</td><td>{Math.round(p.morale)}</td><td>{fmtNum(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
+        {!match && !player && view === 'squad' && <SquadView squad={squad} onOpenPlayer={setPlayer} />}
       </main>
     </div>
   );

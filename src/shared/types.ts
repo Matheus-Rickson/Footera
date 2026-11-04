@@ -3,7 +3,9 @@
 export type Id = string;
 export type IsoDate = string; // YYYY-MM-DD
 
-export type Position = 'GK' | 'CB' | 'LB' | 'RB' | 'DM' | 'CM' | 'AM' | 'LW' | 'RW' | 'ST';
+/** LM/RM = meia esquerda/direita (meio-campo aberto); LWB/RWB = ala esquerda/direita (corredor inteiro). */
+/** SS = segundo atacante; CF = centroavante (ST = atacante genérico dos universos anteriores à v0.8.6). */
+export type Position = 'GK' | 'CB' | 'LB' | 'RB' | 'LWB' | 'RWB' | 'DM' | 'CM' | 'LM' | 'RM' | 'AM' | 'LW' | 'RW' | 'SS' | 'CF' | 'ST';
 export type Foot = 'left' | 'right' | 'both';
 
 export interface TechnicalAttributes {
@@ -45,6 +47,8 @@ export interface Player {
   personality: Personality;
   /** Estimativa visível ao usuário (sujeita a erro de olheiro). */
   potentialEstimated: number;
+  /** domínio aprendido das funções (id → 0–100), carregado com o elenco; ausente = domínio inicial pelo perfil */
+  roleFamiliarity?: Record<string, number>;
   /** Potencial real, interno ao motor; nunca exibido diretamente. */
   potentialHidden: number;
   /** 0..100 */

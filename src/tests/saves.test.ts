@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
-  advanceCareer, createCareerSave, getCalendar, getTable, listCareerSaves, listCompetitionsFor, openCareer,
+  advanceCareer, createCareerSave, getCalendar, getTable, listCareerSaves, listCompetitionsFor, openCareer, simulateCareerMatchday,
 } from '../services/saveService.node.ts';
 import { openDatabase } from '../database/connection.ts';
 import { ValidationError } from '../services/careerService.ts';
@@ -155,4 +155,32 @@ test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticam
   const ov = await openCareer(base, prof.id, c.id);
   assert.equal(ov.nextFixture?.date, '2026-08-01');
   assert.equal((await getCalendar(base, prof.id, c.id)).fixtures.length, 38);
+});
+
+test('Elenco: cada jogador traz nacionalidade, altura, situação e estatísticas da temporada iguais às gravadas', async () => {
+  const base = tmp(); const prof = createProfile(base, 'Teste');
+  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  for (let k = 0; k < 3; k++) { await advanceCareer(base, prof.id, c.id, 'nextMatchday'); await simulateCareerMatchday(base, prof.id, c.id); }
+  const file = path.join(base, 'saves', prof.id, c.id, 'career.db');
+  const db = await openDatabase(file);
+  const victim = String(db.prepare('SELECT id FROM players WHERE club_id = ? ORDER BY id LIMIT 1').get(clubId)!.id);
+  db.prepare("INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?, '2026-12-01', 'x', 1, 0) ON CONFLICT(player_id) DO UPDATE SET injury_until = '2026-12-01', suspension_matches = 1").run(victim);
+  const expected = new Map(db.prepare(`SELECT player_id, SUM(appearances) AS a, SUM(minutes) AS m, SUM(goals) AS g, SUM(assists) AS s, SUM(yellow_cards) AS y, SUM(red_cards) AS r, SUM(rating_sum) AS rs
+    FROM player_season_stats WHERE club_id = ? GROUP BY player_id`).all(clubId).map((r) => [String(r.player_id), r]));
+  const players = new Map(db.prepare('SELECT id, nationality, height_cm FROM players WHERE club_id = ?').all(clubId).map((r) => [String(r.id), r]));
+  db.close();
+  const ov = await openCareer(base, prof.id, c.id);
+  assert.ok(ov.squad.length >= 18);
+  let played = 0;
+  for (const p of ov.squad) {
+    const e = expected.get(p.id), pl = players.get(p.id)!;
+    assert.equal(p.nationality, String(pl.nationality)); assert.ok(['Brasil', 'Inglaterra'].includes(p.nationalityName)); assert.equal(p.heightCm, Number(pl.height_cm));
+    if (!e) { assert.deepEqual(p.stats, { appearances: 0, minutes: 0, goals: 0, assists: 0, avgRating: null, yellows: 0, reds: 0 }); continue; }
+    played++;
+    assert.deepEqual([p.stats.appearances, p.stats.minutes, p.stats.goals, p.stats.assists, p.stats.yellows, p.stats.reds], [e.a, e.m, e.g, e.s, e.y, e.r].map(Number));
+    assert.equal(p.stats.avgRating, Math.round((Number(e.rs) / Number(e.a)) * 100) / 100);
+  }
+  assert.ok(played >= 11, 'quem jogou tem estatísticas');
+  const v = ov.squad.find((p) => p.id === victim)!;
+  assert.deepEqual(v.status, { injuredUntil: '2026-12-01', suspension: 1 });
 });

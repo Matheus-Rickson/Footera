@@ -1,7 +1,7 @@
 import { createRng, clamp, type Rng } from '../rng.ts';
 import type { Position } from '../../shared/types.ts';
 import { effective } from './roles.ts';
-import { FORMATIONS } from './formations.ts';
+import { FORMATIONS, formationLabel } from './formations.ts';
 import type {
   ChanceType, EventType, MatchConditions, MatchEvent, MatchOptions, MatchOutcome, MatchPlayer, MatchTick, PlayerReport,
   ShotOutcome, TeamSheet, TeamStats, TeamTactics,
@@ -11,6 +11,8 @@ import type { Intervention } from './types.ts';
 import { talkDelta } from './teamTalk.ts';
 import type { SubSuggestion } from './types.ts';
 import { POS_NAME } from '../../shared/positions.ts';
+import { bestRole, roleById, roleFactor, type RoleDef } from './playerRoles.ts';
+import { overallFor } from '../world/overall.ts';
 import { UserError } from '../../shared/errors.ts';
 
 /** Decisão do técnico impossível naquele momento (jogador já saiu, banco esgotado…). */
@@ -19,7 +21,7 @@ export class MatchInterventionError extends UserError {}
 /** Constantes de calibração (ajustadas contra médias reais de futebol — ver docs e testes de calibração). */
 export const K = {
   phasesPerMinute: 2.6,
-  chance: 0.068,
+  chance: 0.070, // 0,068 até a v0.8.5; 0,080 com a normalização das zonas; 0,070 com ZONE_EXP 0,35 (funções táticas e SA/CA)
   counterBoost: 1.55,
   foul: 0.085,
   offside: 0.016,
@@ -32,37 +34,71 @@ export const K = {
 type Side = 0 | 1;
 interface Live {
   p: MatchPlayer; slot: Position; x: number; y: number; fatigue: number; yellow: number; out: boolean; rep: PlayerReport;
+  /** função exercida, multiplicador de rendimento nela e peso de zona (perfil da posição inclinado pela função, mesmo total) */
+  role: RoleDef; roleK: number; zone: { att: number; mid: number; def: number };
 }
 interface Ratings { att: number; mid: number; def: number; gk: number; pass: number; aggression: number }
 interface TeamState {
   idx: Side; sheet: TeamSheet; active: Live[]; all: Live[]; bench: MatchPlayer[]; subsUsed: number; formation: string;
+  /** efeitos de equipe das funções em campo: saída de bola, risco nas costas, goleiro que cobre a profundidade */ fx: { build: number; risk: number; sweep: number };
   stats: TeamStats; held: number; goals: number; r: Ratings;
 }
 
-const ZONE: Record<Position, { att: number; mid: number; def: number }> = {
+/**
+ * Perfil de cada função (quanto contribui para ataque, meio e defesa). Antes de usar, todas as funções de linha são normalizadas
+ * para o MESMO peso total (ZONE_TOTAL): assim nenhuma formação ganha força "de graça" por usar funções que somavam mais
+ * (a bateria de 5.880 jogos mostrou 0,34 ponto/jogo de diferença entre formações por causa disso). Jogar com um a menos
+ * continua pesando, porque o total do time cai.
+ */
+const ZONE_SHAPE: Record<Position, { att: number; mid: number; def: number }> = {
   GK: { att: 0, mid: 0, def: 0 },
   CB: { att: 0, mid: 0, def: 1 },
   LB: { att: 0.1, mid: 0.1, def: 0.9 }, RB: { att: 0.1, mid: 0.1, def: 0.9 },
+  // ala: corredor inteiro (defende e ataca); meia aberto: meio-campo pelo lado, recompõe
+  LWB: { att: 0.35, mid: 0.35, def: 0.6 }, RWB: { att: 0.35, mid: 0.35, def: 0.6 },
+  LM: { att: 0.45, mid: 0.75, def: 0.2 }, RM: { att: 0.45, mid: 0.75, def: 0.2 },
   DM: { att: 0, mid: 0.75, def: 0.45 },
   CM: { att: 0.1, mid: 1, def: 0.15 },
   AM: { att: 0.55, mid: 0.65, def: 0 },
   LW: { att: 0.85, mid: 0.3, def: 0 }, RW: { att: 0.85, mid: 0.3, def: 0 },
+  SS: { att: 0.9, mid: 0.25, def: 0 },
+  CF: { att: 1, mid: 0, def: 0 },
   ST: { att: 1, mid: 0, def: 0 },
 };
+const ZONE_TOTAL = 1.15;
+/** quanto o peso de um setor (em relação à referência) amplifica a força dele: retornos decrescentes */
+const ZONE_EXP = 0.35;
+const ZONE = Object.fromEntries(Object.entries(ZONE_SHAPE).map(([k, z]) => {
+  const t = z.att + z.mid + z.def;
+  return [k, t > 0 ? { att: (z.att * ZONE_TOTAL) / t, mid: (z.mid * ZONE_TOTAL) / t, def: (z.def * ZONE_TOTAL) / t } : z];
+})) as Record<Position, { att: number; mid: number; def: number }>;
+/** Peso de zona de quem joga na posição com a função: o perfil é inclinado pela função e renormalizado (mesmo total). */
+export function zoneWithRole(pos: Position, role: RoleDef | undefined): { att: number; mid: number; def: number } {
+  const b = ZONE[pos], t = role?.fx.tilt;
+  if (!t) return { ...b };
+  const z = { att: Math.max(0, b.att + (t.att ?? 0)), mid: Math.max(0, b.mid + (t.mid ?? 0)), def: Math.max(0, b.def + (t.def ?? 0)) };
+  const tot = z.att + z.mid + z.def, base = b.att + b.mid + b.def;
+  return tot > 0 && base > 0 ? { att: (z.att * base) / tot, mid: (z.mid * base) / tot, def: (z.def * base) / tot } : { ...b };
+}
+/** Peso de zona efetivo de uma função (para testes e diagnóstico). */
+export const zoneProfile = (pos: Position): { att: number; mid: number; def: number } => ({ ...ZONE[pos] });
 const REF = (() => {
   const t = { att: 0, mid: 0, def: 0 };
-  for (const s of FORMATIONS[0]!.slots) { t.att += ZONE[s.pos].att; t.mid += ZONE[s.pos].mid; t.def += ZONE[s.pos].def; }
+  // referência fixa (4-4-2 clássico com pontas): não depende das pré-definições, senão mudar uma formação recalibraria todos os times
+  for (const pos of ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'] as Position[]) { t.att += ZONE[pos].att; t.mid += ZONE[pos].mid; t.def += ZONE[pos].def; }
   return t;
 })();
 
-const SHOOTER_W: Record<Position, number> = { GK: 0, CB: 0.03, LB: 0.1, RB: 0.1, DM: 0.1, CM: 0.28, AM: 0.65, LW: 0.6, RW: 0.6, ST: 1 };
-const HEADER_W: Record<Position, number> = { GK: 0, CB: 0.12, LB: 0.05, RB: 0.05, DM: 0.1, CM: 0.2, AM: 0.35, LW: 0.25, RW: 0.25, ST: 1 };
-const CORNER_W: Record<Position, number> = { GK: 0, CB: 0.8, LB: 0.2, RB: 0.2, DM: 0.3, CM: 0.3, AM: 0.2, LW: 0.15, RW: 0.15, ST: 1 };
-const LONG_W: Record<Position, number> = { GK: 0, CB: 0.05, LB: 0.15, RB: 0.15, DM: 0.5, CM: 0.7, AM: 1, LW: 0.6, RW: 0.6, ST: 0.4 };
-const PASSER_W: Record<Position, number> = { GK: 0.05, CB: 0.15, LB: 0.6, RB: 0.6, DM: 0.5, CM: 0.9, AM: 1, LW: 0.9, RW: 0.9, ST: 0.4 };
-const FOUL_W: Record<Position, number> = { GK: 0.02, CB: 1, LB: 0.9, RB: 0.9, DM: 1.1, CM: 1, AM: 0.5, LW: 0.45, RW: 0.45, ST: 0.4 };
-const VICTIM_W: Record<Position, number> = { GK: 0, CB: 0.15, LB: 0.4, RB: 0.4, DM: 0.5, CM: 0.8, AM: 1, LW: 1, RW: 1, ST: 0.9 };
-const TACKLE_W: Record<Position, number> = { GK: 0, CB: 1, LB: 0.9, RB: 0.9, DM: 1.2, CM: 0.8, AM: 0.3, LW: 0.25, RW: 0.25, ST: 0.15 };
+const SHOOTER_W: Record<Position, number> = { GK: 0, CB: 0.03, LB: 0.1, RB: 0.1, DM: 0.1, CM: 0.28, AM: 0.65, LW: 0.6, RW: 0.6, ST: 1, LWB: 0.12, RWB: 0.12, LM: 0.35, RM: 0.35, SS: 0.8, CF: 1 };
+const HEADER_W: Record<Position, number> = { GK: 0, CB: 0.12, LB: 0.05, RB: 0.05, DM: 0.1, CM: 0.2, AM: 0.35, LW: 0.25, RW: 0.25, ST: 1, LWB: 0.1, RWB: 0.1, LM: 0.15, RM: 0.15, SS: 0.5, CF: 1.1 };
+const CORNER_W: Record<Position, number> = { GK: 0, CB: 0.8, LB: 0.2, RB: 0.2, DM: 0.3, CM: 0.3, AM: 0.2, LW: 0.15, RW: 0.15, ST: 1, LWB: 0.15, RWB: 0.15, LM: 0.15, RM: 0.15, SS: 0.5, CF: 1.1 };
+const LONG_W: Record<Position, number> = { GK: 0, CB: 0.05, LB: 0.15, RB: 0.15, DM: 0.5, CM: 0.7, AM: 1, LW: 0.6, RW: 0.6, ST: 0.4, LWB: 0.2, RWB: 0.2, LM: 0.55, RM: 0.55, SS: 0.7, CF: 0.35 };
+/** Quem faz o cruzamento nos lances de cruzamento: jogadores de corredor. */
+const CROSSER_W: Record<Position, number> = { GK: 0, CB: 0.05, LB: 0.8, RB: 0.8, LWB: 1, RWB: 1, DM: 0.2, CM: 0.35, LM: 1, RM: 1, AM: 0.4, LW: 0.9, RW: 0.9, ST: 0.1, SS: 0.15, CF: 0.05 };
+const PASSER_W: Record<Position, number> = { GK: 0.05, CB: 0.15, LB: 0.6, RB: 0.6, DM: 0.5, CM: 0.9, AM: 1, LW: 0.9, RW: 0.9, ST: 0.4, LWB: 0.75, RWB: 0.75, LM: 0.95, RM: 0.95, SS: 0.7, CF: 0.35 };
+const FOUL_W: Record<Position, number> = { GK: 0.02, CB: 1, LB: 0.9, RB: 0.9, DM: 1.1, CM: 1, AM: 0.5, LW: 0.45, RW: 0.45, ST: 0.4, LWB: 0.85, RWB: 0.85, LM: 0.7, RM: 0.7, SS: 0.4, CF: 0.45 };
+const VICTIM_W: Record<Position, number> = { GK: 0, CB: 0.15, LB: 0.4, RB: 0.4, DM: 0.5, CM: 0.8, AM: 1, LW: 1, RW: 1, ST: 0.9, LWB: 0.6, RWB: 0.6, LM: 0.9, RM: 0.9, SS: 0.95, CF: 0.9 };
+const TACKLE_W: Record<Position, number> = { GK: 0, CB: 1, LB: 0.9, RB: 0.9, DM: 1.2, CM: 0.8, AM: 0.3, LW: 0.25, RW: 0.25, ST: 0.15, LWB: 0.8, RWB: 0.8, LM: 0.55, RM: 0.55, SS: 0.2, CF: 0.15 };
 const CHANCE_BASE_XG: Record<ChanceType, number> = { buildup: 0.115, cross: 0.075, long: 0.042, counter: 0.19, corner: 0.07, freekick: 0.055, penalty: 0.76 };
 
 const emptyStats = (): TeamStats => ({
@@ -82,7 +118,7 @@ export function conditionAfter(condition: number, stamina: number, minutes: numb
 /** Nota do jogador (3..10) com o placar e os minutos informados: usada no fim do jogo e, parcial, a cada minuto. */
 export function rateReport(r: PlayerReport, minutes: number, ownGoals: number, oppGoals: number): number {
   const result = ownGoals > oppGoals ? 0.3 : ownGoals < oppGoals ? -0.3 : 0;
-  const defender = ['CB', 'LB', 'RB'].includes(r.slot);
+  const defender = ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(r.slot);
   let rating = 6 + result
     + Math.min(r.goals, 3) * 1.1 + Math.min(r.assists, 3) * 0.7 + Math.min(r.keyPasses, 4) * 0.12
     + Math.min(r.tackles, 5) * 0.12 + Math.min(r.interceptions, 5) * 0.1
@@ -110,14 +146,23 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const clock = { minute: 0, label: "0'" };
 
   const mk = (sheet: TeamSheet, idx: Side): TeamState => {
-    const all = sheet.lineup.map((l) => ({
-      p: { ...l.player }, slot: l.slot, x: l.x, y: l.y, fatigue: 0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0),
-    }));
+    const all = sheet.lineup.map((l) => {
+      const live = { p: { ...l.player }, slot: l.slot, x: l.x, y: l.y, fatigue: 0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0) } as Live;
+      setRole(live, l.role);
+      return live;
+    });
     return {
-      idx, sheet, active: [...all], all, bench: sheet.bench.map((b) => ({ ...b })), subsUsed: 0, formation: sheet.formation, stats: emptyStats(), held: 0, goals: 0,
+      idx, sheet, active: [...all], all, bench: sheet.bench.map((b) => ({ ...b })), subsUsed: 0, formation: formationLabel(sheet.formation), fx: { build: 0, risk: 0, sweep: 0 }, stats: emptyStats(), held: 0, goals: 0,
       r: { att: 0, mid: 0, def: 0, gk: 0, pass: 0, aggression: 0 },
     };
   };
+  /** Define a função do jogador na vaga (a escolhida, se servir para a posição; senão, a melhor para ele). */
+  function setRole(l: Live, roleId?: string | null): void {
+    const rating = overallFor(l.p.attributes, l.slot);
+    const chosen = roleById(roleId);
+    const role = chosen && chosen.positions.includes(l.slot) ? chosen : bestRole(l.p, l.slot, rating);
+    l.role = role; l.roleK = roleFactor(l.p, role, rating); l.zone = zoneWithRole(l.slot, role); l.rep.role = role.id;
+  }
   const T: [TeamState, TeamState] = [mk(home, 0), mk(away, 1)];
   // Forma do dia (evento aleatório controlado): ±8% no máximo, independente por equipe e constante na partida.
   const dayForm: [number, number] = [clamp(rng.normal(1, 0.04), 0.92, 1.08), clamp(rng.normal(1, 0.04), 0.92, 1.08)];
@@ -134,9 +179,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const refresh = (t: TeamState, o: TeamState): void => {
     const sum = { att: 0, mid: 0, def: 0 }, w = { att: 0, mid: 0, def: 0 };
     let gk = 45, pass = 0, passN = 0, aggr = 0;
+    t.fx = { build: 0, risk: 0, sweep: 0 };
     for (const l of t.active) {
-      const eff = effective(l.p, l.slot) * fatigueMul(l);
-      const z = ZONE[l.slot];
+      const eff = effective(l.p, l.slot) * l.roleK * fatigueMul(l);
+      const z = l.zone;
+      t.fx.build += l.role.fx.build ?? 0; t.fx.risk += l.role.fx.risk ?? 0; t.fx.sweep += l.role.fx.sweep ?? 0;
       for (const k of ['att', 'mid', 'def'] as const) { sum[k] += z[k] * eff; w[k] += z[k]; }
       if (l.slot === 'GK') gk = eff;
       else {
@@ -146,7 +193,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       }
       aggr += a20(l.p.attributes.mental.aggression);
     }
-    const zone = (k: 'att' | 'mid' | 'def') => (w[k] > 0 ? (sum[k] / w[k]) * Math.pow(Math.max(w[k], 0.5) / REF[k], 0.5) : 20);
+    // retornos decrescentes por setor: 0,35 (era 0,5, que punia demais formações desbalanceadas — 5-3-2, 4-1-4-1 — com SA/CA e funções)
+    const zone = (k: 'att' | 'mid' | 'def') => (w[k] > 0 ? (sum[k] / w[k]) * Math.pow(Math.max(w[k], 0.5) / REF[k], ZONE_EXP) : 20);
     const tac = t.sheet.tactics;
     const lead = t.goals - o.goals;
     const late = clock.minute >= 70 ? (clock.minute - 60) / 30 : 0; // urgência cresce no fim
@@ -176,22 +224,30 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const ensureGoalkeeper = (t: TeamState): void => {
     if (t.active.some((l) => l.slot === 'GK') || t.active.length === 0) return;
     const gkBench = t.bench.filter((b) => b.position === 'GK');
+    if (gkBench.length && t.subsUsed < 5 && controlled(t)) {
+      // o técnico decide: alguém de linha vai para o gol improvisado e o auxiliar sugere pôr o goleiro reserva
+      const emergency = [...t.active].sort((a, b) => b.p.attributes.technical.goalkeeping - a.p.attributes.technical.goalkeeping)[0]!;
+      emergency.slot = 'GK'; setRole(emergency);
+      suggestions.push(suggestion(t, emergency, gkBench[0]!, 'GK', 'goalkeeper'));
+      return;
+    }
     if (gkBench.length && t.subsUsed < 5) {
       const victim = [...t.active].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0]!;
       doSub(t, victim, gkBench[0]!, 'GK', 'gk_replacement');
       return;
     }
     const emergency = [...t.active].sort((a, b) => b.p.attributes.technical.goalkeeping - a.p.attributes.technical.goalkeeping)[0]!;
-    emergency.slot = 'GK';
+    emergency.slot = 'GK'; setRole(emergency);
   };
 
-  const doSub = (t: TeamState, out: Live, inP: MatchPlayer, slot: Position, detail?: string): void => {
+  const doSub = (t: TeamState, out: Live, inP: MatchPlayer, slot: Position, detail?: string, roleId?: string): void => {
     const m = clock.minute;
     out.rep.subbedOutAt = m;
     removeFromPitch(t, out);
     t.bench = t.bench.filter((b) => b.id !== inP.id);
     t.subsUsed++;
-    const live: Live = { p: inP, slot, x: out.x, y: out.y, fatigue: 0, yellow: 0, out: false, rep: newReport(inP, t.idx, slot, false, m) };
+    const live = { p: inP, slot, x: out.x, y: out.y, fatigue: 0, yellow: 0, out: false, rep: newReport(inP, t.idx, slot, false, m) } as Live;
+    setRole(live, roleId);
     t.active.push(live); t.all.push(live);
     emit('substitution', t.idx, { player: inP.id, player2: out.p.id, detail });
   };
@@ -261,10 +317,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const shoot = (att: TeamState, def: TeamState, type: ChanceType): void => {
     const weights = type === 'cross' ? HEADER_W : type === 'corner' ? CORNER_W : type === 'long' || type === 'freekick' ? LONG_W : SHOOTER_W;
     const kind = type === 'cross' || type === 'corner' ? 'header' : type === 'long' || type === 'freekick' ? 'long' : 'finish';
-    const shooter = pickLive(att, (l) => weights[l.slot] * Math.pow(0.3 + attrScore(l.p, kind), 2));
+    const fxKey = type === 'cross' || type === 'corner' ? 'head' : type === 'long' || type === 'freekick' ? 'long' : 'shoot';
+    const shooter = pickLive(att, (l) => weights[l.slot] * (l.role.fx[fxKey] ?? 1) * Math.pow(0.3 + attrScore(l.p, kind), 2));
     if (!shooter) return;
     const passer = type === 'buildup' || type === 'cross' || type === 'counter'
-      ? pickLive(att, (l) => PASSER_W[l.slot] * Math.pow(0.3 + attrScore(l.p, 'pass'), 2), shooter) : null;
+      ? pickLive(att, (l) => (type === 'cross' ? CROSSER_W[l.slot] * (l.role.fx.cross ?? 1) * Math.pow(0.3 + a20(l.p.attributes.technical.crossing), 2) : PASSER_W[l.slot] * (l.role.fx.pass ?? 1) * Math.pow(0.3 + attrScore(l.p, 'pass'), 2)), shooter) : null;
     const skill = attrScore(shooter.p, kind) * fatigueMul(shooter);
     const finishMod = 0.55 + 0.9 * skill;
     const ctxMod = clamp(Math.pow(att.r.att / Math.max(def.r.def, 1), 0.55), 0.65, 1.5);
@@ -313,8 +370,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   };
 
   const foul = (att: TeamState, def: TeamState): void => {
-    const fouler = pickLive(def, (l) => FOUL_W[l.slot] * (0.4 + a20(l.p.attributes.mental.aggression)) * (l.yellow > 0 ? 0.3 : 1));
-    const victim = pickLive(att, (l) => VICTIM_W[l.slot] * (0.4 + a20(l.p.attributes.technical.dribbling)));
+    const fouler = pickLive(def, (l) => FOUL_W[l.slot] * (l.role.fx.foul ?? 1) * (0.4 + a20(l.p.attributes.mental.aggression)) * (l.yellow > 0 ? 0.3 : 1));
+    const victim = pickLive(att, (l) => VICTIM_W[l.slot] * (l.role.fx.victim ?? 1) * (0.4 + a20(l.p.attributes.technical.dribbling)));
     if (!fouler) return;
     def.stats.fouls++; fouler.rep.fouls++;
     emit('foul', def.idx, { player: fouler.p.id, player2: victim?.p.id });
@@ -332,7 +389,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   };
 
   const offside = (att: TeamState): void => {
-    const p = pickLive(att, (l) => (l.slot === 'ST' ? 1 : l.slot === 'LW' || l.slot === 'RW' ? 0.8 : l.slot === 'AM' ? 0.4 : 0.05) * (0.3 + a20(l.p.attributes.physical.pace)));
+    const p = pickLive(att, (l) => (l.slot === 'ST' || l.slot === 'CF' ? 1 : l.slot === 'SS' ? 0.8 : l.slot === 'LW' || l.slot === 'RW' ? 0.8 : l.slot === 'AM' || l.slot === 'LM' || l.slot === 'RM' ? 0.4 : l.slot === 'LWB' || l.slot === 'RWB' ? 0.15 : 0.05) * (l.role.fx.offside ?? 1) * (0.3 + a20(l.p.attributes.physical.pace)));
     if (!p) return;
     att.stats.offsides++;
     emit('offside', att.idx, { player: p.p.id });
@@ -352,10 +409,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     acc -= 0.018 * (dtac.pressing - 3);
     acc += tac.buildUp === 'short' ? 0.03 : tac.buildUp === 'long' ? -0.08 : 0;
     acc -= (conditions.weather === 'rain' ? 0.025 : 0) + (conditions.pitch === 'poor' ? 0.02 : 0);
+    acc += 0.006 * att.fx.build; // funções de saída de bola (goleiro/zagueiro/volante construtor, organizador…)
     acc = clamp(acc, 0.5, 0.94);
     let ok = 0;
     for (let i = 0; i < n; i++) {
-      const who = pickLive(att, (l) => PASSER_W[l.slot] + 0.1);
+      const who = pickLive(att, (l) => (PASSER_W[l.slot] + 0.1) * (l.role.fx.pass ?? 1));
       const success = rng.next() < acc;
       if (who) { who.rep.passes++; if (success) who.rep.passesCompleted++; }
       if (success) ok++;
@@ -370,7 +428,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const counter = lastHolder !== null && lastHolder !== h;
     if (counter && rng.chance(0.54)) {
       const tackle = rng.chance(0.6);
-      const who = pickLive(att, (l) => TACKLE_W[l.slot] * (0.3 + a20(tackle ? l.p.attributes.technical.tackling : l.p.attributes.mental.positioning)));
+      const who = pickLive(att, (l) => TACKLE_W[l.slot] * (l.role.fx.tackle ?? 1) * (0.3 + a20(tackle ? l.p.attributes.technical.tackling : l.p.attributes.mental.positioning)));
       if (who) {
         if (tackle) { who.rep.tackles++; att.stats.tackles++; } else { who.rep.interceptions++; att.stats.interceptions++; }
       }
@@ -383,7 +441,9 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const pOffside = K.offside * (1 + 0.18 * (dtac.defensiveLine - 3));
     const ratio = clamp(Math.pow(att.r.att / Math.max(def.r.def, 1), 1.6), 0.4, 2.4);
     const mentMod = atac.mentality === 'attacking' ? 1.1 : atac.mentality === 'defensive' ? 0.88 : 1;
-    const pChance = K.chance * ratio * mentMod * (counter ? K.counterBoost * (1 + 0.12 * (dtac.defensiveLine - 3)) : 1);
+    // contra-ataque: funções que deixam espaço nas costas aumentam; goleiro líbero cobrindo a profundidade reduz
+    const exposure = clamp(1 + 0.05 * def.fx.risk - 0.12 * def.fx.sweep, 0.7, 1.4);
+    const pChance = K.chance * ratio * mentMod * (counter ? K.counterBoost * (1 + 0.12 * (dtac.defensiveLine - 3)) * exposure : 1);
     const r = rng.next();
     if (r < pFoul) foul(att, def);
     else if (r < pFoul + pOffside) offside(att);
@@ -410,7 +470,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const load = (0.3 + 0.05 * (tac.tempo - 3) + 0.06 * (tac.pressing - 3) + heat) * intensity;
     for (const l of t.active) {
       const sta = 1.5 - a20(l.p.attributes.physical.stamina) * 0.9 - (a20(l.p.attributes.physical.naturalFitness) - 0.5) * 0.2;
-      l.fatigue += Math.max(load * sta, 0.05);
+      l.fatigue += Math.max(load * sta, 0.05) * (l.slot === 'LWB' || l.slot === 'RWB' ? 1.15 : l.slot === 'LM' || l.slot === 'RM' ? 1.05 : 1) * (l.role.fx.fatigue ?? 1);
     }
   };
 
@@ -423,11 +483,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const outfield = t.active.filter((l) => l.slot !== 'GK');
     if (minute >= 66 && lead < 0) {
       const out = [...outfield.filter((l) => ZONE[l.slot].def > 0 || l.slot === 'DM')].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
-      const inP = t.bench.filter((b) => b.position === 'ST' || b.position === 'LW' || b.position === 'RW' || b.position === 'AM').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      const inP = t.bench.filter((b) => b.position === 'ST' || b.position === 'CF' || b.position === 'SS' || b.position === 'LW' || b.position === 'RW' || b.position === 'AM').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
       if (out && inP) { doSub(t, out, inP, inP.position); limit--; refresh(t, o); }
     } else if (minute >= 74 && lead > 0) {
       const out = [...outfield.filter((l) => ZONE[l.slot].att >= 0.85)].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
-      const inP = t.bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      const inP = t.bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB' || b.position === 'LWB' || b.position === 'RWB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
       if (out && inP) { doSub(t, out, inP, inP.position); limit--; refresh(t, o); }
     }
     while (limit > 0 && t.subsUsed < 5 && t.bench.length) {
@@ -497,11 +557,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const outfield = active.filter((l) => l.slot !== 'GK');
     if (minute >= 66 && lead < 0) {
       const o = [...outfield.filter((l) => ZONE[l.slot].def > 0 || l.slot === 'DM')].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
-      const i = bench.filter((b) => b.position === 'ST' || b.position === 'LW' || b.position === 'RW' || b.position === 'AM').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      const i = bench.filter((b) => b.position === 'ST' || b.position === 'CF' || b.position === 'SS' || b.position === 'LW' || b.position === 'RW' || b.position === 'AM').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
       if (o && i) take(o, i, i.position, 'chase');
     } else if (minute >= 74 && lead > 0) {
       const o = [...outfield.filter((l) => ZONE[l.slot].att >= 0.85)].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0];
-      const i = bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
+      const i = bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB' || b.position === 'LWB' || b.position === 'RWB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
       if (o && i) take(o, i, i.position, 'protect');
     }
     const best = (slot: Position) => [...bench.filter((b) => (slot === 'GK' ? b.position === 'GK' : b.position !== 'GK'))].sort((a, b) => effective(b, slot) - effective(a, slot))[0] ?? null;
@@ -522,7 +582,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const cond = Math.round(conditionAfter(l.p.condition, l.p.attributes.physical.stamina, mins, conditions.weather));
     const rating = rateReport(l.rep, mins, t.goals, o.goals).toFixed(1).replace('.', ',');
     const pos = (p: Position) => POS_NAME[p].toLowerCase();
-    const reason = kind === 'injury' ? `${l.p.name} se lesionou (cerca de ${injuryDays} dia(s) fora) e não tem condição de continuar. ${b.name} é a melhor opção do banco para jogar como ${pos(slot)}.`
+    const reason = kind === 'goalkeeper' ? `Ficamos sem goleiro e ${l.p.name} foi para o gol improvisado. Sugiro tirá-lo e colocar o goleiro ${b.name}.`
+      : kind === 'injury' ? `${l.p.name} se lesionou (cerca de ${injuryDays} dia(s) fora) e não tem condição de continuar. ${b.name} é a melhor opção do banco para jogar como ${pos(slot)}.`
       : kind === 'chase' ? `Estamos perdendo por ${-lead}. Sugiro tirar ${l.p.name} (${pos(l.slot)}, nota ${rating}) e colocar ${b.name}, ${pos(b.position)}, para ter mais força no ataque e buscar o resultado.`
       : kind === 'protect' ? `Estamos vencendo por ${lead}. Para segurar o resultado, ${b.name} (${pos(b.position)}) pode entrar no lugar de ${l.p.name}, que é mais ofensivo.`
       : fatigueMul(l) < 0.93 ? `${l.p.name} está cansado (condição ${cond}%, nota ${rating}) e o rendimento caiu. ${b.name} entra descansado para jogar como ${pos(slot)}.`
@@ -588,7 +649,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     if (!out) throw new MatchInterventionError('O jogador escolhido para sair não está mais em campo.');
     if (!inP) throw new MatchInterventionError('O jogador escolhido para entrar não está disponível no banco.');
     if (t.subsUsed >= 5) throw new MatchInterventionError('O time já fez as 5 substituições permitidas.');
-    doSub(t, out, inP, iv.slot ?? out.slot, 'coach');
+    doSub(t, out, inP, iv.slot ?? out.slot, 'coach', iv.role);
     if (iv.reshape) reorganize(t, inP.id);
   }
   /** Aplica a formação escolhida por `planReshape`: muda a função (e o lugar) de cada jogador em campo. */
@@ -596,7 +657,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const plan = planReshape(t.active.map((l) => ({ id: l.p.id, p: l.p, slot: l.slot, x: l.x })), t.formation, keepFirst);
     if (!plan) return;
     const from = t.formation;
-    for (const l of t.active) { const a = plan.assign.get(l.p.id); if (a) { l.slot = a.slot; l.x = a.x; l.y = a.y; l.rep.slot = a.slot; } }
+    for (const l of t.active) { const a = plan.assign.get(l.p.id); if (a) { const moved = l.slot !== a.slot; l.slot = a.slot; l.x = a.x; l.y = a.y; l.rep.slot = a.slot; if (moved) setRole(l); } }
     t.formation = plan.id;
     emit('formation_change', t.idx, { detail: `${from}>${plan.id}`, moves: t.active.map((l) => ({ id: l.p.id, slot: l.slot, x: l.x, y: l.y })) });
   }
@@ -620,12 +681,13 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const stoppage = (from: number): number => {
     let score = 0;
     for (const e of events.slice(from)) {
-      if (e.type === 'goal') score += 0.8;
-      else if (e.type === 'substitution') score += 0.5;
-      else if (e.type === 'injury') score += 1.5;
-      else if (e.type === 'yellow_card' || e.type === 'red_card') score += 0.3;
-      else if (e.type === 'foul') score += 0.08;
-      else if (e.type === 'penalty_awarded') score += 0.8;
+      // calibrado pela bateria de formações: ~2–3 min no 1º tempo e ~4–6 no 2º (antes 3,4 e 6,7)
+      if (e.type === 'goal') score += 0.5;
+      else if (e.type === 'substitution') score += 0.3;
+      else if (e.type === 'injury') score += 1.0;
+      else if (e.type === 'yellow_card' || e.type === 'red_card') score += 0.2;
+      else if (e.type === 'foul') score += 0.03;
+      else if (e.type === 'penalty_awarded') score += 0.5;
     }
     return clamp(1 + Math.round(score + rng.float(-0.6, 0.6)), 1, 8);
   };
@@ -710,7 +772,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     seed: opts.seed, homeGoals: T[0].goals, awayGoals: T[1].goals, decidedIn, shootout, winner, events,
     stats: [T[0].stats, T[1].stats], players: reports,
     lineups: T.map((t) => ({
-      clubId: t.sheet.clubId, name: t.sheet.name, formation: t.sheet.formation,
+      clubId: t.sheet.clubId, name: t.sheet.name, formation: formationLabel(t.sheet.formation),
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
     conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions,

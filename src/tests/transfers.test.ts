@@ -76,7 +76,7 @@ test('Mercado: só estimativas (nunca os atributos reais), sem jogadores do pró
   }
   assert.deepEqual(all.map((p) => p.marketValue), [...all].map((p) => p.marketValue).sort((a, b) => b - a));
   assert.ok(searchMarket(db, { position: 'GK' }).every((p) => p.position === 'GK'));
-  assert.ok(searchMarket(db, { position: 'DEF' }).every((p) => ['CB', 'LB', 'RB'].includes(p.position)));
+  assert.ok(searchMarket(db, { position: 'DEF' }).every((p) => ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(p.position)));
   assert.ok(searchMarket(db, { minAge: 30 }).every((p) => p.age >= 30));
   assert.ok(searchMarket(db, { maxAge: 20 }).every((p) => p.age <= 20));
   assert.ok(searchMarket(db, { maxValue: 500_000 }).every((p) => p.marketValue <= 500_000));

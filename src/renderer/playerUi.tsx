@@ -29,3 +29,21 @@ export function PlayerFlags({ p }: { p: Pick<MarketPlayerDto, 'shortlisted' | 's
     </span>
   );
 }
+
+/**
+ * Bandeira desenhada em SVG (sem imagens externas). O universo atual tem Brasil e Inglaterra;
+ * qualquer outro código aparece como selo neutro com a sigla, nunca com uma bandeira inventada.
+ */
+export function Flag({ code, name }: { code: string; name: string }) {
+  const art = code === 'BRA' ? (
+    <><rect width="30" height="20" fill="#009c3b" /><polygon points="15,2.5 27.5,10 15,17.5 2.5,10" fill="#ffdf00" /><circle cx="15" cy="10" r="4.6" fill="#002776" /><path d="M10.6 9.2 q4.4 -1.6 8.8 1.4" stroke="#fff" strokeWidth=".9" fill="none" /></>
+  ) : code === 'ENG' ? (
+    <><rect width="30" height="20" fill="#fff" /><rect x="12.5" width="5" height="20" fill="#ce1124" /><rect y="7.5" width="30" height="5" fill="#ce1124" /></>
+  ) : null;
+  return (
+    <span className="flag-wrap" title={name}>
+      {art ? <svg viewBox="0 0 30 20" className="flag-svg" role="img" aria-label={name}>{art}</svg> : <span className="flag-svg flag-none" aria-hidden="true" />}
+      <span className="flag-code">{code}</span>
+    </span>
+  );
+}

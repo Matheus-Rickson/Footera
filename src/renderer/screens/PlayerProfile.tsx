@@ -17,7 +17,7 @@ const ATTR_LABEL: Record<string, string> = {
 };
 const GROUP_LABEL = { technical: 'Técnicos', mental: 'Mentais', physical: 'Físicos' } as const;
 /** Posições num campo vertical (ataque para cima), em % da largura/altura. */
-const POS_XY: Record<Position, [number, number]> = { GK: [50, 91], CB: [50, 76], LB: [17, 70], RB: [83, 70], DM: [50, 61], CM: [50, 49], AM: [50, 36], LW: [17, 28], RW: [83, 28], ST: [50, 14] };
+const POS_XY: Record<Position, [number, number]> = { GK: [50, 91], CB: [50, 76], LB: [17, 70], RB: [83, 70], LWB: [9, 57], RWB: [91, 57], DM: [50, 61], CM: [50, 49], LM: [13, 43], RM: [87, 43], AM: [50, 36], LW: [17, 28], RW: [83, 28], SS: [36, 22], CF: [50, 11], ST: [64, 14] };
 const VERDICT_CLASS = { starter: 'ok', rotation: 'notice', depth: 'notice', no: 'error' } as const;
 
 /** Resumo em 6 grupos (escala 0–100 = média dos atributos 1–20 × 5). Goleiros trocam "Finalização" por "Goleiro". */
@@ -150,6 +150,21 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
               <PositionMap natural={p.position} familiar={p.secondaryPositions} />
             </section>
           </div>
+          {p.roles && (
+            <section className="card">
+              <div className="bar"><h2>Funções</h2><span className="muted small">Compatibilidade = quanto os atributos combinam com a função; domínio = quanto ele já sabe jogar assim (cresce jogando e treinando a função em Táticas). Treinar a função com foco Equilibrado também puxa a evolução dos atributos dela.</span></div>
+              <div className="pf-roles">
+                {[...p.roles.list].sort((a, b) => b.familiarity - a.familiarity || b.suitability - a.suitability).map((r) => (
+                  <div key={r.id} className={`pf-role ${p.roles!.focus === r.id ? 'pf-role-focus' : ''}`} title={r.description}>
+                    <div className="pf-role-head"><b>{r.label}</b>{r.positions.filter((x) => x !== 'ST').map((x) => <PosPill key={x} pos={x} minor />)}
+                      {p.roles!.focus === r.id && <span className="pf-chip" title="Função treinada neste mês"><Dumbbell size={11} aria-hidden="true" /> treinando</span>}</div>
+                    <div className="pf-bar"><span className="muted">Compatibilidade</span><span className="pf-track"><i className={tone(r.suitability)} style={{ width: `${r.suitability}%` }} /></span><b className={tone(r.suitability)}>{r.suitability}</b></div>
+                    <div className="pf-bar"><span className="muted">Domínio</span><span className="pf-track"><i className={tone(r.familiarity)} style={{ width: `${r.familiarity}%` }} /></span><b className={tone(r.familiarity)}>{r.familiarity}%</b></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="pf-grid3">
             <section className="card">
               <h2>Desenvolvimento</h2>

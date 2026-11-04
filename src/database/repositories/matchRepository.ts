@@ -5,6 +5,7 @@ import { createRng, clamp } from '../../game/rng.ts';
 import { conditionAfter, simulateMatch } from '../../game/match-engine/engine.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
+import { formationLabel } from '../../game/match-engine/formations.ts';
 import type { Intervention, MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
 import { addDays } from '../../shared/date.ts';
 import type { Coach, Player } from '../../shared/types.ts';
@@ -15,6 +16,7 @@ import { makePoster, recordGate, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { applyResult, getCareerState } from './competitionRepository.ts';
 import { loadSquad, type Squad, type Status } from './squadRepository.ts';
+import { addFamiliarity, ROLE_MATCH_GAIN } from './roleRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
 import { applyMatchesToBoard } from './boardRepository.ts';
 
@@ -67,7 +69,7 @@ function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
     const mine = id === ctx.userClub ? ctx.scheme : null;
     const r = buildSheetDetailed({
       clubId: id, name, squad: sq.available.map(toMatchPlayer), previousFormation: st.formation, previousLineup: st.lineup,
-      tactics: mine ? mine.settings : BALANCED, formationId: mine?.formation, preferredLineup: mine?.lineup ?? null,
+      tactics: mine ? mine.settings : BALANCED, formationId: mine?.formation, preferredLineup: mine?.lineup ?? null, preferredRoles: mine?.roles ?? null,
     });
     for (const x of r.replaced) {
       const wanted = sq.players.find((p) => p.id === x.wantedId);
@@ -100,7 +102,7 @@ function storedOf(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixtur
   const involves = f.homeId === ctx.userClub || f.awayId === ctx.userClub;
   return {
     v: 1, detail: involves ? 'full' : 'compact',
-    home: { clubId: f.homeId, name: f.homeName, formation: prep.hSheet.formation }, away: { clubId: f.awayId, name: f.awayName, formation: prep.aSheet.formation },
+    home: { clubId: f.homeId, name: f.homeName, formation: formationLabel(prep.hSheet.formation) }, away: { clubId: f.awayId, name: f.awayName, formation: formationLabel(prep.aSheet.formation) },
     homeGoals: out.homeGoals, awayGoals: out.awayGoals, decidedIn: out.decidedIn, shootout: out.shootout, winner: out.winner,
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
@@ -140,6 +142,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
       Math.round(clamp(0.7 * p.form + 0.3 * (50 + (r.rating - 6) * 15), 0, 100) * 10) / 10,
       clamp(p.morale + (result > 0 ? 3 : result < 0 ? -3 : 0), 10, 100), p.id);
     upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating);
+    if (r.role && r.minutes > 0) addFamiliarity(db, p, r.role, (ROLE_MATCH_GAIN * r.minutes) / 90); // aprende a função jogando
     const st = statusOf(sq, p.id);
     let y = st.yellows + r.yellow, susp = st.suspension;
     if (r.red > 0) susp += redKind.get(p.id) ?? 1;

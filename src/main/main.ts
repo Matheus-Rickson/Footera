@@ -11,7 +11,7 @@ import {
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget,
-  getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
+  getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
@@ -99,7 +99,7 @@ function registerHandlers(): void {
   handle('career:simulate', ref, (i) => simulateCareerMatchday(dataDir(), i.profileId, i.careerId));
   const liveSchema = ref.extend({ live: z.object({
     interventions: z.array(z.discriminatedUnion('kind', [
-      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('sub'), out: z.string().min(1).max(60), in: z.string().min(1).max(60), slot: z.enum(['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST']).optional(), reshape: z.boolean().optional() }),
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('sub'), out: z.string().min(1).max(60), in: z.string().min(1).max(60), slot: z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']).optional(), reshape: z.boolean().optional() }),
       z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('talk'), tone: z.enum(['incentivar', 'cobrar', 'encorajar', 'consolar']) }),
     ])).max(12),
     controlUntil: z.number().int().min(0).max(400).nullable(),
@@ -116,7 +116,7 @@ function registerHandlers(): void {
   const schemeId = ref.extend({ schemeId: z.string().min(1).max(60) });
   handle('transfers:get', ref, (i) => getTransfers(dataDir(), i.profileId, i.careerId));
   handle('transfers:search', ref.extend({ filter: z.object({
-    position: z.enum(['GK', 'DEF', 'MID', 'ATT', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST']).optional(),
+    position: z.enum(['GK', 'DEF', 'MID', 'ATT', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']).optional(),
     minAge: z.number().int().min(14).max(50).optional(), maxAge: z.number().int().min(14).max(50).optional(),
     maxValue: z.number().int().min(0).max(1e10).optional(), name: z.string().max(40).optional(), freeOnly: z.boolean().optional(),
   }) }), (i) => searchTransferMarket(dataDir(), i.profileId, i.careerId, i.filter as MarketFilter));
@@ -130,12 +130,13 @@ function registerHandlers(): void {
   handle('finance:get', ref, (i) => getFinance(dataDir(), i.profileId, i.careerId));
   handle('tactics:get', ref, (i) => getTactics(dataDir(), i.profileId, i.careerId));
   handle('tactics:save', ref.extend({ scheme: z.object({
-    id: z.string().max(60).nullable().optional(), name: z.string().max(200), formation: z.string().max(20), settings, lineup: z.array(z.string().max(60)).length(11).nullable(),
+    id: z.string().max(60).nullable().optional(), name: z.string().max(200), formation: z.string().max(80), settings, lineup: z.array(z.string().max(60)).length(11).nullable(),
+    roles: z.array(z.string().max(40).nullable()).length(11).nullable().optional(),
   }) }), (i) => saveTacticScheme(dataDir(), i.profileId, i.careerId, i.scheme as SchemeInput));
   handle('tactics:duplicate', schemeId, (i) => duplicateTacticScheme(dataDir(), i.profileId, i.careerId, i.schemeId));
   handle('tactics:delete', schemeId, (i) => deleteTacticScheme(dataDir(), i.profileId, i.careerId, i.schemeId));
   handle('tactics:activate', schemeId, (i) => activateTacticScheme(dataDir(), i.profileId, i.careerId, i.schemeId));
-  handle('tactics:auto', ref.extend({ formation: z.string().max(20) }), (i) => getAutoLineup(dataDir(), i.profileId, i.careerId, i.formation));
+  handle('tactics:auto', ref.extend({ formation: z.string().max(80) }), (i) => getAutoLineup(dataDir(), i.profileId, i.careerId, i.formation));
   handle('season:status', ref, (i) => getSeason(dataDir(), i.profileId, i.careerId));
   handle('season:start', ref, (i) => beginNextSeason(dataDir(), i.profileId, i.careerId));
   handle('contracts:list', ref, (i) => listContracts(dataDir(), i.profileId, i.careerId));
@@ -162,6 +163,8 @@ function registerHandlers(): void {
   handle('training:delegate', ref.extend({ on: z.boolean() }), (i) => setTrainingDelegated(dataDir(), i.profileId, i.careerId, i.on));
   handle('training:focus', ref.extend({ playerId: id60, focus: z.enum(['balanced', 'finishing', 'creation', 'defense', 'physical', 'technical', 'goalkeeping']) }),
     (i) => setTrainingFocus(dataDir(), i.profileId, i.careerId, i.playerId, i.focus));
+  handle('training:roleFocus', ref.extend({ playerId: id60, roleId: z.string().min(1).max(40).nullable() }),
+    (i) => setTrainingRoleFocus(dataDir(), i.profileId, i.careerId, i.playerId, i.roleId));
   handle('staff:get', ref, (i) => getStaff(dataDir(), i.profileId, i.careerId));
   handle('staff:hire', ref.extend({ candidateId: id60 }), (i) => hireStaffFor(dataDir(), i.profileId, i.careerId, i.candidateId));
   handle('staff:fire', ref.extend({ staffId: id60 }), (i) => fireStaffFor(dataDir(), i.profileId, i.careerId, i.staffId));

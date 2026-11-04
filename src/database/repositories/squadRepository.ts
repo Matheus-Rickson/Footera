@@ -1,6 +1,7 @@
 import type { SqlDb } from '../types.ts';
 import type { Player } from '../../shared/types.ts';
 import { rowToPlayer } from './worldRepository.ts';
+import { withFamiliarity } from './roleRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -9,7 +10,7 @@ export interface Status { injuryUntil: string | null; suspension: number; yellow
 export interface Squad { players: Player[]; status: Map<string, Status>; available: Player[]; suspendedOut: string[] }
 
 export function loadSquad(db: SqlDb, clubId: string, date: string): Squad {
-  const players = db.prepare('SELECT * FROM players WHERE club_id = ?').all(clubId).map(rowToPlayer);
+  const players = withFamiliarity(db, db.prepare('SELECT * FROM players WHERE club_id = ?').all(clubId).map(rowToPlayer));
   const status = new Map<string, Status>();
   for (const r of db.prepare('SELECT ps.* FROM player_status ps JOIN players p ON p.id = ps.player_id WHERE p.club_id = ?').all(clubId)) {
     status.set(S(r.player_id), { injuryUntil: r.injury_until == null ? null : S(r.injury_until), suspension: N(r.suspension_matches), yellows: N(r.yellow_cards) });

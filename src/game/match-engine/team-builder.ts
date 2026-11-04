@@ -8,10 +8,11 @@ export function toMatchPlayer(p: Player): MatchPlayer {
   return {
     id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, secondaryPositions: p.secondaryPositions,
     attributes: p.attributes, condition: p.condition, morale: p.morale, form: p.form,
+    ...(p.roleFamiliarity ? { roleFamiliarity: p.roleFamiliarity } : {}),
   };
 }
 
-const SLOT_ORDER: Position[] = ['GK', 'ST', 'CB', 'LW', 'RW', 'AM', 'DM', 'CM', 'LB', 'RB'];
+const SLOT_ORDER: Position[] = ['GK', 'CF', 'ST', 'SS', 'CB', 'LW', 'RW', 'AM', 'DM', 'CM', 'LM', 'RM', 'LB', 'RB', 'LWB', 'RWB'];
 
 /** Atribui o melhor jogador disponível a cada função (gulosa por escassez), preferindo especialistas naturais. */
 export function assignLineup(players: readonly MatchPlayer[], formation: Formation): { lineup: LineupSlot[]; score: number } {
@@ -74,7 +75,7 @@ export function chooseFormation(players: readonly MatchPlayer[], previousId?: st
 }
 
 const group = (pos: Position): 'GK' | 'DEF' | 'MID' | 'ATT' =>
-  pos === 'GK' ? 'GK' : pos === 'CB' || pos === 'LB' || pos === 'RB' ? 'DEF' : pos === 'DM' || pos === 'CM' || pos === 'AM' ? 'MID' : 'ATT';
+  pos === 'GK' ? 'GK' : pos === 'CB' || pos === 'LB' || pos === 'RB' || pos === 'LWB' || pos === 'RWB' ? 'DEF' : pos === 'DM' || pos === 'CM' || pos === 'AM' || pos === 'LM' || pos === 'RM' ? 'MID' : 'ATT';
 
 /** Banco de 7: 1 goleiro, 2 defensores, 2 meias, 2 atacantes (completando com os melhores restantes). */
 export function pickBench(players: readonly MatchPlayer[], lineup: readonly LineupSlot[]): MatchPlayer[] {
@@ -125,6 +126,7 @@ export function aiTactics(self: readonly LineupSlot[], opponent: readonly Lineup
 export function buildSheetDetailed(args: {
   clubId: string; name: string; squad: readonly MatchPlayer[]; previousFormation?: string | null; previousLineup?: readonly string[] | null;
   tactics: TeamTactics; formationId?: string; preferredLineup?: readonly string[] | null;
+  /** função de cada vaga (alinhada às vagas da formação); ausente/nula = a melhor para o jogador */ preferredRoles?: ReadonlyArray<string | null> | null;
 }): { sheet: TeamSheet; replaced: ReplacedSlot[] } {
   let picked: { formation: Formation; lineup: LineupSlot[]; score: number };
   let replaced: ReplacedSlot[] = [];
@@ -137,7 +139,8 @@ export function buildSheetDetailed(args: {
   } else picked = chooseFormation(args.squad, args.previousFormation);
   return {
     sheet: {
-      clubId: args.clubId, name: args.name, formation: picked.formation.id, lineup: picked.lineup,
+      clubId: args.clubId, name: args.name, formation: picked.formation.id,
+      lineup: args.preferredRoles ? picked.lineup.map((l, i) => (args.preferredRoles![i] ? { ...l, role: args.preferredRoles![i]! } : l)) : picked.lineup,
       bench: pickBench(args.squad, picked.lineup), tactics: args.tactics,
       cohesion: cohesionFrom(args.previousLineup ?? null, picked.lineup.map((l) => l.player.id)),
     },

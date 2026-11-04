@@ -269,3 +269,26 @@ test('Ficha: jogador de outro clube mostra estimativas e permite negociar/observ
   const myYouth = String(db.prepare('SELECT id FROM players WHERE youth_club_id = ? LIMIT 1').get(clubId)!.id);
   assert.equal(getPlayerProfile(db, myYouth).youth, true);
 });
+
+test('Base: só universos novos (marcados) geram as posições novas (ME/MD/AE/AD/SA/CA); saves anteriores seguem com as 10 posições originais', async () => {
+  const { GROUP_POSITIONS, GROUP_POSITIONS_V2, GROUP_POSITIONS_V3 } = await import('../database/repositories/youthRepository.ts');
+  const novas = ['LM', 'RM', 'LWB', 'RWB', 'SS', 'CF'];
+  assert.ok(!Object.values(GROUP_POSITIONS).flat().some((p) => novas.includes(p)));
+  assert.ok(['LM', 'RM', 'LWB', 'RWB'].every((p) => Object.values(GROUP_POSITIONS_V2).flat().includes(p as never)), 'v2: meias abertos e alas');
+  assert.ok(novas.every((p) => Object.values(GROUP_POSITIONS_V3).flat().includes(p as never)) && !GROUP_POSITIONS_V3.ATT.includes('ST'), 'v3: também SA e CA, sem ATA');
+  const { db } = await setup();
+  assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'position_set'").get()?.value), 'v3', 'carreira nova marcada');
+  const { youthIntake } = await import('../database/repositories/youthRepository.ts');
+  const youthPositions = (d: typeof db) => d.prepare('SELECT position FROM players WHERE youth_club_id IS NOT NULL').all().map((r) => String(r.position));
+  // save novo: as academias (criadas na carreira) e a peneira já trazem as posições novas
+  youthIntake(db, '2027-03-15');
+  assert.ok(youthPositions(db).some((p) => novas.includes(p)), 'save novo gera ME/MD/AE/AD na base');
+  // save anterior (sem a marcação): academia e peneira só com as posições originais
+  const { db: old } = await setup('sy-antigo');
+  old.exec("DELETE FROM meta WHERE key = 'position_set'");
+  old.exec('DELETE FROM players WHERE youth_club_id IS NOT NULL');
+  youthIntake(old, '2027-03-15');
+  const got = youthPositions(old);
+  assert.ok(got.length > 20, 'a peneira gerou jovens');
+  assert.ok(!got.some((p) => novas.includes(p)), 'save anterior não ganha as posições novas');
+});

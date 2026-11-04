@@ -21,7 +21,7 @@ export function windowStatus(date: string): WindowStatus {
 
 export type PositionGroup = 'GK' | 'DEF' | 'MID' | 'ATT';
 export const groupOf = (pos: Position): PositionGroup =>
-  pos === 'GK' ? 'GK' : pos === 'CB' || pos === 'LB' || pos === 'RB' ? 'DEF' : pos === 'DM' || pos === 'CM' || pos === 'AM' ? 'MID' : 'ATT';
+  pos === 'GK' ? 'GK' : pos === 'CB' || pos === 'LB' || pos === 'RB' || pos === 'LWB' || pos === 'RWB' ? 'DEF' : pos === 'DM' || pos === 'CM' || pos === 'AM' || pos === 'LM' || pos === 'RM' ? 'MID' : 'ATT';
 
 export interface PricedPlayer {
   marketValue: number; age: number; overall: number; potentialHidden: number; contractMonthsLeft: number; isKey: boolean;

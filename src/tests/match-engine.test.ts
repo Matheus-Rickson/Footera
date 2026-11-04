@@ -122,6 +122,10 @@ test('Motor (calibração): médias de 500 partidas equilibradas ficam dentro de
   inRange('posse do mandante', per((r) => r.stats[0].possession), 47, 58);
   inRange('pênaltis/jogo', per((r) => r.events.filter((e) => e.type === 'penalty_awarded').length), 0.15, 0.5);
   inRange('xG vs gols', per((r) => r.stats[0].xg + r.stats[1].xg) / per((r) => r.homeGoals + r.awayGoals), 0.85, 1.15);
+  inRange('0x0 (%)', 100 * mean(runs.map((r) => (r.homeGoals + r.awayGoals === 0 ? 1 : 0))), 3, 11);
+  const added = (tag: string) => per((r) => Number(String(r.events.find((e) => e.type === 'period_end' && e.detail === tag)!.label).split('+')[1]!.replace("'", '')));
+  inRange('acréscimos 1º tempo', added('halftime'), 1.2, 3.2);
+  inRange('acréscimos 2º tempo', added('fulltime'), 3, 5.5);
 });
 
 test('Motor (causal): desnível grande (6º da 1ª × 11º da 2ª) decide a maioria dos jogos, e um desnível pequeno decide menos', () => {
@@ -170,7 +174,7 @@ test('Motor (causal): improvisar jogador de linha no gol e jogar cansado pioram 
   const [a, b] = [mid[1]!, mid[4]!];
   const base = sheet(a), opp = sheet(b);
   const swapped: TeamSheet = (() => {
-    const gkIdx = base.lineup.findIndex((l) => l.slot === 'GK'), stIdx = base.lineup.findIndex((l) => l.slot === 'ST');
+    const gkIdx = base.lineup.findIndex((l) => l.slot === 'GK'), stIdx = base.lineup.findIndex((l) => l.slot === 'CF');
     const lineup = base.lineup.map((l) => ({ ...l }));
     lineup[gkIdx] = { ...lineup[gkIdx]!, player: base.lineup[stIdx]!.player };
     lineup[stIdx] = { ...lineup[stIdx]!, player: base.lineup[gkIdx]!.player };
@@ -315,7 +319,7 @@ test('Auxiliar: sob controle do técnico sugere (sem executar) as mesmas trocas 
     const firstAuto = auto.events.find((e) => e.type === 'substitution' && e.team === side);
     const injBefore = firstAuto && auto.events.some((e) => e.type === 'injury' && e.team === side && e.i < firstAuto.i);
     if (firstAuto && !firstAuto.detail && !injBefore) {
-      const sg = ctl.suggestions.find((x) => x.kind !== 'injury')!;
+      const sg = ctl.suggestions.find((x) => x.kind !== 'injury' && x.kind !== 'goalkeeper')!;
       assert.deepEqual([sg.out, sg.in, ctl.timeline![sg.tick]!.minute], [firstAuto.player2, firstAuto.player, firstAuto.minute], `semente ${seed}`);
       // aceitar a sugestão no minuto seguinte: a troca acontece, na posição sugerida
       const acc = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 }, interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: sg.slot }] });
@@ -335,7 +339,7 @@ test('Auxiliar: troca de outra posição vem com a formação reorganizada; acei
     const [a, b] = pairOf(i), seed = `rs-${i}`, side = (i % 2) as 0 | 1;
     const ctl = simulateMatch(sheet(a), sheet(b), { seed, timeline: true, control: { team: side, until: 10_000 } });
     const sg = ctl.suggestions.find((s) => (s.kind === 'chase' || s.kind === 'protect') && s.reshape && s.reshape.to !== s.reshape.from);
-    for (const s of ctl.suggestions.filter((x) => x.kind === 'fresh' || x.kind === 'injury')) assert.equal(s.reshape, null, 'mesma posição: sem mudança de formação');
+    for (const s of ctl.suggestions.filter((x) => x.kind === 'fresh' || x.kind === 'injury' || x.kind === 'goalkeeper')) assert.equal(s.reshape, null, 'mesma posição: sem mudança de formação');
     if (!sg) continue;
     const target = FORMATIONS.find((f) => f.id === sg.reshape!.to)!;
     assert.ok(target, 'formação conhecida');
@@ -371,4 +375,59 @@ test('Auxiliar: em toda sugestão aceita, quem entra termina exatamente na posi�
     }
   }
   assert.ok(n >= 8, `casos: ${n}`);
+});
+
+test('Cruzamentos: quem cruza é jogador de corredor (alas, meias abertos, laterais e pontas), e alas/meias abertos jogam nas pré-definições certas', () => {
+  const wide = new Set(['LB', 'RB', 'LWB', 'RWB', 'LM', 'RM', 'LW', 'RW']);
+  let crossGoals = 0, wideAssists = 0, wideRoleAssists = 0;
+  for (let i = 0; i < 400; i++) {
+    const [a, b] = pairOf(i);
+    const r = simulateMatch(sheetOf(a, BALANCED, i % 2 ? '3-5-2' : '4-4-2'), sheetOf(b, BALANCED, '4-1-4-1'), { seed: `cx-${i}` });
+    const slotOf = new Map(r.players.map((p) => [p.id, p.slot]));
+    for (const e of r.events) if (e.type === 'goal' && e.chance === 'cross' && e.player2) {
+      crossGoals++;
+      const s = slotOf.get(e.player2)!;
+      if (wide.has(s)) wideAssists++;
+      if (['LWB', 'RWB', 'LM', 'RM'].includes(s)) wideRoleAssists++;
+    }
+  }
+  assert.ok(crossGoals >= 40, `gols de cruzamento: ${crossGoals}`);
+  // medido em 1.200 jogos (com funções táticas): ~69% pelo corredor e ~43% de alas/meias abertos; nestes 400, 65% e 40%.
+  // Sem o peso de cruzamento era ~39% pelo corredor (o cruzamento saía de qualquer passador).
+  assert.ok(wideAssists / crossGoals >= 0.6, `assistências de cruzamento pelo corredor: ${(100 * wideAssists / crossGoals).toFixed(0)}%`);
+  assert.ok(wideRoleAssists / crossGoals >= 0.33, `alas e meias abertos: ${(100 * wideRoleAssists / crossGoals).toFixed(0)}%`);
+});
+
+test('Auxiliar: sem goleiro (expulso ou lesionado) sob controle do técnico, alguém de linha vai para o gol e o auxiliar sugere o goleiro reserva', () => {
+  let found = 0;
+  for (let i = 0; i < 400 && found < 3; i++) {
+    const [a, b] = pairOf(i), side = (i % 2) as 0 | 1;
+    const r = simulateMatch(sheet(a), sheet(b), { seed: `gk-${i}`, control: { team: side, until: 10_000 } });
+    const sg = r.suggestions.find((s) => s.kind === 'goalkeeper');
+    if (!sg) continue;
+    found++;
+    assert.equal(sg.slot, 'GK'); assert.match(sg.reason, /sem goleiro/);
+    const benchGk = (side === 0 ? sheet(a) : sheet(b)).bench.find((p) => p.position === 'GK')!;
+    assert.equal(sg.in, benchGk.id, 'sugere o goleiro do banco');
+    assert.ok(!r.events.some((e) => e.type === 'substitution' && e.team === side), 'nada é trocado sem o técnico');
+    // aceitar: o goleiro reserva entra no gol no lugar do improvisado
+    const acc = simulateMatch(sheet(a), sheet(b), { seed: `gk-${i}`, control: { team: side, until: 10_000 }, interventions: [{ tick: sg.tick + 1, kind: 'sub', team: side, out: sg.out, in: sg.in, slot: 'GK' }] });
+    assert.equal(acc.players.find((p) => p.id === sg.in)!.slot, 'GK');
+  }
+  assert.ok(found >= 1, 'encontrou ao menos um jogo sem goleiro');
+});
+
+test('Equilíbrio: toda função de linha soma o mesmo peso de zona (nenhuma formação ganha força de graça), mantendo o perfil de cada uma', async () => {
+  const { zoneProfile } = await import('../game/match-engine/engine.ts');
+  const outfield = ['CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST'] as const;
+  for (const p of outfield) { const z = zoneProfile(p); assert.ok(Math.abs(z.att + z.mid + z.def - 1.15) < 1e-9, `${p} soma ${z.att + z.mid + z.def}`); }
+  assert.deepEqual(zoneProfile('GK'), { att: 0, mid: 0, def: 0 });
+  // perfis: ala defende mais que o meia aberto; meia aberto organiza mais que o ponta; atacante só ataca; zagueiro só defende
+  assert.ok(zoneProfile('LWB').def > zoneProfile('LM').def && zoneProfile('LM').mid > zoneProfile('LW').mid);
+  assert.ok(zoneProfile('ST').att === 1.15 && zoneProfile('CB').def === 1.15);
+  const { FORMATIONS } = await import('../game/match-engine/formations.ts');
+  for (const f of FORMATIONS) {
+    const total = f.slots.reduce((s, x) => { const z = zoneProfile(x.pos); return s + z.att + z.mid + z.def; }, 0);
+    assert.ok(Math.abs(total - 11.5) < 1e-9, `${f.id}: peso total ${total}`);
+  }
 });

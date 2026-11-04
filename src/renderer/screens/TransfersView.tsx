@@ -17,7 +17,8 @@ const LIMIT = 100;
 const KIND_LABEL = { purchase: 'Compra', sale: 'Venda', ai: 'Outros clubes' } as const;
 const POSITION_OPTIONS: Array<[string, string]> = [
   ['', 'Todas as posições'], ['GK', 'Goleiros'], ['DEF', 'Defensores'], ['MID', 'Meio-campistas'], ['ATT', 'Atacantes'],
-  ['CB', 'Zagueiro'], ['LB', 'Lateral esquerdo'], ['RB', 'Lateral direito'], ['DM', 'Volante'], ['CM', 'Meio-campista'], ['AM', 'Meia'], ['LW', 'Ponta esquerda'], ['RW', 'Ponta direita'], ['ST', 'Atacante (centro)'],
+  ['CB', 'Zagueiro'], ['LB', 'Lateral esquerdo'], ['RB', 'Lateral direito'], ['LWB', 'Ala esquerda'], ['RWB', 'Ala direita'], ['DM', 'Volante'], ['CM', 'Meio-campista'],
+  ['LM', 'Meia esquerda'], ['RM', 'Meia direita'], ['AM', 'Meia'], ['LW', 'Ponta esquerda'], ['RW', 'Ponta direita'], ['SS', 'Segundo atacante'], ['CF', 'Centroavante'], ['ST', 'Atacante'],
 ];
 /** Filtros da última busca: continuam valendo ao voltar da ficha de um jogador (a tela é desmontada). */
 let lastFilters: Filters = EMPTY;

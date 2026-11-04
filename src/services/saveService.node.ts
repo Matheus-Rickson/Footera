@@ -18,7 +18,7 @@ import { getNews } from '../database/repositories/newsRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
 import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, setShortlisted } from '../database/repositories/scoutRepository.ts';
 import { ensureYouthAcademies, getYouthOverview, promoteYouth, releaseYouth } from '../database/repositories/youthRepository.ts';
-import { getMedicalOverview, getTrainingOverview, setDelegated, setFocus, setIntensity } from '../database/repositories/trainingRepository.ts';
+import { getMedicalOverview, getTrainingOverview, setDelegated, setFocus, setIntensity, setRoleFocus } from '../database/repositories/trainingRepository.ts';
 import { fireStaff, getStaffOverview, hireStaff } from '../database/repositories/staffRepository.ts';
 import { getInfrastructureOverview, startUpgrade } from '../database/repositories/infrastructureRepository.ts';
 import { ensureBoard, getBoardOverview, requestBudget, respondJobOffer } from '../database/repositories/boardRepository.ts';
@@ -129,7 +129,7 @@ export async function listCareerSaves(base: string, profileId: string): Promise<
   return out;
 }
 
-const POS_ORDER = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST'];
+import { POS_ORDER } from '../shared/positions.ts';
 
 export async function openCareer(base: string, profileId: string, careerId: string): Promise<CareerOverviewDto> {
   assertId(profileId, 'Perfil'); assertId(careerId, 'Carreira');
@@ -150,12 +150,24 @@ export async function openCareer(base: string, profileId: string, careerId: stri
          FROM clubs cl JOIN leagues l ON l.id = cl.league_id JOIN countries co ON co.id = cl.country_id
          JOIN stadiums st ON st.id = cl.stadium_id WHERE cl.id = ?`).get(summary.clubId);
     if (!c && summary.clubId) throw new Error('Clube da carreira não encontrado no save.');
+    const countries = new Map(db.prepare('SELECT code, name FROM countries').all().map((r) => [String(r.code), String(r.name)]));
+    const statusOf = new Map(db.prepare('SELECT ps.player_id, ps.injury_until, ps.suspension_matches FROM player_status ps JOIN players p ON p.id = ps.player_id WHERE p.club_id = ?')
+      .all(summary.clubId).map((r) => [String(r.player_id), { injuredUntil: r.injury_until != null && String(r.injury_until) > summary.gameDate ? String(r.injury_until) : null, suspension: Number(r.suspension_matches) }]));
+    const statsOf = new Map(db.prepare(`SELECT pss.player_id, SUM(pss.appearances) AS apps, SUM(pss.minutes) AS mins, SUM(pss.goals) AS g, SUM(pss.assists) AS a,
+        SUM(pss.rating_sum) AS rs, SUM(pss.yellow_cards) AS y, SUM(pss.red_cards) AS r
+        FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE pss.club_id = ? AND c.season = ? GROUP BY pss.player_id`)
+      .all(summary.clubId, summary.season).map((r) => [String(r.player_id), {
+        appearances: Number(r.apps), minutes: Number(r.mins), goals: Number(r.g), assists: Number(r.a),
+        avgRating: Number(r.apps) > 0 ? Math.round((Number(r.rs) / Number(r.apps)) * 100) / 100 : null, yellows: Number(r.y), reds: Number(r.r) }]));
+    const noStats = { appearances: 0, minutes: 0, goals: 0, assists: 0, avgRating: null, yellows: 0, reds: 0 };
     const squad = db.prepare('SELECT * FROM players WHERE club_id = ?').all(summary.clubId).map(rowToPlayer)
       .sort((a, b) => POS_ORDER.indexOf(a.position) - POS_ORDER.indexOf(b.position) || b.overall - a.overall)
       .map((p) => ({
         id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, age: ageOn(p.birthDate, summary.gameDate),
         overall: p.overall, potentialEstimated: Math.max(p.overall, p.potentialEstimated), condition: p.condition, morale: p.morale,
         salary: p.salary, contractEnd: p.contractEnd,
+        secondaryPositions: p.secondaryPositions, nationality: p.nationality, nationalityName: countries.get(p.nationality) ?? p.nationality, heightCm: p.heightCm,
+        status: statusOf.get(p.id) ?? { injuredUntil: null, suspension: 0 }, stats: statsOf.get(p.id) ?? noStats,
       }));
 
     const natRow = db.prepare('SELECT name FROM countries WHERE code = ?').get(coach.nationality);
@@ -290,6 +302,7 @@ export const getTraining = (b: string, p: string, c: string): Promise<TrainingOv
 export const setTrainingIntensity = (b: string, p: string, c: string, v: Intensity): Promise<true> => withClubCareer(b, p, c, (db) => { setIntensity(db, v); return true as const; });
 export const setTrainingDelegated = (b: string, p: string, c: string, on: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setDelegated(db, on); return true as const; });
 export const setTrainingFocus = (b: string, p: string, c: string, id: string, f: TrainingFocus): Promise<true> => withClubCareer(b, p, c, (db) => { setFocus(db, id, f); return true as const; });
+export const setTrainingRoleFocus = (b: string, p: string, c: string, id: string, role: string | null): Promise<true> => withClubCareer(b, p, c, (db) => { setRoleFocus(db, id, role); return true as const; });
 export const getStaff = (b: string, p: string, c: string): Promise<StaffOverviewDto> => withClubCareer(b, p, c, (db) => getStaffOverview(db));
 export const hireStaffFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { hireStaff(db, id); return true as const; });
 export const fireStaffFor = (b: string, p: string, c: string, id: string): Promise<number> => withClubCareer(b, p, c, (db) => fireStaff(db, id));

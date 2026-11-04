@@ -15,7 +15,7 @@ export interface WorldOptions {
 
 /** 25 jogadores por elenco: composição fixa e coerente. */
 export const SQUAD_TEMPLATE: Position[] = [
-  'GK','GK','GK','CB','CB','CB','CB','LB','LB','RB','RB','DM','DM','CM','CM','CM','AM','AM','LW','LW','RW','RW','ST','ST','ST',
+  'GK','GK','GK','CB','CB','CB','CB','LB','LWB','RB','RWB','DM','DM','CM','CM','CM','AM','AM','LW','LM','RW','RM','CF','CF','SS',
 ];
 
 const POS_BIAS: Record<Position, Partial<Record<string, number>>> = {
@@ -23,11 +23,17 @@ const POS_BIAS: Record<Position, Partial<Record<string, number>>> = {
   CB: { marking: 3, tackling: 3, heading: 3, strength: 3, jumping: 2, positioning: 2, finishing: -5, dribbling: -3, crossing: -3, pace: -1, goalkeeping: -12 },
   LB: { tackling: 2, pace: 2, stamina: 2, crossing: 2, finishing: -4, heading: -2, goalkeeping: -12 },
   RB: { tackling: 2, pace: 2, stamina: 2, crossing: 2, finishing: -4, heading: -2, goalkeeping: -12 },
+  LWB: { stamina: 3, pace: 3, crossing: 2, marking: 2, workRate: 2, finishing: -4, heading: -2, goalkeeping: -12 },
+  RWB: { stamina: 3, pace: 3, crossing: 2, positioning: 2, tackling: 2, finishing: -4, heading: -2, goalkeeping: -12 },
   DM: { tackling: 3, marking: 2, positioning: 2, stamina: 2, workRate: 2, finishing: -3, goalkeeping: -12 },
   CM: { passing: 3, vision: 2, stamina: 2, decisions: 2, workRate: 1, goalkeeping: -12 },
+  LM: { passing: 2, vision: 2, crossing: 3, firstTouch: 2, stamina: 2, tackling: -2, heading: -2, goalkeeping: -12 },
+  RM: { pace: 2, passing: 2, crossing: 3, dribbling: 2, workRate: 1, tackling: -2, heading: -2, goalkeeping: -12 },
   AM: { passing: 3, vision: 3, dribbling: 3, firstTouch: 2, longShots: 2, tackling: -3, marking: -3, goalkeeping: -12 },
   LW: { dribbling: 3, pace: 4, crossing: 3, agility: 2, tackling: -4, marking: -4, heading: -2, goalkeeping: -12 },
   RW: { dribbling: 3, pace: 4, crossing: 3, agility: 2, tackling: -4, marking: -4, heading: -2, goalkeeping: -12 },
+  SS: { finishing: 3, firstTouch: 2, passing: 2, dribbling: 2, vision: 2, composure: 1, tackling: -5, marking: -5, goalkeeping: -12 },
+  CF: { finishing: 4, composure: 2, positioning: 3, heading: 2, strength: 2, firstTouch: 1, tackling: -5, marking: -5, goalkeeping: -12 },
   ST: { finishing: 4, composure: 2, positioning: 2, firstTouch: 2, heading: 1, pace: 1, tackling: -5, marking: -5, goalkeeping: -12 },
 };
 
@@ -109,7 +115,7 @@ export function buildPlayer(
   const value = marketValue(overall, age, potentialHidden, tpl.wageScale);
   const foot: Foot = rng.weighted(['right', 'left', 'both'] as Foot[], [70, 24, 6]);
   const secondary: Position[] = rng.chance(0.35)
-    ? [rng.pick((['CB','LB','RB','DM','CM','AM','LW','RW','ST'] as Position[]).filter((p) => p !== pos))]
+    ? [rng.pick((['CB','LB','RB','LWB','RWB','DM','CM','LM','RM','AM','LW','RW','SS','CF'] as Position[]).filter((p) => p !== pos))]
     : [];
   return {
     id: newId('plr'),

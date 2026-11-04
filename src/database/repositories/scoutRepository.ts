@@ -1,4 +1,6 @@
 import type { SqlDb } from '../types.ts';
+import { familiarity, ROLES, roleSuitability } from '../../game/match-engine/playerRoles.ts';
+import { roleFocusMap, withFamiliarity } from './roleRepository.ts';
 import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng } from '../../game/rng.ts';
@@ -195,9 +197,17 @@ export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto 
     history, lastMatches, transfers,
     id: p.id, name: `${p.firstName} ${p.lastName}`, age: ageOn(p.birthDate, st.gameDate), nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions,
     foot: p.foot, heightCm: p.heightCm, weightKg: p.weightKg, clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), own, youth: youthOf !== null,
-    marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, stats,
+    marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, stats, roles: null as PlayerProfileDto['roles'],
   };
   if (own) {
+    withFamiliarity(db, [p]);
+    const mine = new Set([p.position, ...p.secondaryPositions]);
+    const focus = roleFocusMap(db).get(p.id) ?? null;
+    base.roles = {
+      focus,
+      list: ROLES.filter((x) => x.positions.some((pos) => mine.has(pos)) || p.roleFamiliarity?.[x.id] !== undefined || x.id === focus)
+        .map((x) => ({ id: x.id, label: x.name, positions: x.positions, description: x.summary.join(' '), suitability: roleSuitability(p.attributes, x), familiarity: familiarity(p, x) })),
+    };
     const exact = (g: object) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, { low: v as number, high: v as number }]));
     const pot = Math.max(p.overall, p.potentialEstimated); // o próprio clube vê a força real e o potencial ESTIMADO (como no elenco)
     return { ...base, knowledge: 100, estOverall: { low: p.overall, high: p.overall }, estPotential: { low: pot, high: pot },

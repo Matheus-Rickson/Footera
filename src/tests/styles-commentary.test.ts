@@ -43,7 +43,7 @@ test('Comentários: placar corrente acumula corretamente e há um comentário po
 
 test('Posições: todas as telas exibem a sigla em português (nunca o código interno GK/CB/ST…)', async () => {
   const { POS_LABEL, posLabel } = await import('../shared/positions.ts');
-  assert.deepEqual(Object.values(POS_LABEL), ['GOL', 'ZAG', 'LE', 'LD', 'VOL', 'MC', 'MEI', 'PE', 'PD', 'ATA']);
+  assert.deepEqual(Object.values(POS_LABEL), ['GOL', 'ZAG', 'LE', 'LD', 'AE', 'AD', 'VOL', 'MC', 'ME', 'MD', 'MEI', 'PE', 'PD', 'SA', 'CA', 'ATA']);
   assert.equal(posLabel('ST'), 'ATA');
   const dir = new URL('../renderer/screens/', import.meta.url);
   const raw = /\{\s*[a-zA-Z]+\.(position|slot)\s*\}|\{\s*s\.pos\s*\}|\$\{\s*[a-zA-Z]+\.(position|slot|pos)\s*\}/g;

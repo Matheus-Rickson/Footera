@@ -127,6 +127,18 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Propostas de emprego: aceitar troca de clube na hora. **(só por testes automáticos)**
 - [ ] Demissão: menu restrito, treinador sem clube e chegada de propostas. **(só por testes automáticos)**
 
+## 13b. Funções táticas (v0.8.6, em validação — use uma carreira NOVA para ver SA/CA)
+- [ ] Táticas: cada jogador no campo mostra a função da vaga embaixo do nome (em itálico quando é automática).
+- [ ] Clicar num jogador do campo abre a janela "Função de …" (popup): Automática + 3 funções da posição, com descrição, compatibilidade e domínio;
+  fecha com Concluir, X, Esc ou clique fora. "Trocar de lugar" fecha a janela e o próximo clique numa posição move o jogador.
+- [ ] Escolher uma função salva na hora; trocar o jogador da vaga mantém a função (ela é da vaga); mudar para uma pré-definição volta tudo para automática.
+- [ ] Mover um titular para outra posição do campo: a função daquela vaga volta para automática se não servir para a nova posição.
+- [ ] "Função a treinar no mês": escolher, avançar até o dia 1º do mês seguinte e ver o domínio subir (Táticas e ficha).
+- [ ] Compatibilidade: com o foco de atributos do jogador em **Equilibrado** (Treinamento) e uma função em treino, avançar alguns meses com um jogador jovem e ver a compatibilidade daquela função subir aos poucos (no veterano ela quase não muda).
+- [ ] Depois de alguns jogos, o domínio de quem joga numa função cresce.
+- [ ] Ficha de um jogador seu: card **Funções** (compatibilidade, domínio e "treinando"). Ficha de jogador de outro clube: sem o card.
+- [ ] Carreira nova: elencos com SA e CA; na carreira antiga, ATA pode jogar como SA ou CA.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

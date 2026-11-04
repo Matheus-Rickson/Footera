@@ -13,6 +13,8 @@ import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { facilitiesOf, medicalFactor, staffQuality } from './staffRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
+import { addFamiliarity, familiarityOf, ROLE_TRAIN_GAIN, roleFocusMap } from './roleRepository.ts';
+import { roleById } from '../../game/match-engine/playerRoles.ts';
 
 export class TrainingError extends UserError {}
 
@@ -46,6 +48,17 @@ export function setFocus(db: SqlDb, playerId: string, focus: Focus): void {
   if (trainingSettings(db).delegated) throw new TrainingError('O treino está delegado ao preparador físico: retome o controle para escolher focos.');
   if (!db.prepare('SELECT 1 AS x FROM players WHERE id = ? AND club_id = ?').get(playerId, st.clubId)) throw new TrainingError('Só é possível definir o treino de jogadores do seu elenco.');
   db.prepare('INSERT INTO player_training (player_id, focus) VALUES (?, ?) ON CONFLICT(player_id) DO UPDATE SET focus = excluded.focus').run(playerId, focus);
+}
+
+/**
+ * Função tática que o jogador treina no mês (null = nenhuma). Independe da delegação: o preparador cuida do foco físico/técnico;
+ * a função é escolha do técnico.
+ */
+export function setRoleFocus(db: SqlDb, playerId: string, roleId: string | null): void {
+  const st = getCareerState(db);
+  if (roleId !== null && !roleById(roleId)) throw new TrainingError('Função inválida.');
+  if (!db.prepare('SELECT 1 AS x FROM players WHERE id = ? AND club_id = ?').get(playerId, st.clubId)) throw new TrainingError('Só é possível definir o treino de jogadores do seu elenco.');
+  db.prepare("INSERT INTO player_training (player_id, focus, role_focus) VALUES (?, 'balanced', ?) ON CONFLICT(player_id) DO UPDATE SET role_focus = excluded.role_focus").run(playerId, roleId);
 }
 
 /** O preparador físico escolhe o foco de cada jogador e a intensidade da semana. NÃO abre transação. */
@@ -121,6 +134,8 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
     return c;
   };
   const up = db.prepare('UPDATE players SET attributes_json = ?, overall = ?, potential_hidden = ?, potential_estimated = ?, market_value = ? WHERE id = ?');
+  const roleFocus = roleFocusMap(db);
+  const roleFam = familiarityOf(db, [...roleFocus.keys()]);
   let n = 0;
   for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
     const p = rowToPlayer(r);
@@ -141,6 +156,12 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
         // delegado: vale sempre a escolha do preparador (inclusive para quem entrou no elenco depois da última revisão)
         const f = settings.delegated ? bestFocus(p.position, p.attributes, age) : focus.get(p.id) ?? 'balanced';
         if (f !== 'balanced') focusKeys = new Set(FOCUS_KEYS[f]);
+        // treino de função: auxiliar técnico (ou de goleiros) e centro de treinamento aceleram o domínio
+        const rf = roleFocus.get(p.id);
+        if (rf) { const f2 = roleFam.get(p.id); if (f2) p.roleFamiliarity = f2; addFamiliarity(db, p, rf, ROLE_TRAIN_GAIN * qualityFactor(techQ) * base); }
+        // sem foco de atributos (Equilibrado), a evolução privilegia os atributos que a função treinada exige: a compatibilidade sobe com o tempo
+        const rd = rf ? roleById(rf) : undefined;
+        if (!focusKeys && rd) focusKeys = new Set(Object.keys(rd.weights));
       }
     }
     const possible = 90 * (p.clubId ? played.get(p.clubId) ?? 0 : 0);

@@ -54,6 +54,7 @@ const api: GameApi = {
   setIntensity: (profileId, careerId, intensity) => ipcRenderer.invoke('training:intensity', { profileId, careerId, intensity }),
   setDelegated: (profileId, careerId, on) => ipcRenderer.invoke('training:delegate', { profileId, careerId, on }),
   setFocus: (profileId, careerId, playerId, focus) => ipcRenderer.invoke('training:focus', { profileId, careerId, playerId, focus }),
+  setRoleFocus: (profileId, careerId, playerId, roleId) => ipcRenderer.invoke('training:roleFocus', { profileId, careerId, playerId, roleId }),
   getStaff: (profileId, careerId) => ipcRenderer.invoke('staff:get', { profileId, careerId }),
   hireStaff: (profileId, careerId, candidateId) => ipcRenderer.invoke('staff:hire', { profileId, careerId, candidateId }),
   fireStaff: (profileId, careerId, staffId) => ipcRenderer.invoke('staff:fire', { profileId, careerId, staffId }),

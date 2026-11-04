@@ -106,15 +106,27 @@ export interface TransfersOverviewDto {
   incoming: IncomingOfferDto[]; mine: MyPlayerDto[]; recent: TransferLogDto[];
 }
 
-export interface SchemeDto { id: string; name: string; formation: string; settings: TeamTactics; lineup: string[] | null; builtin: boolean; active: boolean }
-export interface SchemeInput { id?: string | null; name: string; formation: string; settings: TeamTactics; lineup: string[] | null }
+/** `roles`: função de cada vaga, alinhada às vagas da formação (null = o motor escolhe a que mais combina com o jogador). */
+export interface SchemeDto { id: string; name: string; formation: string; settings: TeamTactics; lineup: string[] | null; roles: Array<string | null> | null; builtin: boolean; active: boolean; /** nome exibido da formação */ formationLabel?: string }
+export interface SchemeInput { id?: string | null; name: string; formation: string; settings: TeamTactics; lineup: string[] | null; roles?: Array<string | null> | null }
+/** Função tática no catálogo (para a tela de Táticas e a ficha). */
+export interface RoleInfoDto { id: string; label: string; positions: Position[]; description: string }
+/** Função de um jogador do elenco: compatibilidade dos atributos (0–100) e domínio (0–100). */
+export interface PlayerRoleFitDto { id: string; suitability: number; familiarity: number }
 export interface TacticsSquadPlayer {
   id: string; name: string; position: Position; secondaryPositions: Position[]; overall: number; condition: number;
   unavailable: { kind: 'injured'; until: string } | { kind: 'suspended'; matches: number } | null;
   slotScores: Record<Position, number>;
+  /** compatibilidade e domínio em cada função de cada posição */ roles: PlayerRoleFitDto[];
+  /** função que treina no mês (null = nenhuma) */ roleFocus: string | null;
 }
 export interface TacticsOverviewDto {
-  schemes: SchemeDto[]; squad: TacticsSquadPlayer[]; formations: Array<{ id: string; slots: Array<{ pos: Position; x: number; y: number }> }>;
+  schemes: SchemeDto[]; squad: TacticsSquadPlayer[];
+  /** pré-definições: vagas na ordem da escalação, cada uma numa âncora do campo */
+  formations: Array<{ id: string; slots: Array<{ pos: Position; x: number; y: number; anchor: string }> }>;
+  /** as 24 posições do campo onde o técnico pode colocar jogadores */
+  anchors: Array<{ id: string; pos: Position; x: number; y: number; label?: string }>;
+  /** funções de cada posição */ roleCatalog: RoleInfoDto[];
 }
 
 export interface MatchSummaryDto {
@@ -155,13 +167,18 @@ export interface LiveMatchDto {
   /** moral de cada relacionado do seu time antes do jogo e a variação causada pela conversa no vestiário (só nesta partida) */
   morale: Record<string, { before: number; delta: number }>;
   /** trocas sugeridas pelo auxiliar, com o motivo (o técnico decide) */
-  suggestions: Array<{ tick: number; out: string; in: string; slot: Position; kind: 'injury' | 'chase' | 'protect' | 'fresh'; reason: string;
+  suggestions: Array<{ tick: number; out: string; in: string; slot: Position; kind: 'injury' | 'goalkeeper' | 'chase' | 'protect' | 'fresh'; reason: string;
     /** formação proposta quando quem entra é de outra posição */ reshape: { from: string; to: string; changes: Array<{ id: string; from: Position; to: Position }> } | null }>;
 }
 
 export interface SquadRow {
   id: string; name: string; position: Position; age: number; overall: number;
   potentialEstimated: number; condition: number; morale: number; salary: number; contractEnd: string;
+  secondaryPositions: Position[]; nationality: string; nationalityName: string; heightCm: number;
+  /** situação: lesão em curso, suspensão e cartões da temporada */
+  status: { injuredUntil: string | null; suspension: number };
+  /** estatísticas da temporada atual (todas as competições pelo clube) */
+  stats: { appearances: number; minutes: number; goals: number; assists: number; avgRating: number | null; yellows: number; reds: number };
 }
 export interface CareerOverviewDto {
   summary: CareerSummaryDto;
@@ -246,6 +263,11 @@ export interface PlayerProfileDto {
   /** força ao fim de cada temporada (só do próprio clube; de outros clubes revelaria o valor real) */ history: Array<{ season: number; overall: number }> | null;
   lastMatches: Array<{ fixtureId: string; date: string; opponent: string; home: boolean; score: string; minutes: number; rating: number; goals: number; assists: number }>;
   transfers: Array<{ date: string; from: string | null; to: string; fee: number }>;
+  /**
+   * Funções táticas (só do próprio clube: de outros clubes revelaria atributos reais): as das posições natural e secundárias e as que ele já
+   * aprendeu em campo ou no treino; `focus` = função treinada no mês.
+   */
+  roles: { list: Array<RoleInfoDto & PlayerRoleFitDto>; focus: string | null } | null;
 }
 export interface YouthPlayerDto { id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; salary: number; /** completa 19 anos até a virada: sai se não for promovido */ leavesAtTurnover: boolean }
 export interface YouthOverviewDto {
@@ -346,6 +368,7 @@ export interface GameApi {
   setIntensity(profileId: string, careerId: string, intensity: Intensity): Promise<IpcResult<true>>;
   setDelegated(profileId: string, careerId: string, on: boolean): Promise<IpcResult<true>>;
   setFocus(profileId: string, careerId: string, playerId: string, focus: TrainingFocus): Promise<IpcResult<true>>;
+  /** função tática treinada no mês (null = nenhuma) */ setRoleFocus(profileId: string, careerId: string, playerId: string, roleId: string | null): Promise<IpcResult<true>>;
   getStaff(profileId: string, careerId: string): Promise<IpcResult<StaffOverviewDto>>;
   hireStaff(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
   fireStaff(profileId: string, careerId: string, staffId: string): Promise<IpcResult<number>>;

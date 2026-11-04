@@ -93,3 +93,39 @@ test('Mundo: o potencial estimado nunca fica abaixo da força atual', () => {
   const world = generateWorld({ seed: 'semente-potencial' });
   for (const p of world.players) assert.ok(p.potentialEstimated >= p.overall, `${p.id}: ${p.potentialEstimated} < ${p.overall}`);
 });
+
+test('Posições ME/MD/AE/AD: atributos de cada função, funções parecidas a 95% e elencos de carreiras novas com essas posições', async () => {
+  const { positionFit } = await import('../game/match-engine/roles.ts');
+  const base = world.players.find((p) => p.position === 'CM')!;
+  const withAttrs = (over: Record<string, number>) => {
+    const a = JSON.parse(JSON.stringify(base.attributes)) as typeof base.attributes;
+    for (const g of ['technical', 'mental', 'physical'] as const) for (const k of Object.keys(a[g])) (a[g] as unknown as Record<string, number>)[k] = over[k] ?? 8;
+    return a;
+  };
+  // meia aberto: visão, passe, cruzamento, controle e resistência pesam mais na ME do que no ponta (drible e velocidade)
+  const creator = withAttrs({ vision: 17, passing: 17, crossing: 17, firstTouch: 16, stamina: 16 });
+  assert.ok(overallFor(creator, 'LM') > overallFor(creator, 'LW') + 10);
+  const winger = withAttrs({ dribbling: 17, pace: 17, agility: 16, finishing: 14 });
+  assert.ok(overallFor(winger, 'LW') > overallFor(winger, 'LM') + 10);
+  // MD: velocidade, passe, cruzamento, drible e recomposição
+  const rm = withAttrs({ pace: 16, passing: 16, crossing: 16, dribbling: 16, workRate: 16 });
+  assert.ok(overallFor(rm, 'RM') > overallFor(rm, 'CM'));
+  // ala: resistência e velocidade para o corredor inteiro; AE marca, AD se posiciona e defende
+  const runner = withAttrs({ stamina: 18, pace: 17, crossing: 16, marking: 15 });
+  assert.ok(overallFor(runner, 'LWB') > overallFor(runner, 'LB'));
+  const rwb = withAttrs({ stamina: 18, pace: 16, crossing: 16, positioning: 15, tackling: 15 });
+  assert.ok(overallFor(rwb, 'RWB') > overallFor(rwb, 'RM'));
+
+  const mp = (position: 'LW' | 'LB' | 'CM') => ({ id: 'x', name: 'x', position, secondaryPositions: [], attributes: base.attributes, condition: 100, morale: 70, form: 50 });
+  assert.equal(positionFit(mp('LW'), 'LM'), 0.95, 'ponta como meia aberto (mesmo lado)');
+  assert.equal(positionFit(mp('LB'), 'LWB'), 0.95, 'lateral como ala (mesmo lado)');
+  assert.equal(positionFit(mp('LW'), 'RM'), 0.9, 'lado trocado: fora de posição');
+  assert.equal(positionFit(mp('CM'), 'LM'), 0.9);
+
+  // carreira nova: todo elenco tem ME, MD, AE e AD naturais
+  for (const c of world.clubs.slice(0, 20)) {
+    const pos = new Set(world.players.filter((p) => p.clubId === c.id).map((p) => p.position));
+    for (const want of ['LM', 'RM', 'LWB', 'RWB', 'SS', 'CF'] as const) assert.ok(pos.has(want), `${c.name} sem ${want}`);
+    assert.ok(!pos.has('ST'), 'carreira nova não gera o atacante genérico (ATA)');
+  }
+});

@@ -6,6 +6,7 @@ export function saveWorld(db: SqlDb, w: World): void {
   withTransaction(db, () => {
     const set = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
     set.run('world_seed', w.seed);
+    set.run('position_set', 'v3'); // universo com meias abertos (ME/MD), alas (AE/AD), segundo atacante (SA) e centroavante (CA): a base também os gera
     set.run('world_start_date', w.startDate);
 
     const insCountry = db.prepare('INSERT INTO countries (id, code, name, economy) VALUES (?, ?, ?, ?)');

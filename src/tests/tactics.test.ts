@@ -166,3 +166,43 @@ test('Saves em arquivo: esquemas são criados/reparados ao abrir e persistem ent
   assert.equal(ov.schemes.find((s) => s.active)!.formation, '4-3-3');
   assert.equal(n(await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db')), 'SELECT COUNT(*) AS n FROM tactic_schemes'), 7);
 });
+
+test('Formação livre: 11 âncoras do campo (com goleiro), nome legível, usada na partida e exibida no relatório sem o código interno', async () => {
+  const { ANCHORS, FORMATIONS, customFormationId, formationLabel, getFormation, isFormationId } = await import('../game/match-engine/formations.ts');
+  assert.equal(ANCHORS.length, 24);
+  // pré-definições: as âncoras reproduzem exatamente as funções de antes
+  for (const f of FORMATIONS) {
+    assert.equal(f.slots.length, 11); assert.equal(f.slots[0]!.anchor, 'GK');
+    assert.equal(formationLabel(customFormationId(f.slots.map((s) => s.anchor))), f.id, 'mesmas posições = nome da pré-definição');
+  }
+  const free = customFormationId(['GK', 'D1', 'D2', 'D3', 'D4', 'D5', 'W3', 'A2', 'A4', 'S1', 'S3']);
+  assert.equal(formationLabel(free), '5-1-2-2');
+  assert.deepEqual(getFormation(free).slots.map((s) => s.pos), ['GK', 'LB', 'CB', 'CB', 'CB', 'RB', 'DM', 'AM', 'AM', 'SS', 'SS']);
+  for (const bad of ['@GK.D1', '@GK.D1.D1.D2.D3.D4.D5.W3.A2.A4.S1', '@D1.GK.D2.D3.D4.D5.W3.A2.A4.S1.S3', '@GK.D1.D2.D3.D4.D5.W3.A2.A4.S1.X9', '9-9-9']) assert.equal(isFormationId(bad), false, bad);
+
+  const { db } = await setup('possession');
+  assert.throws(() => saveScheme(db, { id: null, name: 'Errada', formation: '@GK.D1', settings: SETTINGS, lineup: null }), /Formação inválida/);
+  const lineup = autoLineup(db, free);
+  assert.equal(lineup.length, 11);
+  const s = saveScheme(db, { id: null, name: 'Cinco atrás', formation: free, settings: SETTINGS, lineup });
+  activateScheme(db, s.id);
+  advanceTime(db, 'nextMatchday');
+  const sum = simulateMatchday(db);
+  const r = getMatchReport(db, sum.userMatch!.fixtureId);
+  const side = r.lineups.findIndex((l) => l.slots.some((x) => x.playerId === lineup[0]));
+  assert.equal(r.lineups[side]!.formation, '5-1-2-2', 'relatório mostra o nome, não o código');
+  assert.equal((side === 0 ? r.home : r.away).formation, '5-1-2-2');
+  assert.deepEqual(r.lineups[side]!.slots.map((x) => x.playerId), lineup, 'a partida usou a escalação na formação livre');
+  assert.deepEqual(r.lineups[side]!.slots.map((x) => x.slot), getFormation(free).slots.map((x) => x.pos));
+  assert.ok(!JSON.stringify(r).includes('@GK'), 'nenhum código interno de formação no relatório');
+});
+
+test('Âncoras: alas e meias abertos são funções próprias (AE/AD = LWB/RWB, ME/MD = LM/RM) nas pré-definições certas', async () => {
+  const { ANCHORS, FORMATIONS } = await import('../game/match-engine/formations.ts');
+  const by = new Map(ANCHORS.map((a) => [a.id, a]));
+  assert.deepEqual(['W1', 'W5', 'M1', 'M5'].map((id) => by.get(id)!.pos), ['LWB', 'RWB', 'LM', 'RM']);
+  const pos = (id: string) => FORMATIONS.find((f) => f.id === id)!.slots.map((s) => s.pos);
+  assert.ok(pos('4-4-2').includes('LM') && pos('4-4-2').includes('RM') && pos('4-1-4-1').includes('LM'));
+  assert.ok(pos('3-5-2').includes('LWB') && pos('3-4-3').includes('RWB'));
+  assert.ok(!pos('4-3-3').some((p) => ['LM', 'RM', 'LWB', 'RWB'].includes(p)), '4-3-3 continua com pontas e laterais');
+});

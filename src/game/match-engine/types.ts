@@ -6,6 +6,7 @@ export interface MatchPlayer {
   attributes: Attributes;
   /** 0..100 (prontidão física no início da partida) */
   condition: number; morale: number; form: number;
+  /** domínio aprendido de cada função (id → 0–100); ausente = domínio inicial pelo perfil */ roleFamiliarity?: Record<string, number>;
 }
 
 export type Mentality = 'defensive' | 'balanced' | 'attacking';
@@ -16,7 +17,7 @@ export interface TeamTactics {
   buildUp: BuildUp;
 }
 
-export interface LineupSlot { slot: Position; x: number; y: number; player: MatchPlayer }
+export interface LineupSlot { slot: Position; x: number; y: number; player: MatchPlayer; /** função escolhida para a vaga (ausente = a melhor para o jogador) */ role?: string }
 
 export interface TeamSheet {
   clubId: string; name: string; formation: string;
@@ -41,7 +42,7 @@ export interface MatchOptions {
 
 export type Intervention =
   | { tick: number; kind: 'sub'; team: 0 | 1; out: string; in: string; /** posição de quem entra (padrão: a de quem sai) */ slot?: Position;
-      /** reorganiza o time na formação que melhor encaixa quem entra (sugestão do auxiliar) */ reshape?: boolean }
+      /** reorganiza o time na formação que melhor encaixa quem entra (sugestão do auxiliar) */ reshape?: boolean; /** função de quem entra */ role?: string }
   | { tick: number; kind: 'talk'; team: 0 | 1; tone: TalkTone };
 
 /** Ordem dos números em `MatchTick.s` (estatísticas acumuladas da equipe; xg em centésimos). */
@@ -92,6 +93,7 @@ export interface PlayerReport {
   goals: number; assists: number; shots: number; shotsOnTarget: number; passes: number; passesCompleted: number;
   keyPasses: number; tackles: number; interceptions: number; fouls: number; yellow: number; red: number;
   saves: number; goalsConceded: number; xg: number; injuredDays: number;
+  /** função exercida (a última, se mudou durante o jogo) */ role?: string;
 }
 
 export interface MatchOutcome {
@@ -116,7 +118,7 @@ export interface MatchOutcome {
 
 export interface SubSuggestion {
   tick: number; team: 0 | 1; out: string; in: string; slot: Position;
-  kind: 'injury' | 'chase' | 'protect' | 'fresh'; reason: string;
+  kind: 'injury' | 'goalkeeper' | 'chase' | 'protect' | 'fresh'; reason: string;
   /** quando quem entra é de outra posição: a formação que o auxiliar propõe e quem muda de função */
   reshape: { from: string; to: string; changes: Array<{ id: string; from: Position; to: Position }> } | null;
 }

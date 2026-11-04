@@ -109,7 +109,7 @@ export function SubsModal({ onPitch, bench, used, max, reason, busy, error, onCo
 }
 
 type Suggestion = LiveMatchDto['suggestions'][number];
-const KIND_LABEL: Record<Suggestion['kind'], string> = { injury: 'Lesão', chase: 'Buscar o resultado', protect: 'Segurar o resultado', fresh: 'Cansaço / rendimento' };
+const KIND_LABEL: Record<Suggestion['kind'], string> = { injury: 'Lesão', goalkeeper: 'Sem goleiro', chase: 'Buscar o resultado', protect: 'Segurar o resultado', fresh: 'Cansaço / rendimento' };
 
 /** O auxiliar indica trocas (com a justificativa); o técnico aceita, escolhe outra ou recusa. */
 export function AssistantModal({ items, names, positions, busy, error, left, onAccept, onOther, onClose }: {
