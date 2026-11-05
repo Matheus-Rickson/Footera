@@ -7,9 +7,12 @@ Decisões do usuário (02/11/2026): olheiros **contratáveis**, elenco **sub-20 
   `economia × (3.000 + qualidade² × 150)`. Contrato de 2 anos; ao vencer, o olheiro sai (com notícia). Demitir paga até 3 meses de salário (`scouting`, via `makePoster`).
 - Designação: **um país** (acompanha 5 jogadores ao mesmo tempo até concluir cada relatório — primeiro os já iniciados; novos alvos sorteados entre os 80 mais valiosos ainda não observados; nunca do próprio clube nem da base) ou **lista de observação** (divide `3 × ganho` por dia entre os
   jogadores marcados com "Observar"). Ganho diário por jogador observado = `3 + 0,35 × qualidade` pontos de conhecimento (0..100).
-- **Estimativa com conhecimento `k`:** `f = 1 − k/100`; ruído do centro × f; meia-largura da força `1 + 5f` (6 → 1), do potencial `2 + 6f` (8 → 2); o centro do
-  potencial vai do potencial estimado (k = 0) ao potencial oculto (k = 100). Com k = 0 o resultado é idêntico ao de antes da fase (testado). A faixa de força sempre
-  contém o valor real. Regra 7 continua: o usuário só vê faixas, nunca os valores de jogadores de outros clubes.
+- **Estimativa com conhecimento `k`** (revisada na v0.8.7, pedido do usuário): `f = 1 − k/100`; ruído do centro × f; meia-largura da força `12f`
+  (±12 sem conhecimento, ex.: 32–56 → valor exato com 100%), do potencial `14f`; o centro do potencial vai do potencial estimado (k = 0) ao potencial
+  oculto (k = 100). Atributos: sempre há estimativa (antes, nada abaixo de 25%), meia-largura `5f` (±5 → exato). A faixa sempre contém o valor real.
+  Regra 7: o usuário só vê faixas de jogadores de outros clubes; o valor exato aparece só com 100% de observação.
+- **Escala de exibição 1–20** (v0.8.7): força, potencial, força na vaga, compatibilidade de função e resumos de atributos aparecem de 1 a 20 (inteiro,
+  `shared/scale.ts`, `round(v/5)`), como os atributos; o motor continua calculando em 0–100.
 - Processado por `moveClock` todo dia (depois do mercado, antes do fechamento mensal) e no dia da virada.
 
 ## Categorias de base

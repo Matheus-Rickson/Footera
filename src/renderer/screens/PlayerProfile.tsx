@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, Binoculars, CircleGauge, Crosshair, Dumbbell, FileSignature, Footprints, Gauge, Hand, Ruler, Share2, Shield, Weight, Wind,
+  ArrowLeft, Binoculars, CircleGauge, Crosshair, Dumbbell, FileSignature, Footprints, Gauge, Hand, Ruler, Share2, Shield, Weight, Wind, X,
   type LucideIcon,
 } from 'lucide-react';
 import type { MarketPlayerDto, PlayerProfileDto, Range } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
 import { KnowledgeBar } from './ScoutingView.tsx';
-import { FOOT_LABEL, fmtRange, initials, PlayerFlags, POS_NAME, PosPill, tone } from '../playerUi.tsx';
+import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, POS_NAME, PosPill, to20, tone } from '../playerUi.tsx';
 
 const ATTR_LABEL: Record<string, string> = {
   finishing: 'Finalização', passing: 'Passe', dribbling: 'Drible', tackling: 'Desarme', marking: 'Marcação', firstTouch: 'Primeiro toque', crossing: 'Cruzamento',
@@ -62,8 +62,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
   }
 
   if (!p) return <section className="card">{error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando ficha…</p>}<button className="secondary" onClick={onClose}>Fechar</button></section>;
-  const groups = (p.position === 'GK' ? GROUPS_GK : GROUPS_OUTFIELD).map((g) => ({ ...g, range: p.attributes ? groupRange(p.attributes, g.keys) : null }));
-  const level = p.own ? `${p.estOverall.low}` : `${Math.round((p.estOverall.low + p.estOverall.high) / 2)}`;
+  const groups = (p.position === 'GK' ? GROUPS_GK : GROUPS_OUTFIELD).map((g) => ({ ...g, range: groupRange(p.attributes, g.keys) }));
+  const level = p.own ? `${to20(p.estOverall.low)}` : `${to20((p.estOverall.low + p.estOverall.high) / 2)}`;
   const unknownTip = 'Os olheiros ainda não conhecem o jogador o bastante (50% de conhecimento).';
 
   return (
@@ -72,8 +72,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
         <div className="pf-top">
           <div className="pf-id">
             <div className="pf-avatar" aria-hidden="true">{initials(p.name)}</div>
-            <div className="pf-level" title={p.own ? 'Força atual' : `Força estimada pelos olheiros: ${fmtRange(p.estOverall)}`}>
-              <strong>{level}</strong><span>{p.own ? 'NÍVEL' : `~ ${fmtRange(p.estOverall)}`}</span>
+            <div className="pf-level" title={p.own ? 'Força atual' : `Força estimada pelos olheiros: ${fmtRange20(p.estOverall)}`}>
+              <strong>{level}</strong><span>{p.own ? 'NÍVEL' : `~ ${fmtRange20(p.estOverall)}`}</span>
             </div>
             <div className="pf-main">
               <h2>{p.name}{p.market && <PlayerFlags p={p.market} />}</h2>
@@ -107,7 +107,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           <span><span className="muted">Valor</span> <strong>{fmtNum(p.marketValue)}</strong></span>
           <span><span className="muted">{p.clubId || p.youth ? 'Salário' : 'Pretensão'}</span> <strong>{fmtNum(p.salary)}/mês</strong></span>
           <span><span className="muted">Fim do contrato</span> <strong>{p.clubId || p.youth ? fmtDate(p.contractEnd) : '—'}</strong></span>
-          <span><span className="muted">Potencial estimado</span> <strong>{fmtRange(p.estPotential)}</strong></span>
+          <span><span className="muted">Potencial estimado</span> <strong>{fmtRange20(p.estPotential)}</strong></span>
           {!p.own && <span className="row"><span className="muted">Olheiros</span> <KnowledgeBar value={p.knowledge} /></span>}
           <span className="grow" />
           {p.market && <button className="secondary" disabled={busy} onClick={() => void toggleShortlist()}><Binoculars size={16} aria-hidden="true" />{p.market.shortlisted ? 'Observando' : 'Observar'}</button>}
@@ -129,19 +129,19 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           <div className="pf-grid">
             <section className="card">
               <h2>Atributos</h2>
-              {!groups[0]!.range ? <p className="muted">Os olheiros ainda não conhecem o jogador o suficiente para relatar atributos (a partir de 25% de conhecimento). Use “Observar”.</p> : (
+              {(
                 <div className="pf-attr">
                   <div className="pf-bars">{groups.map((g) => {
-                    const Icon = g.icon, r = g.range!, mid = (r.low + r.high) / 2;
+                    const Icon = g.icon, r = g.range, mid = (r.low + r.high) / 2;
                     return (
                       <div key={g.key} className="pf-bar">
                         <span className="row"><Icon size={15} aria-hidden="true" />{g.label}</span>
                         <span className="pf-track"><i className={tone(mid)} style={{ width: `${mid}%` }} /></span>
-                        <b className={tone(mid)}>{fmtRange(r)}</b>
+                        <b className={tone(mid)}>{fmtRange20(r)}</b>
                       </div>
                     );
                   })}</div>
-                  <Radar groups={groups.map((g) => ({ short: g.short, range: g.range! }))} />
+                  <Radar groups={groups.map((g) => ({ short: g.short, range: g.range }))} />
                 </div>
               )}
             </section>
@@ -158,7 +158,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
                   <div key={r.id} className={`pf-role ${p.roles!.focus === r.id ? 'pf-role-focus' : ''}`} title={r.description}>
                     <div className="pf-role-head"><b>{r.label}</b>{r.positions.filter((x) => x !== 'ST').map((x) => <PosPill key={x} pos={x} minor />)}
                       {p.roles!.focus === r.id && <span className="pf-chip" title="Função treinada neste mês"><Dumbbell size={11} aria-hidden="true" /> treinando</span>}</div>
-                    <div className="pf-bar"><span className="muted">Compatibilidade</span><span className="pf-track"><i className={tone(r.suitability)} style={{ width: `${r.suitability}%` }} /></span><b className={tone(r.suitability)}>{r.suitability}</b></div>
+                    <div className="pf-bar"><span className="muted">Compatibilidade</span><span className="pf-track"><i className={tone(r.suitability)} style={{ width: `${r.suitability}%` }} /></span><b className={tone(r.suitability)}>{to20(r.suitability)}</b></div>
                     <div className="pf-bar"><span className="muted">Domínio</span><span className="pf-track"><i className={tone(r.familiarity)} style={{ width: `${r.familiarity}%` }} /></span><b className={tone(r.familiarity)}>{r.familiarity}%</b></div>
                   </div>
                 ))}
@@ -168,7 +168,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           <div className="pf-grid3">
             <section className="card">
               <h2>Desenvolvimento</h2>
-              {p.history ? <DevChart points={p.history} /> : <p className="muted pf-empty"><Gauge size={28} aria-hidden="true" />A evolução da força só é conhecida para jogadores do seu clube.</p>}
+              {p.history ? <DevChart points={p.history.map((h) => ({ ...h, overall: to20(h.overall) }))} /> : <p className="muted pf-empty"><Gauge size={28} aria-hidden="true" />A evolução da força só é conhecida para jogadores do seu clube.</p>}
             </section>
             <section className="card">
               <h2>Estatísticas da temporada</h2>
@@ -197,15 +197,15 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
       {tab === 'attributes' && (
         <section className="card">
           <h2>Atributos detalhados (1 a 20)</h2>
-          {!p.attributes ? <p className="muted">Os olheiros ainda não conhecem o jogador o suficiente para relatar atributos (a partir de 25% de conhecimento).</p> : (
+          {(
             <div className="attrs">
               {(Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).map((g) => (
                 <table key={g}><thead><tr><th colSpan={2}>{GROUP_LABEL[g]}</th></tr></thead>
-                  <tbody>{Object.entries(p.attributes![g]).map(([k, r]) => <tr key={k}><td>{ATTR_LABEL[k] ?? k}</td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
+                  <tbody>{Object.entries(p.attributes[g]).map(([k, r]) => <tr key={k}><td>{ATTR_LABEL[k] ?? k}</td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
               ))}
             </div>
           )}
-          {!p.own && p.attributes && <p className="muted small">Faixas: o valor real está dentro delas e elas estreitam conforme os olheiros conhecem o jogador.</p>}
+          {!p.own && <p className="muted small">Faixas: o valor real está dentro delas e elas estreitam conforme os olheiros conhecem o jogador; com 100% de conhecimento, aparece o valor exato.</p>}
         </section>
       )}
 
@@ -222,7 +222,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
             <h2>Força por temporada</h2>
             {!p.history ? <p className="muted">Disponível apenas para jogadores do seu clube.</p> : (
               <table><thead><tr><th>Temporada</th><th className="right">Força</th></tr></thead>
-                <tbody>{[...p.history].reverse().map((h, i) => <tr key={`${h.season}-${i}`}><td>{h.season}/{String(h.season + 1).slice(2)}{i === 0 ? <span className="muted small"> (atual)</span> : ''}</td><td className="right">{h.overall}</td></tr>)}</tbody></table>
+                <tbody>{[...p.history].reverse().map((h, i) => <tr key={`${h.season}-${i}`}><td>{h.season}/{String(h.season + 1).slice(2)}{i === 0 ? <span className="muted small"> (atual)</span> : ''}</td><td className="right">{to20(h.overall)}</td></tr>)}</tbody></table>
             )}
           </section>
         </div>
@@ -267,7 +267,7 @@ function PositionMap({ natural, familiar }: { natural: Position; familiar: Posit
 function DevChart({ points }: { points: Array<{ season: number; overall: number }> }) {
   const w = 300, h = 140, pad = 24;
   const vals = points.map((p) => p.overall);
-  const lo = Math.max(0, Math.min(...vals) - 5), hi = Math.min(100, Math.max(...vals) + 5);
+  const lo = Math.max(0, Math.min(...vals) - 2), hi = Math.min(20, Math.max(...vals) + 2); // escala 1–20
   const x = (i: number) => (points.length === 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (points.length - 1));
   const y = (v: number) => h - pad - ((v - lo) / Math.max(1, hi - lo)) * (h - 2 * pad);
   return (
@@ -282,5 +282,87 @@ function DevChart({ points }: { points: Array<{ season: number; overall: number 
         </g>
       ))}
     </svg>
+  );
+}
+
+/**
+ * Janela compacta do jogador (Táticas: clique no elenco). Atributos 1–20, posições, funções e estatísticas da temporada;
+ * "Ficha completa" leva à ficha inteira e `actions` traz os botões da tela que abriu (ex.: colocar em campo).
+ */
+export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpenFull, actions }: {
+  profileId: string; careerId: string; playerId: string; onClose: () => void; onOpenFull?: (id: string) => void; actions?: ReactNode;
+}) {
+  const [p, setP] = useState<PlayerProfileDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setP(null); unwrap(window.api.getPlayerProfile(profileId, careerId, playerId)).then(setP).catch((e) => setError(errMsg(e))); }, [profileId, careerId, playerId]);
+  useEffect(() => { const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc); }, [onClose]);
+  const roles = p?.roles ? [...p.roles.list].sort((a, b) => b.familiarity - a.familiarity || b.suitability - a.suitability) : [];
+  return (
+    <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal pq-modal" role="dialog" aria-modal="true" aria-label={p ? `Jogador ${p.name}` : 'Jogador'}>
+        <header className="modal-head">
+          {p ? (
+            <div className="pq-head">
+              <div className="pf-avatar pq-avatar" aria-hidden="true">{initials(p.name)}</div>
+              <div className="pq-id">
+                <h2>{p.name}</h2>
+                <div className="row pf-meta"><PosPill pos={p.position} />{p.secondaryPositions.map((s) => <PosPill key={s} pos={s} minor />)}
+                  <span>{p.age} anos</span><span>{FOOT_LABEL[p.foot] ?? p.foot}</span><span>{p.heightCm} cm</span><span className="muted">{p.nationalityName}</span></div>
+              </div>
+              <div className="pq-level"><strong className={tone(p.estOverall.low)}>{p.own ? to20(p.estOverall.low) : fmtRange20(p.estOverall)}</strong><span>força</span></div>
+              <div className="pq-level"><strong>{p.condition}%</strong><span>condição</span></div>
+            </div>
+          ) : <h2>Jogador</h2>}
+          <button className="secondary icon" aria-label="Fechar" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        </header>
+        <div className="modal-body pq-body">
+          {!p ? (error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando…</p>) : (
+            <>
+              <section className="pq-attrs">
+                {(Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).map((g) => (
+                  <table key={g}><thead><tr><th colSpan={2}>{GROUP_LABEL[g]}</th></tr></thead>
+                    <tbody>{Object.entries(p.attributes[g]).map(([k, r]) => <tr key={k}><td>{ATTR_LABEL[k] ?? k}</td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
+                ))}
+              </section>
+              <section className="pq-side">
+                <div>
+                  <h3>Posições</h3>
+                  <PositionMap natural={p.position} familiar={p.secondaryPositions} />
+                </div>
+                <div>
+                  <h3>Temporada</h3>
+                  <div className="pq-kpis">
+                    <div><strong>{p.stats.appearances}</strong><span>jogos</span></div>
+                    <div><strong>{p.stats.goals}</strong><span>gols</span></div>
+                    <div><strong>{p.stats.assists}</strong><span>assist.</span></div>
+                    <div><strong>{p.stats.avgRating?.toFixed(2) ?? '—'}</strong><span>nota</span></div>
+                  </div>
+                </div>
+              </section>
+              {p.roles && (
+                <section className="pq-roles">
+                  <h3>Funções <span className="muted small">compatibilidade · domínio</span></h3>
+                  <div className="pq-role-list">
+                    {roles.map((r) => (
+                      <div key={r.id} className={`pq-role ${p.roles!.focus === r.id ? 'pf-role-focus' : ''}`} title={r.description}>
+                        <span className="pq-role-name">{r.label}{p.roles!.focus === r.id && <Dumbbell size={11} aria-label="treinando" />}</span>
+                        <span className="pq-role-pos">{r.positions.filter((x) => x !== 'ST').map((x) => <PosPill key={x} pos={x} minor />)}</span>
+                        <b className={tone(r.suitability)}>{to20(r.suitability)}</b><b className={tone(r.familiarity)}>{r.familiarity}%</b>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </div>
+        <footer className="modal-foot pq-foot">
+          {actions}
+          <span className="grow" />
+          {onOpenFull && <button className="secondary" disabled={!p} onClick={() => onOpenFull(playerId)}>Ficha completa</button>}
+          <button onClick={onClose}>Fechar</button>
+        </footer>
+      </div>
+    </div>
   );
 }

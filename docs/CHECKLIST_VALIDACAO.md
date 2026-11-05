@@ -139,6 +139,20 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Ficha de um jogador seu: card **Funções** (compatibilidade, domínio e "treinando"). Ficha de jogador de outro clube: sem o card.
 - [ ] Carreira nova: elencos com SA e CA; na carreira antiga, ATA pode jogar como SA ou CA.
 
+## 13c. Janela do jogador e posições secundárias (v0.8.7)
+- [ ] Táticas: clicar num jogador do elenco abre uma janela com atributos, posições, funções e estatísticas; fecha com X, Esc, clique fora ou "Fechar".
+- [ ] "Colocar em campo" fecha a janela e, ao clicar numa posição do campo, o jogador vai para lá; arrastar para o campo continua funcionando.
+- [ ] "Ficha completa" abre a ficha inteira; "Voltar" retorna a Táticas.
+- [ ] Elenco (save antigo ou carreira nova): nenhum goleiro com segunda posição; secundárias só vizinhas (ex.: ZAG→VOL/LE/LD, CA→SA/MEI, LE→AE/ZAG/ME).
+- [ ] Elenco: a página não tem barra de rolagem; só a tabela rola dentro do cartão (testar com a janela menor também).
+- [ ] Transferências: colunas FIN/GOL, TEC, PAS, DES, FIS e VEL com faixas ("?" para quem os olheiros conhecem pouco); ao rolar para os lados, a coluna do jogador fica parada.
+- [ ] Transferências: o rodapé mostra o total de jogadores disponíveis; ao rolar a lista até o fim, mais jogadores carregam sozinhos.
+- [ ] Filtro Posição: marcar ZAG e VOL mostra quem joga em qualquer uma (inclusive como secundária); desmarcar "Incluir… secundária" restringe à natural; clicar no nome do setor marca o setor inteiro.
+- [ ] Filtros Perfil (idade, pé, nacionalidade), Contrato e valor (situação, valor, salário, fim do contrato) e Olheiros: cada um filtra e vira uma etiqueta removível; "Limpar tudo" zera.
+- [ ] Os menus fecham ao clicar fora ou com Esc; a página de Transferências não tem barra de rolagem externa (em todas as abas).
+- [ ] Jogador de outro clube sem observação: força, potencial e atributos aparecem como faixas largas (sem "?"); com "Observar", as faixas estreitam a cada dia; com 100%, mostram um número só.
+- [ ] Escala 1–20 em todas as telas: força no Elenco, Táticas (lista, "Na vaga", campo e compatibilidade das funções), ficha, janela do jogador, Treinamento, Base, Contratos, Transferências, Olheiros, partida e Visão geral.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

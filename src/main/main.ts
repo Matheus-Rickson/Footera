@@ -119,6 +119,11 @@ function registerHandlers(): void {
     position: z.enum(['GK', 'DEF', 'MID', 'ATT', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']).optional(),
     minAge: z.number().int().min(14).max(50).optional(), maxAge: z.number().int().min(14).max(50).optional(),
     maxValue: z.number().int().min(0).max(1e10).optional(), name: z.string().max(40).optional(), freeOnly: z.boolean().optional(),
+    positions: z.array(z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST'])).max(16).optional(), naturalOnly: z.boolean().optional(),
+    nationalities: z.array(z.string().max(8)).max(100).optional(), foot: z.enum(['right', 'left', 'both']).optional(),
+    maxWage: z.number().int().min(0).max(1e9).optional(), contractEndsBy: z.enum(['season', 'next']).optional(),
+    clubOnly: z.boolean().optional(), shortlistedOnly: z.boolean().optional(), knownOnly: z.boolean().optional(),
+    offset: z.number().int().min(0).max(1e6).optional(), limit: z.number().int().min(1).max(500).optional(),
   }) }), (i) => searchTransferMarket(dataDir(), i.profileId, i.careerId, i.filter as MarketFilter));
   handle('transfers:offer', ref.extend({ offer: z.object({
     playerId: z.string().min(1).max(60), fee: z.number().int().min(0).max(1e10), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),

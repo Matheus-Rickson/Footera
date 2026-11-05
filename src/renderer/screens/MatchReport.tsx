@@ -4,7 +4,7 @@ import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSum
 import type { TeamStats } from '../../game/match-engine/types.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
-import { initials, PosPill } from '../playerUi.tsx';
+import { initials, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
 import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
 
@@ -60,7 +60,7 @@ function TeamTable({ name, team, levels }: { name: string; team: LiveState['team
     <tr key={p.id} className={p.onPitch ? '' : 'mc-gone'}>
       <td><PosPill pos={p.slot} /></td>
       <td><span className="mc-name">{p.name}</span><Marks p={p} /></td>
-      <td className="center">{levels[p.id] !== undefined ? <span className="mc-lvl">{levels[p.id]}</span> : <span className="muted" title="De outros clubes você só vê estimativas (ficha do jogador)">—</span>}</td>
+      <td className="center">{levels[p.id] !== undefined ? <span className="mc-lvl">{to20(levels[p.id]!)}</span> : <span className="muted" title="De outros clubes você só vê estimativas (ficha do jogador)">—</span>}</td>
       <td>{p.condition === null ? <span className="muted">—</span> : <span className="mc-cond"><span className="pf-track"><i className={condTone(p.condition)} style={{ width: `${p.condition}%` }} /></span><b className={condTone(p.condition)}>{Math.round(p.condition)}%</b></span>}</td>
       <td className="center">{p.rating === null ? <span className="muted">—</span> : <span className={`pf-rating ${ratingTone(p.rating)}`}>{p.rating.toFixed(1)}</span>}</td>
       <td className="right">{p.minutes}</td>

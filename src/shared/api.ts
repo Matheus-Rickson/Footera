@@ -1,4 +1,5 @@
 /** Contrato da API exposta pelo preload ao renderer. */
+import type { AttrSummary } from './attributeSummary.ts';
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
 import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
@@ -71,7 +72,19 @@ export interface FinanceOverviewDto {
   ledger: Array<{ date: string; category: string; amount: number; description: string }>;
 }
 export interface Range { low: number; high: number }
-export interface MarketFilter { position?: 'GK' | 'DEF' | 'MID' | 'ATT' | Position; minAge?: number; maxAge?: number; maxValue?: number; name?: string; /** só jogadores sem clube */ freeOnly?: boolean }
+export interface MarketFilter {
+  position?: 'GK' | 'DEF' | 'MID' | 'ATT' | Position; minAge?: number; maxAge?: number; maxValue?: number; name?: string; /** só jogadores sem clube */ freeOnly?: boolean;
+  /** várias posições: entra quem joga em QUALQUER uma delas (natural ou, se `naturalOnly` não estiver ligado, secundária) */
+  positions?: Position[]; naturalOnly?: boolean;
+  /** códigos de país (nacionalidade principal) */ nationalities?: string[];
+  foot?: 'right' | 'left' | 'both'; maxWage?: number;
+  /** contrato termina no fim desta temporada (30/jun) ou até o fim da próxima; livres entram */ contractEndsBy?: 'season' | 'next';
+  /** só com clube (o oposto de `freeOnly`) */ clubOnly?: boolean;
+  shortlistedOnly?: boolean; /** só jogadores bem observados (50%+ de conhecimento: faixas estreitas) */ knownOnly?: boolean;
+  /** paginação (padrão: 0 e 100) */ offset?: number; limit?: number;
+}
+/** Página do mercado: `total` = quantos passam nos filtros; `nationalities` = países presentes no mercado (para o filtro), com contagem. */
+export interface MarketPageDto { total: number; offset: number; players: MarketPlayerDto[]; nationalities: Array<{ code: string; name: string; count: number }> }
 export interface MarketPlayerDto {
   id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string;
   /** null = jogador livre (sem clube): contratação sem taxa, fora das janelas inclusive. */
@@ -83,6 +96,8 @@ export interface MarketPlayerDto {
   nationalityName: string; heightCm: number; weightKg: number;
   /** situação pública: lesão, suspensão e cartões nas competições da temporada atual */
   status: { injuredUntil: string | null; suspension: number; yellows: number; reds: number };
+  /** atributos resumidos (0–100 no motor; a tela mostra 1–20) estimados pelos olheiros; faixas largas sem conhecimento, exatos com 100% */
+  estSummary: AttrSummary;
 }
 export interface OfferInput { playerId: string; fee: number; wage: number; years: number }
 export interface OfferResultDto {
@@ -250,8 +265,8 @@ export interface PlayerProfileDto {
   id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string; heightCm: number; weightKg: number;
   clubId: string | null; clubName: string | null; own: boolean; youth: boolean; marketValue: number; salary: number; contractEnd: string;
   knowledge: number; estOverall: Range; estPotential: Range;
-  /** null = conhecimento insuficiente para relatar atributos */
-  attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range> } | null;
+  /** faixas (exatas no próprio clube ou com 100% de conhecimento) */
+  attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range> };
   stats: { appearances: number; goals: number; assists: number; avgRating: number | null };
   verdict: { level: 'starter' | 'rotation' | 'depth' | 'no'; text: string } | null;
   /** Para negociar a partir da ficha (null para jogadores do próprio clube). */
@@ -330,7 +345,7 @@ export interface GameApi {
   getCompetitionTable(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionTableDto>>;
   advance(profileId: string, careerId: string, mode: AdvanceMode): Promise<IpcResult<AdvanceResultDto>>;
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;
-  searchMarket(profileId: string, careerId: string, filter: MarketFilter): Promise<IpcResult<MarketPlayerDto[]>>;
+  searchMarket(profileId: string, careerId: string, filter: MarketFilter): Promise<IpcResult<MarketPageDto>>;
   makeOffer(profileId: string, careerId: string, offer: OfferInput): Promise<IpcResult<OfferResultDto>>;
   getNegotiation(profileId: string, careerId: string, playerId: string): Promise<IpcResult<NegotiationDto>>;
   proposeFee(profileId: string, careerId: string, playerId: string, fee: number): Promise<IpcResult<FeeResultDto>>;

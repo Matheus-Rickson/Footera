@@ -6,7 +6,7 @@ import {
 import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
-import { PosPill } from '../playerUi.tsx';
+import { PosPill, to20 } from '../playerUi.tsx';
 import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
 import { MatchReport } from './MatchReport.tsx';
 import { MatchesView } from './MatchesView.tsx';
@@ -125,7 +125,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         </div>
       </nav>}
 
-      <main className="content">
+      <main className={!match && !player && (view === 'squad' || view === 'transfers') ? 'content content-fit' : 'content'}>
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>
@@ -164,7 +164,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
             <div className="stat-tile"><span className="stat-label">Classificação</span><span className="stat-value">{pos && pos.played > 0 ? `${pos.position}º de ${pos.total}` : '—'}</span>
               <span className="muted small">{pos ? (pos.played > 0 ? `${pos.points} pts em ${pos.played} jogo(s) · ` : 'liga ainda não começou · ') : 'sem competição'}{pos && <button className="link" onClick={() => go('competitions')}>ver tabela</button>}</span></div>
             <div className="stat-tile"><span className="stat-label">Caixa</span><span className={`stat-value ${club.balance < 0 ? 'neg' : ''}`}>{fmtNum(club.balance)}</span><span className="muted small">saldo atual do clube</span></div>
-            <div className="stat-tile"><span className="stat-label">Elenco</span><span className="stat-value">{squad.length}</span><span className="muted small">força média {avg}</span></div>
+            <div className="stat-tile"><span className="stat-label">Elenco</span><span className="stat-value">{squad.length}</span><span className="muted small">força média {to20(avg)}</span></div>
             <div className="stat-tile"><span className="stat-label">Folha mensal</span><span className="stat-value">{fmtNum(payroll)}</span><span className="muted small">salários dos jogadores</span></div>
           </div>
         )}
@@ -225,7 +225,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
 
         {!match && !player && view === 'transfers' && <TransfersView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} preselect={preselect} onOpenPlayer={setPlayer} />}
         {!match && !player && view === 'finance' && <FinanceView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && !player && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} />}
+        {!match && !player && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} onOpenPlayer={setPlayer} />}
         {!match && !player && view === 'season' && <SeasonView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenContracts={() => go('contracts')} />}
         {!match && !player && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && view === 'scouting' && <ScoutingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenPlayer={setPlayer} onNegotiate={negotiate} />}

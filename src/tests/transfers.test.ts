@@ -310,3 +310,71 @@ test('Mercado: situação pública do jogador (lesão em curso, suspensão e car
   db.exec("UPDATE career SET game_date = '2026-08-01'");
   assert.equal(st(t.id).injuredUntil, null, 'lesão que termina hoje já não aparece');
 });
+
+test('Mercado: atributos resumidos são estimativas (faixas que contêm o real), iguais aos da ficha, largas sem conhecimento e exatas com 100%', async () => {
+  const { summarizeRanges } = await import('../shared/attributeSummary.ts');
+  const { getPlayerProfile } = await import('../database/repositories/scoutRepository.ts');
+  const { db, world } = await setup();
+  const all = searchMarket(db, {});
+  const [a, b] = [all[0]!, all[1]!];
+  db.prepare("INSERT OR REPLACE INTO scout_knowledge (player_id, knowledge, updated_on) VALUES (?, 100, '2026-07-01'), (?, 60, '2026-07-01')").run(a.id, b.id);
+  const again = searchMarket(db, {});
+  const est = again.find((p) => p.id === b.id)!.estSummary;
+  const none = all.find((p) => p.id === b.id)!.estSummary; // antes de observar (0%)
+  assert.ok(Object.keys(none).every((k) => none[k as keyof typeof none].high - none[k as keyof typeof none].low >= est[k as keyof typeof est].high - est[k as keyof typeof est].low), 'observar estreita as faixas');
+  const exact = (g: object) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, { low: v as number, high: v as number }]));
+  const ra = world.players.find((x) => x.id === b.id)!.attributes;
+  const real = summarizeRanges({ technical: exact(ra.technical), mental: exact(ra.mental), physical: exact(ra.physical) });
+  for (const k of Object.keys(real) as Array<keyof typeof real>) {
+    assert.ok(est[k].low <= real[k].low && real[k].low <= est[k].high, `${k}: real ${real[k].low} fora de ${est[k].low}–${est[k].high}`);
+    assert.ok(est[k].high > est[k].low, `${k}: é faixa, não o valor real`);
+  }
+  assert.deepEqual(est, summarizeRanges(getPlayerProfile(db, b.id).attributes), 'mesma estimativa da ficha');
+  const ea = world.players.find((x) => x.id === a.id)!.attributes;
+  assert.deepEqual(again.find((p) => p.id === a.id)!.estSummary, summarizeRanges({ technical: exact(ea.technical), mental: exact(ea.mental), physical: exact(ea.physical) }), '100%: resumo exato');
+});
+
+test('Mercado paginado: todos os disponíveis, várias posições (natural ou secundária), nacionalidade, contrato, situação, salário, pé e olheiros', async () => {
+  const { searchMarketPage } = await import('../database/repositories/transferRepository.ts');
+  const { db, clubId } = await setup();
+  const pool = Number(db.prepare('SELECT COUNT(*) AS n FROM players WHERE retired = 0 AND youth_club_id IS NULL AND (club_id IS NULL OR club_id <> ?)').get(clubId)!.n);
+  const first = searchMarketPage(db, {});
+  assert.equal(first.total, pool, 'total = todos os jogadores disponíveis (não só 100)');
+  // páginas cobrem tudo, sem repetir
+  const ids = new Set<string>();
+  for (let off = 0; off < first.total; off += 250) for (const p of searchMarketPage(db, { offset: off, limit: 250 }).players) ids.add(p.id);
+  assert.equal(ids.size, pool);
+  assert.ok(first.nationalities.length >= 1 && first.nationalities.reduce((s, n) => s + n.count, 0) === pool);
+  // várias posições: natural OU secundária em qualquer uma
+  const all = (f: Parameters<typeof searchMarketPage>[1]) => searchMarketPage(db, { ...f, limit: 500, offset: 0 });
+  const want = new Set(['CB', 'DM'] as const);
+  const multi = all({ positions: ['CB', 'DM'] });
+  assert.ok(multi.players.every((p) => want.has(p.position as 'CB') || p.secondaryPositions.some((s) => want.has(s as 'CB'))));
+  const viaSecondary = multi.players.filter((p) => !want.has(p.position as 'CB'));
+  assert.ok(viaSecondary.length > 0, 'aparece quem tem a posição como secundária');
+  const natural = all({ positions: ['CB', 'DM'], naturalOnly: true });
+  assert.ok(natural.players.every((p) => want.has(p.position as 'CB')));
+  assert.equal(natural.total + viaSecondary.length, multi.total);
+  assert.ok(all({ positions: ['CB'] }).total < multi.total, 'somar posições amplia a busca');
+  // nacionalidade (várias)
+  const code = first.nationalities[0]!.code;
+  const byNat = all({ nationalities: [code] });
+  assert.equal(byNat.total, first.nationalities[0]!.count);
+  assert.ok(byNat.players.every((p) => p.nationality === code));
+  assert.equal(all({ nationalities: first.nationalities.map((n) => n.code) }).total, pool);
+  // contrato, situação, salário, pé
+  const season = getCareerState(db).season;
+  assert.ok(all({ contractEndsBy: 'season' }).players.every((p) => p.clubId === null || p.contractEnd <= `${season + 1}-06-30`));
+  assert.ok(all({ contractEndsBy: 'season' }).total < all({ contractEndsBy: 'next' }).total);
+  const club = all({ clubOnly: true }), free = all({ freeOnly: true });
+  assert.ok(club.players.every((p) => p.clubId !== null) && free.players.every((p) => p.clubId === null));
+  assert.equal(club.total + free.total, pool);
+  assert.ok(all({ maxWage: 20000 }).players.every((p) => p.salary <= 20000));
+  assert.ok(all({ foot: 'left' }).players.every((p) => p.foot === 'left'));
+  // olheiros
+  const [a, b] = first.players;
+  db.prepare("INSERT OR REPLACE INTO scout_knowledge (player_id, knowledge, updated_on) VALUES (?, 60, '2026-07-01')").run(a!.id);
+  db.prepare("INSERT OR REPLACE INTO scout_shortlist (player_id, added_on) VALUES (?, '2026-07-01')").run(b!.id);
+  assert.ok(all({ knownOnly: true }).players.some((p) => p.id === a!.id) && all({ knownOnly: true }).players.every((p) => p.knowledge >= 25));
+  assert.deepEqual(all({ shortlistedOnly: true }).players.map((p) => p.id), [b!.id]);
+});

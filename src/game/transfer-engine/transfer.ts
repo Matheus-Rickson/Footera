@@ -79,32 +79,31 @@ export function playerDecision(wage: number, demand: number): PlayerDecision {
 
 export interface Range { low: number; high: number }
 /**
- * Estimativa de qualidade com margem de erro (o usuário não vê os atributos reais antes de contratar).
- * O ruído é fixo por jogador (semente), então atualizar a tela não revela o valor verdadeiro. A faixa de força sempre contém o valor real.
- * `knowledge` (0..100, rede de olheiros) estreita as faixas e leva o centro do potencial ao valor oculto; com 0 o resultado é o de antes dos olheiros.
+ * Estimativa de qualidade com margem de erro. O ruído é fixo por jogador (semente), então atualizar a tela não revela o valor verdadeiro.
+ * A faixa de força sempre contém o valor real. `knowledge` (0..100, olheiros) estreita as faixas: sem conhecimento, ±12 na força (ex.: 32–56)
+ * e ±14 no potencial; com 100%, o valor exato (força atual e potencial real).
  */
 export function estimateRange(overall: number, potentialEstimated: number, seed: string, playerId: string, knowledge = 0, potentialHidden = potentialEstimated): { overall: Range; potential: Range } {
   const rng = createRng(`scout:${seed}:${playerId}`);
   const f = 1 - Math.max(0, Math.min(100, knowledge)) / 100;
   const o = overall + Math.round(rng.int(-4, 4) * f);
   const p = Math.round(potentialEstimated + (potentialHidden - potentialEstimated) * (1 - f)) + Math.round(rng.int(-3, 3) * f);
-  const halfO = 1 + Math.round(5 * f), halfP = 2 + Math.round(6 * f);
+  const halfO = Math.round(12 * f), halfP = Math.round(14 * f);
   const clamp = (v: number) => Math.max(1, Math.min(100, v));
   return { overall: { low: clamp(o - halfO), high: clamp(o + halfO) }, potential: { low: clamp(p - halfP), high: clamp(Math.max(p + halfP, o + halfO)) } };
 }
 
-/** Conhecimento mínimo (0..100) para os olheiros relatarem atributos individuais. */
-export const ATTR_MIN_KNOWLEDGE = 25;
+/** Conhecimento a partir do qual o jogador conta como "bem observado" (filtro do mercado). */
+export const WELL_KNOWN = 50;
 export type AttributeRanges = { [G in keyof Attributes]: Record<string, Range> };
 
 /**
- * Atributos (1..20) como o usuário os enxerga num jogador de outro clube: null abaixo de `ATTR_MIN_KNOWLEDGE`; depois, faixas de ±3 (25%) a ±1 (100%)
- * que sempre contêm o valor real e são fixas por jogador (semente). Nunca revela o valor exato (regra 7).
+ * Atributos (1..20) como o usuário os enxerga num jogador de outro clube: faixas que sempre contêm o valor real e são fixas por jogador
+ * (semente), de ±5 sem conhecimento até o valor exato com 100% de observação (regra 7). Sempre há uma estimativa (nunca null).
  */
-export function estimateAttributes(attrs: Attributes, seed: string, playerId: string, knowledge: number): AttributeRanges | null {
-  if (knowledge < ATTR_MIN_KNOWLEDGE) return null;
-  const f = 1 - Math.min(100, knowledge) / 100;
-  const half = 1 + Math.round(3 * f);
+export function estimateAttributes(attrs: Attributes, seed: string, playerId: string, knowledge: number): AttributeRanges {
+  const f = 1 - Math.max(0, Math.min(100, knowledge)) / 100;
+  const half = Math.round(5 * f);
   const rng = createRng(`scout-attr:${seed}:${playerId}`);
   const group = (g: Record<string, number>) => Object.fromEntries(Object.keys(g).sort().map((k) => {
     const c = g[k]! + Math.round(rng.int(-2, 2) * f);

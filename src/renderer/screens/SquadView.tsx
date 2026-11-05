@@ -4,7 +4,7 @@ import type { SquadRow } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { POS_ORDER } from '../../shared/positions.ts';
 import { fmtDate } from '../util.ts';
-import { Flag, initials, PosPill, tone } from '../playerUi.tsx';
+import { Flag, initials, PosPill, to20, tone } from '../playerUi.tsx';
 
 type Group = 'all' | 'GK' | 'DEF' | 'MID' | 'ATT';
 const GROUPS: Array<[Group, string]> = [['all', 'Todos'], ['GK', 'Goleiros'], ['DEF', 'Defensores'], ['MID', 'Meio-campistas'], ['ATT', 'Atacantes']];
@@ -51,7 +51,7 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
           ))}
         </div>
         <div className="sq-summary muted small">
-          <span>Força média <strong>{Math.round(avg((p) => p.overall))}</strong></span>
+          <span>Força média <strong>{to20(avg((p) => p.overall))}</strong></span>
           <span>Idade média <strong>{avg((p) => p.age).toFixed(1).replace('.', ',')}</strong></span>
           <span>Condição média <strong>{Math.round(avg((p) => p.condition))}%</strong></span>
         </div>
@@ -85,7 +85,7 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
             {rows.map((p) => (
               <tr key={p.id}>
                 <td><span className="sq-pos"><PosPill pos={p.position} />{p.secondaryPositions.slice(0, 2).map((s) => <PosPill key={s} pos={s} minor />)}</span></td>
-                <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{p.overall}</span></td>
+                <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
                 <td>
                   <div className="sq-player">
                     <span className="tr-avatar" aria-hidden="true">{initials(p.name)}</span>

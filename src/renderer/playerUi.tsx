@@ -3,9 +3,13 @@ import type { MarketPlayerDto, Range } from '../shared/api.ts';
 import type { Position } from '../shared/types.ts';
 import { fmtDate } from './util.ts';
 import { POS_LABEL, POS_NAME } from '../shared/positions.ts';
+import { range20, to20 } from '../shared/scale.ts';
 export { POS_LABEL, POS_NAME, posLabel } from '../shared/positions.ts';
 export const FOOT_LABEL: Record<string, string> = { right: 'Destro', left: 'Canhoto', both: 'Ambidestro' };
 export const fmtRange = (r: Range) => (r.low === r.high ? `${r.low}` : `${r.low}–${r.high}`);
+/** Faixa na escala de exibição 1–20 (ver `shared/scale.ts`); as cores (`tone`) continuam recebendo 0–100. */
+export const fmtRange20 = (r: Range) => fmtRange(range20(r));
+export { to20 };
 export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 /** Faixa de cor por nível (escala 0–100). */
 export const tone = (v: number) => (v >= 75 ? 'great' : v >= 60 ? 'good' : v >= 45 ? 'avg' : 'poor');

@@ -709,3 +709,34 @@ Sem novas funcionalidades de jogo.
   da evolução mensal (mesmos pesos do foco de atributos: ×1,35/×0,9). Um foco de atributos específico prevalece. Testei pesos maiores (×1,6/×0,8): a força
   geral subia até +0,3/ano a mais que sem treino, por isso mantive os pesos já calibrados. Teste causal novo (mesmo save e mesmas sementes, só muda o treino);
   a mutação que remove a regra foi detectada. 180 testes passando e typecheck limpo. Textos explicativos na janela de funções e na ficha (telas NÃO verificadas).
+
+## v0.8.7 — janela do jogador em Táticas e posições secundárias realistas
+- **Táticas:** clicar num jogador do elenco abre uma janela compacta (`PlayerQuickView` em `PlayerProfile.tsx`) com atributos 1–20, mapa de posições,
+  funções (compatibilidade e domínio) e estatísticas da temporada; botões "Colocar em campo"/"Trocar de lugar" (seleciona para o próximo clique numa
+  posição), "Ficha completa" e "Fechar" (também Esc e clique fora). Arrastar para o campo continua igual. Tela NÃO verificada no Electron.
+- **Geração:** a posição secundária era sorteada entre todas as posições (goleiro ala, atacante zagueiro). Agora só entre vizinhas no campo
+  (`SECONDARY_OPTIONS` em `shared/positions.ts`); goleiro nunca tem secundária. Vale para universos novos e para a base (`buildPlayer`).
+- **Saves existentes (migração 012):** remove as secundárias implausíveis e mantém as vizinhas. Medido numa cópia do save do usuário: 905 → 169
+  jogadores com secundária; goleiros com secundária 130 → 0.
+- **Testes:** 181 (novo em `world.test.ts`: universo, 600 jovens da base e migração). Mutação 3/3 detectadas (sorteio antigo, goleiro com secundária,
+  migração sem filtro). Typecheck limpo.
+- **Ajustes pedidos depois:** CA também pode ter MEI como secundária (SA já tinha). **Elenco** cabe na janela: a página não rola, só a tabela
+  dentro do cartão (`content-fit`). **Transferências:** colunas de atributos resumidos (FIN/GOL, TEC, PAS, DES, FIS, VEL) com as mesmas faixas
+  estimadas da ficha (`shared/attributeSummary.ts`; "?" com menos de 25% de conhecimento; GOL só para goleiros, FIN só para jogadores de linha);
+  rolagem horizontal com a coluna do jogador (nome e foto) fixa à esquerda e as ações fixas à direita. Telas NÃO verificadas no Electron.
+- Testes: 182 (novo em `transfers.test.ts`: resumo é faixa que contém o real, igual à ficha, oculto com pouco conhecimento). Mutação: 3/3 detectadas
+  (resumo ignora o conhecimento, resumo exato e CA zagueiro). Typecheck limpo.
+- **Transferências — mercado completo e filtros por categoria:** a busca deixou de parar nos 100 mais valiosos: `searchMarketPage` filtra todos os
+  disponíveis e devolve `total` + a página pedida (a tela carrega 100 por vez ao rolar a lista). Filtros agrupados em 4 menus (`MarketFilters.tsx`):
+  **Posição** (várias ao mesmo tempo, por setor ou uma a uma; entra quem joga em qualquer uma, como natural ou secundária, com opção "só natural"),
+  **Perfil** (idade, pé, nacionalidade — várias, com contagem), **Contrato e valor** (com/sem clube, valor e salário máximos, contrato que termina
+  nesta temporada ou até a próxima) e **Olheiros** (só observados, só com atributos conhecidos). Filtros ativos viram etiquetas removíveis e há
+  "Limpar tudo". A página de Transferências também cabe na janela (sem barra de rolagem externa; as abas rolam dentro do cartão). Telas NÃO verificadas.
+- Testes: 183 (novo: mercado paginado cobre todos sem repetir, posições múltiplas com secundária, só natural, nacionalidade, contrato, situação,
+  salário, pé e olheiros). Mutação 7/7 detectadas. Typecheck limpo.
+- **Estimativas e escala 1–20 (pedido do usuário):** sem conhecimento, faixas largas (força ±12 em 0–100; atributos ±5) em vez de esconder; elas
+  estreitam com a observação e, com 100%, mostram o valor exato da força, do potencial e dos atributos (regra 7 revista no CLAUDE.md). O filtro
+  "Olheiros" do mercado passou a ser "Só bem observados (50%+)". Força, potencial, força na vaga, compatibilidade de função, resumos de atributos,
+  força média e evolução aparecem de 1 a 20 (inteiro, decisão do usuário) em todas as telas; o motor, as calibrações e o banco continuam em 0–100.
+  Moral, confiança da diretoria e reputação seguem em 0–100 (não são qualidade de jogador). Testes: 184 (estimativas exatas com 100%, faixas largas
+  sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.

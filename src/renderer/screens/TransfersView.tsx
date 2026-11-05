@@ -1,38 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Binoculars, Search, X } from 'lucide-react';
-import type { MarketFilter, MarketPlayerDto, TransfersOverviewDto } from '../../shared/api.ts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Binoculars } from 'lucide-react';
+import type { MarketPageDto, MarketPlayerDto, TransfersOverviewDto } from '../../shared/api.ts';
+import { EMPTY_FILTERS, MarketFilters, toMarketFilter, type Filters } from './MarketFilters.tsx';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
-import { FOOT_LABEL, fmtRange, initials, PlayerFlags, PosPill, tone } from '../playerUi.tsx';
+import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, PosPill, tone } from '../playerUi.tsx';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { NegotiationModal } from './NegotiationModal.tsx';
+import type { SummaryKey } from '../../shared/attributeSummary.ts';
 
 type Tab = 'market' | 'incoming' | 'mine' | 'history';
+/** Atributos resumidos na lista do mercado (estimativas). Finalização só para jogadores de linha; Goleiro só para goleiros. */
+const SUMMARY_COLS: Array<[SummaryKey, string, string]> = [
+  ['fin', 'FIN', 'Finalização'], ['gol', 'GOL', 'Goleiro'], ['tec', 'TEC', 'Técnica'], ['pas', 'PAS', 'Passe'], ['des', 'DES', 'Desarme'], ['fis', 'FIS', 'Físico'], ['vel', 'VEL', 'Velocidade'],
+];
+
 interface Props {
   profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>;
   /** Jogador escolhido na ficha ou nos olheiros: abre direto a janela de negociação. */ preselect?: MarketPlayerDto | null; onOpenPlayer: (id: string) => void;
 }
-interface Filters { position: string; minAge: string; maxAge: string; maxValue: string; name: string; freeOnly: boolean }
-const EMPTY: Filters = { position: '', minAge: '', maxAge: '', maxValue: '', name: '', freeOnly: false };
-const LIMIT = 100;
+const PAGE = 100;
 const KIND_LABEL = { purchase: 'Compra', sale: 'Venda', ai: 'Outros clubes' } as const;
-const POSITION_OPTIONS: Array<[string, string]> = [
-  ['', 'Todas as posições'], ['GK', 'Goleiros'], ['DEF', 'Defensores'], ['MID', 'Meio-campistas'], ['ATT', 'Atacantes'],
-  ['CB', 'Zagueiro'], ['LB', 'Lateral esquerdo'], ['RB', 'Lateral direito'], ['LWB', 'Ala esquerda'], ['RWB', 'Ala direita'], ['DM', 'Volante'], ['CM', 'Meio-campista'],
-  ['LM', 'Meia esquerda'], ['RM', 'Meia direita'], ['AM', 'Meia'], ['LW', 'Ponta esquerda'], ['RW', 'Ponta direita'], ['SS', 'Segundo atacante'], ['CF', 'Centroavante'], ['ST', 'Atacante'],
-];
 /** Filtros da última busca: continuam valendo ao voltar da ficha de um jogador (a tela é desmontada). */
-let lastFilters: Filters = EMPTY;
-
-function toMarketFilter(f: Filters): MarketFilter {
-  const m: MarketFilter = {};
-  if (f.position) m.position = f.position as MarketFilter['position'];
-  if (f.minAge) m.minAge = Number(f.minAge);
-  if (f.maxAge) m.maxAge = Number(f.maxAge);
-  if (f.maxValue) m.maxValue = Math.round(Number(f.maxValue));
-  if (f.name.trim()) m.name = f.name.trim();
-  if (f.freeOnly) m.freeOnly = true;
-  return m;
-}
+let lastFilters: Filters = EMPTY_FILTERS;
 
 export function TransfersView({ profileId, careerId, refreshKey, onChanged, preselect, onOpenPlayer }: Props) {
   const [tab, setTab] = useState<Tab>('market');
@@ -42,6 +31,13 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState<Filters>(lastFilters);
   const [results, setResults] = useState<MarketPlayerDto[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [nationalities, setNationalities] = useState<MarketPageDto['nationalities']>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** descarta respostas de buscas antigas (filtro mudou enquanto a página carregava) */
+  const reqId = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLTableRowElement>(null);
   const [negotiating, setNegotiating] = useState<string | null>(null);
 
   const load = useCallback(async () => { setOv(await unwrap(window.api.getTransfers(profileId, careerId))); }, [profileId, careerId]);
@@ -49,8 +45,31 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
   useEffect(() => { if (preselect) { setTab('market'); setNegotiating(preselect.id); } }, [preselect]);
 
   const search = useCallback(async (f: Filters) => {
-    try { setResults(await unwrap(window.api.searchMarket(profileId, careerId, toMarketFilter(f)))); } catch (e) { setError(errMsg(e)); }
+    const id = ++reqId.current;
+    try {
+      const page = await unwrap(window.api.searchMarket(profileId, careerId, { ...toMarketFilter(f), offset: 0, limit: PAGE }));
+      if (id !== reqId.current) return;
+      setResults(page.players); setTotal(page.total); setNationalities(page.nationalities);
+      scrollRef.current?.scrollTo({ top: 0 });
+    } catch (e) { setError(errMsg(e)); }
   }, [profileId, careerId]);
+  // rolagem infinita: ao chegar perto do fim da lista, busca a próxima página com os mesmos filtros
+  const loadMore = useCallback(async () => {
+    if (!results || loadingMore || results.length >= total) return;
+    const id = reqId.current;
+    setLoadingMore(true);
+    try {
+      const page = await unwrap(window.api.searchMarket(profileId, careerId, { ...toMarketFilter(filters), offset: results.length, limit: PAGE }));
+      if (id === reqId.current) setResults((cur) => [...(cur ?? []), ...page.players.filter((p) => !(cur ?? []).some((c) => c.id === p.id))]);
+    } catch (e) { setError(errMsg(e)); } finally { setLoadingMore(false); }
+  }, [results, loadingMore, total, profileId, careerId, filters]);
+  useEffect(() => {
+    const el = sentinel.current, root = scrollRef.current;
+    if (!el || !root) return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) void loadMore(); }, { root, rootMargin: '300px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [loadMore, tab]);
   // busca automática: imediata ao trocar filtros de escolha, com pequena espera ao digitar nome/idade/valor
   useEffect(() => {
     lastFilters = filters;
@@ -60,7 +79,6 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
 
   async function run(fn: () => Promise<void>) { setBusy(true); setError(null); try { await fn(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); } }
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
-  const active = filters.position !== '' || filters.minAge !== '' || filters.maxAge !== '' || filters.maxValue !== '' || filters.name !== '' || filters.freeOnly;
 
   const respond = (id: number, accept: boolean) => run(async () => {
     await unwrap(window.api.respondOffer(profileId, careerId, id, accept));
@@ -78,7 +96,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
   const tabs: Array<[Tab, string]> = [['market', 'Mercado'], ['incoming', `Propostas recebidas${ov.incoming.length ? ` (${ov.incoming.length})` : ''}`], ['mine', 'Meus jogadores'], ['history', 'Histórico']];
 
   return (
-    <div className="grid1">
+    <div className="tr-root">
       <div className="tr-head">
         <div className="pf-tabs" role="tablist">
           {tabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} className={`pf-tab ${tab === t ? 'on' : ''}`} onClick={() => setTab(t)}>{label}</button>)}
@@ -94,31 +112,16 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
 
       {tab === 'market' && (
         <section className="card tr-market">
-          <div className="tr-toolbar">
-            <label className="tr-search"><Search size={15} aria-hidden="true" />
-              <input placeholder="Buscar jogador pelo nome…" aria-label="Buscar jogador pelo nome" value={filters.name} maxLength={40} onChange={(e) => set({ name: e.target.value })} />
-            </label>
-            <select className="tr-chip" aria-label="Posição" value={filters.position} onChange={(e) => set({ position: e.target.value })}>
-              {POSITION_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <span className="tr-chip">Idade
-              <input type="number" min={14} max={50} placeholder="de" aria-label="Idade mínima" value={filters.minAge} onChange={(e) => set({ minAge: e.target.value })} />
-              <input type="number" min={14} max={50} placeholder="até" aria-label="Idade máxima" value={filters.maxAge} onChange={(e) => set({ maxAge: e.target.value })} />
-            </span>
-            <span className="tr-chip">Valor até
-              <input className="tr-wide" type="number" min={0} step={100000} placeholder="sem limite" aria-label="Valor de mercado máximo" value={filters.maxValue} onChange={(e) => set({ maxValue: e.target.value })} />
-            </span>
-            <label className={`tr-chip ${filters.freeOnly ? 'on' : ''}`}><input type="checkbox" checked={filters.freeOnly} onChange={(e) => set({ freeOnly: e.target.checked })} />Só livres</label>
-            {active && <button className="link" onClick={() => setFilters(EMPTY)}><X size={14} aria-hidden="true" />Limpar</button>}
-          </div>
+          <MarketFilters filters={filters} set={set} nationalities={nationalities} />
           <p className="muted small">Jogadores de outros clubes aparecem com <strong>estimativas</strong> (contrate olheiros e use <Binoculars size={12} aria-hidden="true" /> para estreitar as faixas).
             Jogadores <strong>sem clube</strong> não custam taxa e podem ser contratados com a janela fechada.</p>
 
-          <div className="tr-scroll">
+          <div className="tr-scroll" ref={scrollRef}>
             {!results ? <p className="muted">Buscando…</p> : results.length === 0 ? <p className="muted">Nenhum jogador encontrado com esses filtros.</p> : (
               <table className="tr-table">
                 <thead>
                   <tr><th>Jogador</th><th>Clube</th><th>Nacionalidade</th><th>Posição</th><th>Secundárias</th><th className="right">Idade</th><th>Nível (est.)</th><th>Potencial (est.)</th>
+                    {SUMMARY_COLS.map(([k, short, label]) => <th key={k} className={`center ${k === 'fin' ? 'tr-attr-first' : ''}`} title={`${label} (estimativa dos olheiros, 1–20)`}>{short}</th>)}
                     <th>Pé</th><th className="right">Altura</th><th className="right">Peso</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Olheiros</th><th /></tr>
                 </thead>
                 <tbody>{results.map((p) => {
@@ -132,8 +135,14 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                       <td><PosPill pos={p.position} /></td>
                       <td><span className="tr-secs">{p.secondaryPositions.length === 0 ? <span className="muted">—</span> : p.secondaryPositions.map((s) => <PosPill key={s} pos={s} minor />)}</span></td>
                       <td className="right">{p.age}</td>
-                      <td><span className={`tr-level ${tone(mid)}`} title="Faixa estimada pelos olheiros">{fmtRange(p.estOverall)}</span></td>
-                      <td className="muted">{fmtRange(p.estPotential)}</td>
+                      <td><span className={`tr-level ${tone(mid)}`} title="Faixa estimada pelos olheiros">{fmtRange20(p.estOverall)}</span></td>
+                      <td className="muted">{fmtRange20(p.estPotential)}</td>
+                      {SUMMARY_COLS.map(([k, , label]) => {
+                        const r = p.estSummary[k];
+                        const na = (k === 'gol') !== (p.position === 'GK') && (k === 'gol' || k === 'fin');
+                        return <td key={k} className={`center ${k === 'fin' ? 'tr-attr-first' : ''}`}>{na ? <span className="muted">—</span>
+                          : <span className={`tr-attr ${tone((r.low + r.high) / 2)}`} title={`${label}: estimativa ${fmtRange20(r)}`}>{fmtRange20(r)}</span>}</td>;
+                      })}
                       <td>{FOOT_LABEL[p.foot] ?? p.foot}</td>
                       <td className="right nowrap">{p.heightCm} cm</td>
                       <td className="right nowrap">{p.weightKg} kg</td>
@@ -148,11 +157,12 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                       </div></td>
                     </tr>
                   );
-                })}</tbody>
+                })}
+                {results.length < total && <tr ref={sentinel} className="tr-more"><td colSpan={99}>{loadingMore ? 'Carregando mais jogadores…' : 'Role para carregar mais'}</td></tr>}</tbody>
               </table>
             )}
           </div>
-          {results && results.length > 0 && <p className="muted small">{results.length >= LIMIT ? `Mostrando os ${LIMIT} jogadores mais valiosos que atendem aos filtros. Refine a busca para ver outros.` : `${results.length} jogador(es), do mais valioso ao menos valioso.`}</p>}
+          {results && results.length > 0 && <p className="muted small">{total.toLocaleString('pt-BR')} jogador(es) disponíveis com esses filtros, do mais valioso ao menos valioso{results.length < total ? ` · ${results.length} carregados (role a lista para ver mais)` : ''}.</p>}
         </section>
       )}
 
@@ -168,7 +178,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
       )}
 
       {tab === 'mine' && (
-        <section className="card scroll tall">
+        <section className="card">
           <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato até</th><th>Transferível</th></tr></thead>
             <tbody>{ov.mine.map((p) => (
               <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td>

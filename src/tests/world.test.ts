@@ -129,3 +129,35 @@ test('Posições ME/MD/AE/AD: atributos de cada função, funções parecidas a 
     assert.ok(!pos.has('ST'), 'carreira nova não gera o atacante genérico (ATA)');
   }
 });
+
+test('Posições secundárias plausíveis: goleiro sem secundária, só vizinhas no campo (geração, base e saves antigos pela migração 012)', async () => {
+  const { SECONDARY_OPTIONS, isPlausibleSecondary } = await import('../shared/positions.ts');
+  const { migration012 } = await import('../database/migrations/012_plausible_secondary.ts');
+  const { openDatabase } = await import('../database/connection.ts');
+  const { createCareer } = await import('../services/careerService.ts');
+  const { buildPlayer } = await import('../game/world/generator.ts');
+  const { createRng } = await import('../game/rng.ts');
+  const { COUNTRY_TEMPLATES } = await import('../game/world/names.ts');
+  for (const p of world.players) for (const s of p.secondaryPositions) assert.ok(isPlausibleSecondary(p.position, s), `${p.position} com secundária ${s}`);
+  assert.ok(world.players.some((p) => p.secondaryPositions.length > 0), 'ainda há jogadores com secundária');
+  assert.ok(world.players.filter((p) => p.position === 'GK').every((p) => p.secondaryPositions.length === 0));
+  // base (buildPlayer com idade forçada)
+  const rng = createRng('base-sec'); let n = 0;
+  for (let i = 0; i < 600; i++) {
+    const pos = (Object.keys(SECONDARY_OPTIONS) as Array<keyof typeof SECONDARY_OPTIONS>).filter((x) => x !== 'ST')[i % 15]!;
+    const y = buildPlayer(rng, () => `y${n++}`, COUNTRY_TEMPLATES[0]!, 'c', 50, pos, '2026-07-01', { first: 'A', last: 'B' }, { forceAge: 16 });
+    for (const s of y.secondaryPositions) assert.ok(isPlausibleSecondary(pos, s), `base: ${pos} com ${s}`);
+  }
+  // save antigo: a migração remove as implausíveis e mantém as vizinhas
+  const db = await openDatabase(':memory:');
+  createCareer(db, world, { firstName: 'A', lastName: 'B', birthDate: '1980-01-01', nationality: 'BRA', methodology: 'possession', reputation: 20, photoPath: null }, world.clubs[0]!.id);
+  const ids = db.prepare("SELECT id, position FROM players WHERE position IN ('GK', 'CF', 'LB') ORDER BY id LIMIT 60").all();
+  const bad: Record<string, string> = { GK: '["LWB"]', CF: '["CB","SS"]', LB: '["CF","LWB"]' };
+  for (const r of ids) db.prepare('UPDATE players SET secondary_positions_json = ? WHERE id = ?').run(bad[String(r.position)]!, r.id);
+  db.exec(migration012.sql);
+  const want: Record<string, string[]> = { GK: [], CF: ['SS'], LB: ['LWB'] };
+  for (const r of ids) {
+    const got = JSON.parse(String(db.prepare('SELECT secondary_positions_json AS s FROM players WHERE id = ?').get(r.id)!.s));
+    assert.deepEqual(got, want[String(r.position)], `${r.position}`);
+  }
+});

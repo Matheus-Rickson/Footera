@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, CircleCheck, X } from 'lucide-react';
 import type { NegotiationDto, OfferResultDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
-import { fmtRange, initials, PlayerFlags, PosPill } from '../playerUi.tsx';
+import { fmtRange, fmtRange20, initials, PlayerFlags, PosPill } from '../playerUi.tsx';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { YearsPicker } from './YearsPicker.tsx';
 
@@ -94,8 +94,8 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
                 </div>
               </div>
               <dl className="neg-facts">
-                <div><dt>Nível (est.)</dt><dd><span className="tr-level">{fmtRange(p.estOverall)}</span></dd></div>
-                <div><dt>Potencial (est.)</dt><dd>{fmtRange(p.estPotential)}</dd></div>
+                <div><dt>Nível (est.)</dt><dd><span className="tr-level">{fmtRange20(p.estOverall)}</span></dd></div>
+                <div><dt>Potencial (est.)</dt><dd>{fmtRange20(p.estPotential)}</dd></div>
                 <div><dt>Olheiros</dt><dd><KnowledgeBar value={p.knowledge} /></dd></div>
                 <div><dt>Valor de mercado</dt><dd>{fmtNum(p.marketValue)}</dd></div>
                 <div><dt>{p.clubId ? 'Salário atual' : 'Pretensão salarial'}</dt><dd>{fmtNum(p.salary)}/mês</dd></div>

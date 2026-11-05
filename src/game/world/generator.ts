@@ -2,6 +2,7 @@ import { createRng, clamp, type Rng } from '../rng.ts';
 import { COUNTRY_TEMPLATES, STADIUM_SUFFIX, type CountryTemplate } from './names.ts';
 import { overallFor } from './overall.ts';
 import { addDays, addYears } from '../../shared/date.ts';
+import { SECONDARY_OPTIONS } from '../../shared/positions.ts';
 import type {
   Attributes, Club, Country, Foot, League, Player, Position, Stadium, World, IsoDate,
 } from '../../shared/types.ts';
@@ -114,9 +115,9 @@ export function buildPlayer(
   const potentialEstimated = clamp(Math.round(potentialHidden + rng.normal(0, 4)), overall, 100);
   const value = marketValue(overall, age, potentialHidden, tpl.wageScale);
   const foot: Foot = rng.weighted(['right', 'left', 'both'] as Foot[], [70, 24, 6]);
-  const secondary: Position[] = rng.chance(0.35)
-    ? [rng.pick((['CB','LB','RB','LWB','RWB','DM','CM','LM','RM','AM','LW','RW','SS','CF'] as Position[]).filter((p) => p !== pos))]
-    : [];
+  // secundária só entre posições vizinhas no campo (goleiro nunca tem; ver SECONDARY_OPTIONS)
+  const options = SECONDARY_OPTIONS[pos];
+  const secondary: Position[] = rng.chance(0.35) && options.length > 0 ? [rng.pick(options)] : [];
   return {
     id: newId('plr'),
     clubId,

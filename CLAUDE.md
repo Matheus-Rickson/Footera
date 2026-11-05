@@ -2,7 +2,7 @@
 
 Jogo de gerenciamento de futebol offline (estilo Football Manager/Brasfoot), **em português do Brasil**.
 Stack: Electron + React + TypeScript + Vite + SQLite (`node:sqlite`, fallback `better-sqlite3`) + Zod. Alvo: Windows.
-Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa: 8A–8D; 0.8.1 = nome FOOTERA, logo, instalador e lapidação de interface; 0.8.2 = posições em português em todas as telas e tema escuro grafite; 0.8.3 = técnico ao vivo: vestiário, substituições, placar compacto; 0.8.4 = placar alinhado, conversa só na partida, auxiliar sugere trocas com motivo; 0.8.5 = auxiliar propõe a formação para encaixar quem entra; 0.8.6 = ME/MD/AE/AD e SA/CA, funções táticas, elenco e táticas reorganizados).
+Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa: 8A–8D; 0.8.1 = nome FOOTERA, logo, instalador e lapidação de interface; 0.8.2 = posições em português em todas as telas e tema escuro grafite; 0.8.3 = técnico ao vivo: vestiário, substituições, placar compacto; 0.8.4 = placar alinhado, conversa só na partida, auxiliar sugere trocas com motivo; 0.8.5 = auxiliar propõe a formação para encaixar quem entra; 0.8.6 = ME/MD/AE/AD e SA/CA, funções táticas, elenco e táticas reorganizados; 0.8.7 = janela do jogador em Táticas, secundárias plausíveis, mercado completo com filtros, estimativas que convergem e escala 1–20).
 
 ## Comandos
 - `npm test` — testes (`node:test`, não Vitest). Rode sempre antes de dizer que algo funciona.
@@ -26,7 +26,7 @@ Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa
 4. Classificação é derivada das partidas, nunca armazenada.
 5. Rodada simulada é atômica.
 6. Determinismo por semente (mesma semente = mesmo resultado).
-7. O usuário só vê **estimativas** (`estimateRange`) de jogadores de outros clubes.
+7. O usuário só vê **estimativas** (`estimateRange`/`estimateAttributes`) de jogadores de outros clubes; as faixas estreitam com a observação e só com 100% de conhecimento mostram o valor exato. Força, potencial e compatibilidade aparecem na escala 1–20 (`shared/scale.ts`); o motor calcula em 0–100.
 8. Nomes de classes CSS são únicos (há teste de guarda).
 9. Sem botão decorativo, sem dado falso, sem resultado de teste inventado; relatar o que não foi executado.
 
@@ -47,4 +47,6 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   Validação do usuário pelo `docs/CHECKLIST_VALIDACAO.md`. Saves do app instalado ficam em `%APPDATA%\football-manager-simulator` (fixado no main.ts).
 - v0.8.6 commitada (funções com popup verificadas pelo usuário; validação completa em andamento): ME/MD/AE/AD e SA/CA como posições; funções táticas (`playerRoles.ts`, migração 011,
   domínio que se aprende jogando/treinando); motor rebalanceado (`ZONE_EXP` 0,35, `K.chance` 0,070). Ver PROGRESS.md.
+- v0.8.7 commitada (aguardando validação completa pelo checklist 13c). Em seguida: **Fase 9 começando pela base de dados editável** (pacotes de dados
+  JSON + CSV, IDs fixos, universo montado de base + pacotes, só carreiras novas — exceto fotos/nomes). Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

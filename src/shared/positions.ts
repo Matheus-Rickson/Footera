@@ -6,3 +6,22 @@ export const POS_NAME: Record<Position, string> = { GK: 'Goleiro', CB: 'Zagueiro
 /** Ordem de exibição (do gol ao ataque, esquerda antes da direita). */
 export const POS_ORDER: Position[] = ['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST'];
 export const posLabel = (p: Position): string => POS_LABEL[p] ?? p;
+/**
+ * Posições secundárias plausíveis para cada posição natural (vizinhas no campo, mesmo lado). Goleiro não tem secundária
+ * e ninguém de linha vira goleiro; um atacante não vira zagueiro, um lateral não vira centroavante.
+ */
+export const SECONDARY_OPTIONS: Record<Position, Position[]> = {
+  GK: [],
+  CB: ['DM', 'LB', 'RB'],
+  LB: ['LWB', 'CB', 'LM'], RB: ['RWB', 'CB', 'RM'],
+  LWB: ['LB', 'LM', 'LW'], RWB: ['RB', 'RM', 'RW'],
+  DM: ['CB', 'CM'],
+  CM: ['DM', 'AM', 'LM', 'RM'],
+  LM: ['LW', 'CM', 'LWB', 'RM'], RM: ['RW', 'CM', 'RWB', 'LM'],
+  AM: ['CM', 'SS', 'LW', 'RW'],
+  LW: ['LM', 'RW', 'SS', 'AM'], RW: ['RM', 'LW', 'SS', 'AM'],
+  SS: ['AM', 'CF', 'LW', 'RW'],
+  CF: ['SS', 'AM'],
+  ST: ['AM', 'LW', 'RW'],
+};
+export const isPlausibleSecondary = (natural: Position, secondary: Position): boolean => SECONDARY_OPTIONS[natural].includes(secondary);

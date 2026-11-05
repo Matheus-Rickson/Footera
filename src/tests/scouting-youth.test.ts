@@ -6,7 +6,7 @@ import { generateWorld } from '../game/world/generator.ts';
 import { createRng } from '../game/rng.ts';
 import { advanceTime, getCareerState, moveClock } from '../database/repositories/competitionRepository.ts';
 import { withTransaction, type SqlDb } from '../database/types.ts';
-import { ATTR_MIN_KNOWLEDGE, estimateAttributes, estimateRange, scoutVerdict } from '../game/transfer-engine/transfer.ts';
+import { estimateAttributes, estimateRange, scoutVerdict } from '../game/transfer-engine/transfer.ts';
 import { dailyGain, MAX_SCOUTS, scoutCandidates } from '../game/scouting-engine/scouting.ts';
 import { COUNTRY_TEMPLATES } from '../game/world/names.ts';
 import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, ScoutError, setShortlisted } from '../database/repositories/scoutRepository.ts';
@@ -32,14 +32,13 @@ function assertBooksBalance(db: SqlDb, initial: Map<string, number>) {
 const clockTo = (db: SqlDb, to: string) => withTransaction(db, () => moveClock(db, getCareerState(db).gameDate, to, new Date('2030-01-01T00:00:00Z')));
 const know = (db: SqlDb, id: string) => n(db, 'SELECT COALESCE((SELECT knowledge FROM scout_knowledge WHERE player_id = ?), 0) AS n', id);
 
-test('Estimativas: sem conhecimento é a fórmula anterior; com conhecimento a faixa estreita, sempre contém a força real e converge ao potencial oculto', () => {
+test('Estimativas: sem conhecimento faixa larga (±12 na força); com conhecimento estreita, sempre contém a força real; com 100% é o valor exato', () => {
   for (let i = 0; i < 200; i++) {
     const ov = 30 + (i % 60), pe = ov + (i % 9), ph = ov + (i % 7);
-    // fórmula anterior aos olheiros, reproduzida aqui
     const rng = createRng(`scout:s:p${i}`);
     const o = ov + rng.int(-4, 4), p = pe + rng.int(-3, 3);
     const cl = (v: number) => Math.max(1, Math.min(100, v));
-    assert.deepEqual(estimateRange(ov, pe, 's', `p${i}`, 0, ph), { overall: { low: cl(o - 6), high: cl(o + 6) }, potential: { low: cl(p - 8), high: cl(Math.max(p + 8, o + 6)) } });
+    assert.deepEqual(estimateRange(ov, pe, 's', `p${i}`, 0, ph), { overall: { low: cl(o - 12), high: cl(o + 12) }, potential: { low: cl(p - 14), high: cl(Math.max(p + 14, o + 12)) } });
     let prev = Infinity;
     for (const k of [0, 25, 50, 75, 100]) {
       const e = estimateRange(ov, pe, 's', `p${i}`, k, ph);
@@ -48,7 +47,7 @@ test('Estimativas: sem conhecimento é a fórmula anterior; com conhecimento a f
       assert.ok(width <= prev, `k=${k}: faixa alargou`); prev = width;
     }
     const full = estimateRange(ov, pe, 's', `p${i}`, 100, ph);
-    assert.ok(full.overall.high - full.overall.low <= 2 && full.potential.low <= ph && ph <= full.potential.high);
+    assert.deepEqual(full, { overall: { low: ov, high: ov }, potential: { low: ph, high: Math.max(ph, ov) } }, '100%: força e potencial reais, exatos');
   }
 });
 
@@ -201,25 +200,27 @@ test('Virada: jovens de 19 do usuário saem da base; com elenco incompleto, o me
   assert.ok(n(db, "SELECT COUNT(*) AS n FROM players WHERE club_id = ? AND position = 'GK'", clubId) >= 2);
 });
 
-test('Ficha: atributos estimados só a partir de 25% de conhecimento, em faixas que contêm o real, estreitam e nunca revelam o valor exato', async () => {
+test('Ficha: atributos sempre estimados — faixa larga sem conhecimento, contém o real, estreita e é exata com 100% de observação', async () => {
   const { world } = await setup('sy-attr');
+  let wide = 0;
   for (const pl of world.players.slice(0, 120)) {
-    assert.equal(estimateAttributes(pl.attributes, 's', pl.id, ATTR_MIN_KNOWLEDGE - 1), null);
-    const maxWidth = (k: number) => 2 * (1 + Math.round(3 * (1 - k / 100))); // ±3 → ±1
-    for (const k of [25, 50, 75, 100]) {
-      assert.ok(k === 25 || maxWidth(k) <= maxWidth(k - 25), 'largura máxima não aumenta com o conhecimento');
-      const e = estimateAttributes(pl.attributes, 's', pl.id, k)!;
+    const maxWidth = (k: number) => 2 * Math.round(5 * (1 - k / 100)); // ±5 → exato
+    for (const k of [0, 25, 50, 75, 100]) {
+      const e = estimateAttributes(pl.attributes, 's', pl.id, k);
       for (const g of ['technical', 'mental', 'physical'] as const) {
         for (const [key, r] of Object.entries(e[g])) {
           const real = (pl.attributes[g] as unknown as Record<string, number>)[key]!;
           assert.ok(r.low <= real && real <= r.high, `${key}: ${real} fora de ${r.low}–${r.high} (k=${k})`);
-          if (real > 1 && real < 20) assert.ok(r.high > r.low, 'nunca o valor exato');
           assert.ok(r.high - r.low <= maxWidth(k), `${key}: faixa larga demais para k=${k}`);
+          if (k === 0 && r.high - r.low >= 8) wide++;
+          if (k === 100) assert.equal(r.low, r.high, '100%: valor exato');
+          if (k < 90 && real > 1 && real < 20) assert.ok(r.high > r.low, 'sem observação completa, nunca o valor exato');
         }
       }
     }
     assert.deepEqual(estimateAttributes(pl.attributes, 's', pl.id, 60), estimateAttributes(pl.attributes, 's', pl.id, 60), 'fixas por jogador');
   }
+  assert.ok(wide > 100, `sem conhecimento as faixas são largas (${wide} atributos com 8+ de largura)`);
 });
 
 test('Parecer do olheiro: compara com o elenco do usuário no setor e destaca promessas', () => {
@@ -238,16 +239,17 @@ test('Ficha: jogador de outro clube mostra estimativas e permite negociar/observ
   const { db, clubId } = await setup('sy-profile');
   const other = searchMarket(db, {}).find((p) => p.clubId !== null)!;
   const p0 = getPlayerProfile(db, other.id);
-  assert.equal(p0.own, false); assert.equal(p0.attributes, null); assert.equal(p0.knowledge, 0);
+  assert.equal(p0.own, false); assert.equal(p0.knowledge, 0);
+  assert.ok(Object.values(p0.attributes.technical).some((r) => r.high - r.low >= 6), 'sem conhecimento: faixas largas');
   assert.ok(!('overall' in p0) && !('potentialHidden' in p0));
   assert.ok(p0.market && p0.market.id === other.id && p0.negotiable, 'janela aberta em 1º/jul: negociável');
   assert.ok(p0.verdict && p0.verdict.text.length > 0);
   db.prepare('INSERT INTO scout_knowledge (player_id, knowledge, updated_on) VALUES (?, 100, ?)').run(other.id, '2026-07-01');
   const p1 = getPlayerProfile(db, other.id);
   const real = db.prepare('SELECT overall, attributes_json FROM players WHERE id = ?').get(other.id)!;
-  assert.ok(p1.attributes && p1.estOverall.low <= Number(real.overall) && Number(real.overall) <= p1.estOverall.high && p1.estOverall.high - p1.estOverall.low <= 2);
+  assert.deepEqual(p1.estOverall, { low: Number(real.overall), high: Number(real.overall) }, '100%: força exata');
   const attrs = JSON.parse(String(real.attributes_json)) as Record<string, Record<string, number>>;
-  for (const g of ['technical', 'mental', 'physical'] as const) for (const [k, r] of Object.entries(p1.attributes![g])) assert.ok(r.low <= attrs[g]![k]! && attrs[g]![k]! <= r.high);
+  for (const g of ['technical', 'mental', 'physical'] as const) for (const [k, r] of Object.entries(p1.attributes[g])) assert.deepEqual(r, { low: attrs[g]![k]!, high: attrs[g]![k]! }, '100%: atributo exato');
   db.prepare("UPDATE career SET game_date = '2026-10-10'").run();
   assert.equal(getPlayerProfile(db, other.id).negotiable, false, 'janela fechada');
   const mine = String(db.prepare('SELECT id FROM players WHERE club_id = ? LIMIT 1').get(clubId)!.id);
@@ -291,4 +293,18 @@ test('Base: só universos novos (marcados) geram as posições novas (ME/MD/AE/A
   const got = youthPositions(old);
   assert.ok(got.length > 20, 'a peneira gerou jovens');
   assert.ok(!got.some((p) => novas.includes(p)), 'save anterior não ganha as posições novas');
+});
+
+test('Escala de exibição 1–20: força, potencial e faixas (0–100 no motor) aparecem de 1 a 20, mantendo a ordem e o valor real dentro da faixa', async () => {
+  const { to20, range20 } = await import('../shared/scale.ts');
+  assert.equal(to20(100), 20); assert.equal(to20(0), 1); assert.equal(to20(64), 13); assert.equal(to20(61), 12);
+  for (let v = 1; v < 100; v++) assert.ok(to20(v) <= to20(v + 1), 'monotônica');
+  for (let i = 0; i < 200; i++) {
+    const ov = 20 + (i % 75);
+    for (const k of [0, 50, 100]) {
+      const r = range20(estimateRange(ov, ov + 4, 's', `q${i}`, k, ov + 6).overall);
+      assert.ok(r.low <= to20(ov) && to20(ov) <= r.high && r.high <= 20 && r.low >= 1);
+      if (k === 100) assert.equal(r.low, r.high);
+    }
+  }
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Intensity, TrainingFocus, TrainingOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, unwrap } from '../util.ts';
-import { PosPill } from '../playerUi.tsx';
+import { PosPill, to20 } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer: (id: string) => void }
 export const FOCUS_LABEL: Record<TrainingFocus, string> = {
@@ -51,8 +51,8 @@ export function TrainingView({ profileId, careerId, refreshKey, onOpenPlayer }: 
           <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Pot. est.</th><th>Na temporada</th><th>Condição</th><th>Foco</th><th>Sugestão do preparador</th></tr></thead>
           <tbody>{ov.players.map((p) => (
             <tr key={p.id}>
-              <td><PosPill pos={p.position} /></td><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{p.overall}</td><td>{p.potentialEstimated}</td>
-              <td className={p.seasonChange > 0 ? 'pos' : p.seasonChange < 0 ? 'neg' : 'muted'}>{p.seasonChange > 0 ? `+${p.seasonChange}` : p.seasonChange}</td>
+              <td><PosPill pos={p.position} /></td><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td>{p.age}</td><td>{to20(p.overall)}</td><td>{to20(p.potentialEstimated)}</td>
+              {(() => { const d = to20(p.overall) - to20(p.overall - p.seasonChange); return <td className={d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted'}>{d > 0 ? `+${d}` : d}</td>; })()}
               <td>{p.injuredUntil ? <span className="neg">lesionado até {fmtDate(p.injuredUntil)}</span> : `${p.condition}%`}</td>
               <td><select value={p.focus} disabled={busy || locked} onChange={(e) => void run(() => unwrap(window.api.setFocus(profileId, careerId, p.id, e.target.value as TrainingFocus)))}>
                 {ov.focuses.map((f) => <option key={f} value={f}>{FOCUS_LABEL[f]}</option>)}</select></td>

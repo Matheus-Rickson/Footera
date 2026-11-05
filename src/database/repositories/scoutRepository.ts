@@ -15,6 +15,7 @@ import { getCareerState } from './careerRepository.ts';
 import { makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
+import { summarizeRanges } from '../../shared/attributeSummary.ts';
 
 export class ScoutError extends UserError {}
 
@@ -41,6 +42,7 @@ export function toScoutedDto(db: SqlDb, r: Record<string, unknown>, date: string
     clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd,
     estOverall: est.overall, estPotential: est.potential, knowledge: Math.floor(knowledge), shortlisted,
     nationalityName: countryName(db, p.nationality), heightCm: p.heightCm, weightKg: p.weightKg, status: publicStatus(db, p.id, date),
+    estSummary: summarizeRanges(estimateAttributes(p.attributes, seedOf(db), p.id, knowledge)),
   };
 }
 

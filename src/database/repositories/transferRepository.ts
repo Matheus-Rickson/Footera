@@ -3,12 +3,12 @@ import { withTransaction } from '../types.ts';
 import { UserError } from '../../shared/errors.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import {
-  askingPrice, clubDecision, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, playerInterest, sellerWillingness, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
+  askingPrice, clubDecision, WELL_KNOWN, groupOf, type PositionGroup, OFFER_VALID_DAYS, playerDecision, playerInterest, sellerWillingness, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
 import type { Player } from '../../shared/types.ts';
 import type {
-  FeeResultDto, IncomingOfferDto, MarketFilter, MarketPlayerDto, MyPlayerDto, NegotiationDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
+  FeeResultDto, IncomingOfferDto, MarketFilter, MarketPageDto, MarketPlayerDto, MyPlayerDto, NegotiationDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
@@ -81,23 +81,41 @@ export function releasePlayer(db: SqlDb, playerId: string, date: string, retire:
 
 // ---------------------------------------------------------------- mercado e propostas
 export function searchMarket(db: SqlDb, f: MarketFilter): MarketPlayerDto[] {
+  return searchMarketPage(db, f).players;
+}
+
+/** Mercado com filtros e paginação: filtra tudo (barato) e só monta as estimativas da página pedida. */
+export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   const st = getCareerState(db);
   const know = knowledgeMap(db);
   const shortlisted = new Set(db.prepare('SELECT player_id FROM scout_shortlist').all().map((r) => S(r.player_id)));
-  const where = ['p.retired = 0', 'p.youth_club_id IS NULL', f.freeOnly ? 'p.club_id IS NULL' : '(p.club_id IS NULL OR p.club_id <> ?)'], args: unknown[] = f.freeOnly ? [] : [st.clubId];
+  const where = ['p.retired = 0', 'p.youth_club_id IS NULL', f.freeOnly ? 'p.club_id IS NULL' : f.clubOnly ? 'p.club_id IS NOT NULL AND p.club_id <> ?' : '(p.club_id IS NULL OR p.club_id <> ?)'];
+  const args: unknown[] = f.freeOnly ? [] : [st.clubId];
+  // países presentes no mercado (antes dos demais filtros, para o filtro de nacionalidade não sumir com as opções)
+  const nationalities = db.prepare(`SELECT p.nationality AS code, COALESCE(co.name, p.nationality) AS name, COUNT(*) AS n FROM players p LEFT JOIN countries co ON co.code = p.nationality
+    WHERE ${where.join(' AND ')} GROUP BY p.nationality ORDER BY n DESC, name`).all(...args).map((r) => ({ code: S(r.code), name: S(r.name), count: N(r.n) }));
   if (f.maxValue !== undefined) { where.push('p.market_value <= ?'); args.push(Math.max(0, Math.floor(f.maxValue))); }
+  if (f.maxWage !== undefined) { where.push('p.salary <= ?'); args.push(Math.max(0, Math.floor(f.maxWage))); }
   if (f.name && f.name.trim()) { where.push("(p.first_name || ' ' || p.last_name) LIKE ?"); args.push(`%${f.name.trim().replace(/[%_]/g, '')}%`); }
+  if (f.nationalities?.length) { where.push(`p.nationality IN (${f.nationalities.map(() => '?').join(',')})`); args.push(...f.nationalities); }
+  if (f.foot) { where.push('p.foot = ?'); args.push(f.foot); }
+  if (f.contractEndsBy) { where.push('(p.club_id IS NULL OR p.contract_end <= ?)'); args.push(`${st.season + (f.contractEndsBy === 'season' ? 1 : 2)}-06-30`); }
   const rows = db.prepare(`SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
-  const out: MarketPlayerDto[] = [];
+  const wanted = f.positions?.length ? new Set(f.positions) : null;
+  const matches: Array<{ r: Record<string, unknown>; id: string }> = [];
   for (const r of rows) {
     const p = rowToPlayer(r), age = ageOn(p.birthDate, st.gameDate);
     if (f.position && (f.position === 'GK' || f.position === 'DEF' || f.position === 'MID' || f.position === 'ATT' ? groupOf(p.position) !== f.position : p.position !== f.position)) continue;
+    if (wanted && !wanted.has(p.position) && (f.naturalOnly || !p.secondaryPositions.some((s) => wanted.has(s)))) continue;
     if (f.minAge !== undefined && age < f.minAge) continue;
     if (f.maxAge !== undefined && age > f.maxAge) continue;
-    out.push(toScoutedDto(db, r, st.gameDate, know.get(p.id) ?? 0, shortlisted.has(p.id)));
-    if (out.length >= 100) break;
+    if (f.shortlistedOnly && !shortlisted.has(p.id)) continue;
+    if (f.knownOnly && (know.get(p.id) ?? 0) < WELL_KNOWN) continue;
+    matches.push({ r, id: p.id });
   }
-  return out;
+  const offset = Math.max(0, Math.floor(f.offset ?? 0)), limit = Math.min(500, Math.max(1, Math.floor(f.limit ?? 100)));
+  const players = matches.slice(offset, offset + limit).map(({ r, id }) => toScoutedDto(db, r, st.gameDate, know.get(id) ?? 0, shortlisted.has(id)));
+  return { total: matches.length, offset, players, nationalities };
 }
 
 /** Validações comuns da proposta (sem taxa/salário): devolve o jogador, o clube do usuário e o estado da carreira. */

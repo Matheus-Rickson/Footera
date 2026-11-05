@@ -4,7 +4,7 @@ import type { LiveMatchDto } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { TALK_MESSAGES, TALK_TONES, type TalkTone } from '../../game/match-engine/teamTalk.ts';
 import type { LivePlayer } from '../matchLive.ts';
-import { POS_NAME, PosPill } from '../playerUi.tsx';
+import { POS_NAME, PosPill, to20 } from '../playerUi.tsx';
 
 function Modal({ title, icon, onClose, busy, children, foot }: { title: string; icon: ReactNode; onClose: () => void; busy: boolean; children: ReactNode; foot: ReactNode }) {
   useEffect(() => {
@@ -97,7 +97,7 @@ export function SubsModal({ onPitch, bench, used, max, reason, busy, error, onCo
           {bench.length === 0 && <p className="muted small">Ninguém disponível no banco.</p>}
           {bench.map((p) => (
             <button key={p.id} className={`lv-pick ${inn === p.id ? 'on' : ''}`} aria-pressed={inn === p.id} disabled={busy || left <= 0} onClick={() => setInn(p.id)}>
-              <PosPill pos={p.position} /><span className="lv-pick-name">{p.name}</span><span className="muted small">força {p.overall} · {p.condition}%</span>
+              <PosPill pos={p.position} /><span className="lv-pick-name">{p.name}</span><span className="muted small">força {to20(p.overall)} · {p.condition}%</span>
             </button>
           ))}
         </div>

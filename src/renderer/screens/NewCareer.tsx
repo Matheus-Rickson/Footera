@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ClubList, PhotoPick } from '../../shared/api.ts';
 import type { Methodology } from '../../shared/types.ts';
 import { errMsg, fmtNum, METHODOLOGY, unwrap } from '../util.ts';
+import { to20 } from '../playerUi.tsx';
 
 interface Props { profileId: string; onBack: () => void; onCreated: (careerId: string) => void }
 
@@ -114,7 +115,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
                   {visible.map((c) => (
                     <tr key={c.id} className={c.id === clubId ? 'selected' : ''} onClick={() => setClubId(c.id)}>
                       <td><input type="radio" name="club" checked={c.id === clubId} onChange={() => setClubId(c.id)} aria-label={`Escolher ${c.name}`} /></td>
-                      <td>{c.name}</td><td>{c.country} — {c.league}</td><td>{c.reputation}</td><td>{c.avgOverall}</td><td>{c.stadium}</td><td>{fmtNum(c.capacity)}</td>
+                      <td>{c.name}</td><td>{c.country} — {c.league}</td><td>{c.reputation}</td><td>{to20(c.avgOverall)}</td><td>{c.stadium}</td><td>{fmtNum(c.capacity)}</td>
                     </tr>
                   ))}
                 </tbody>

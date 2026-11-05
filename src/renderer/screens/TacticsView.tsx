@@ -7,9 +7,10 @@ import { ANCHORS, FORMATIONS, customFormationId, formationLabel, getFormation } 
 import { isRelatedPosition } from '../../game/match-engine/roles.ts';
 import { roleFactorFrom } from '../../game/match-engine/playerRoles.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
-import { initials, POS_NAME, PosPill, posLabel, tone } from '../playerUi.tsx';
+import { initials, POS_NAME, posLabel, PosPill, to20, tone } from '../playerUi.tsx';
+import { PlayerQuickView } from './PlayerProfile.tsx';
 
-interface Props { profileId: string; careerId: string }
+interface Props { profileId: string; careerId: string; /** abre a ficha completa do jogador */ onOpenPlayer?: (id: string) => void }
 /**
  * Tática em edição = o esquema ativo (salvo a cada mudança). `lineup` null = escalação automática a cada jogo.
  * `roles`: função de cada vaga (fica com a vaga, não com o jogador; null = a que mais combina com quem estiver ali).
@@ -38,7 +39,7 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
   );
 }
 
-export function TacticsView({ profileId, careerId }: Props) {
+export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
   const [ov, setOv] = useState<TacticsOverviewDto | null>(null);
   const [work, setWork] = useState<Work | null>(null);
   const [autoXI, setAutoXI] = useState<string[]>([]);
@@ -51,6 +52,9 @@ export function TacticsView({ profileId, careerId }: Props) {
   const [styleOpen, setStyleOpen] = useState(false);
   /** jogador do campo cujo painel de funções está aberto */
   const [roleFor, setRoleFor] = useState<string | null>(null);
+  /** jogador do elenco cuja janela de informações está aberta */
+  const [infoFor, setInfoFor] = useState<string | null>(null);
+  const closeInfo = useCallback(() => setInfoFor(null), []);
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
@@ -157,7 +161,7 @@ export function TacticsView({ profileId, careerId }: Props) {
   const roleSlot = roleFor !== null ? slotOf.get(roleFor) : undefined;
   const rolePlayer = roleFor !== null && roleSlot !== undefined ? squad.get(roleFor) : undefined;
   /** "Trocar de lugar": fecha o painel e deixa o jogador selecionado para o próximo clique numa posição */
-  const startMove = (pid: string) => { setRoleFor(null); setSelected(pid); setHint('Clique na posição de destino (sobre um titular, eles trocam; numa posição vazia, a formação muda).'); };
+  const startMove = (pid: string) => { setRoleFor(null); setInfoFor(null); setSelected(pid); setHint('Clique na posição de destino (sobre um titular, eles trocam; numa posição vazia, a formação muda).'); };
 
   /** função da vaga no crachá do jogador (funções de render, não componentes: nada é remontado a cada mudança) */
   function chipRole(i: number) {
@@ -187,7 +191,7 @@ export function TacticsView({ profileId, careerId }: Props) {
               <button key={r.id} className={`tc-role ${chosen === r.id ? 'on' : ''}`} disabled={saving} onClick={() => setRole(i, r.id)}>
                 <span className="tc-role-name">{r.label}</span>
                 <span className="tc-role-desc muted small">{r.description}</span>
-                <span className="tc-role-meter" title="Quanto os atributos dele combinam com a função"><span>Compatibilidade</span><i><b className={tone(f.suitability)} style={{ width: `${f.suitability}%` }} /></i><em>{f.suitability}</em></span>
+                <span className="tc-role-meter" title="Quanto os atributos dele combinam com a função"><span>Compatibilidade</span><i><b className={tone(f.suitability)} style={{ width: `${f.suitability}%` }} /></i><em>{to20(f.suitability)}</em></span>
                 <span className="tc-role-meter" title="Quanto ele já sabe jogar assim (cresce jogando e treinando a função)"><span>Domínio</span><i><b className={tone(f.familiarity)} style={{ width: `${f.familiarity}%` }} /></i><em>{f.familiarity}%</em></span>
               </button>
             );
@@ -248,15 +252,15 @@ export function TacticsView({ profileId, careerId }: Props) {
                   const anchor = i !== undefined ? anchors[i]! : null;
                   return (
                     <tr key={p.id} {...dragProps(p.id)} className={`tc-row ${i !== undefined ? 'tc-starter' : ''} ${selected === p.id ? 'tc-sel' : ''}`}
-                      onClick={() => setSelected((s) => (s === p.id ? null : p.id))} title="Arraste para o campo (ou clique e depois clique numa posição)">
+                      onClick={() => { if (selected === p.id) setSelected(null); else setInfoFor(p.id); }} title="Clique para ver o jogador; arraste para o campo para escalá-lo">
                       <td>{anchor ? <span className="tc-badge" title={anchorTitle(anchor)}>{anchorLabel(anchor)}</span> : <span className="muted small">—</span>}</td>
                       <td><PosPill pos={p.position} /></td>
-                      <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{p.overall}</span></td>
+                      <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
                       <td><span className="sq-player"><span className="tr-avatar" aria-hidden="true">{initials(p.name)}</span><span className="tc-name">{p.name}</span>
                         {p.unavailable?.kind === 'injured' && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.unavailable.until)}`}><Cross size={11} aria-hidden="true" /></span>}
                         {p.unavailable?.kind === 'suspended' && <span className="tr-flag tr-flag-susp" title={`Suspenso (${p.unavailable.matches} jogo(s))`}><Ban size={11} aria-hidden="true" /></span>}</span></td>
                       <td className="right">{Math.round(p.condition)}%</td>
-                      <td className="center">{pos ? <b className={fitTone(p, pos)}>{p.slotScores[pos]}</b> : <span className="muted">—</span>}</td>
+                      <td className="center">{pos ? <b className={fitTone(p, pos)}>{to20(p.slotScores[pos])}</b> : <span className="muted">—</span>}</td>
                     </tr>
                   );
                 })}
@@ -264,7 +268,7 @@ export function TacticsView({ profileId, careerId }: Props) {
             </table>
           </div>
           {hint && <p className="notice small" role="status">{hint}</p>}
-          <p className="muted small">Arraste um jogador para o campo: sobre um titular, eles trocam; um titular arrastado para uma posição vazia muda a formação. Também funciona clicando no jogador e depois na posição.</p>
+          <p className="muted small">Clique num jogador para ver atributos, posições, funções e estatísticas. Arraste-o para o campo: sobre um titular, eles trocam; um titular arrastado para uma posição vazia muda a formação. Também dá para usar "Colocar em campo" na janela do jogador e depois clicar na posição.</p>
         </section>
 
         <section className="card tc-field-card">
@@ -283,10 +287,10 @@ export function TacticsView({ profileId, careerId }: Props) {
               };
               if (!p) return <button key={a.id} className={`tc-empty ${dragOver === a.id ? 'over' : ''} ${selected ? 'armed' : ''}`} style={style} title={`Posição livre: ${anchorTitle(a.id)}`} aria-label={`Posição livre ${anchorTitle(a.id)}`} {...common}><span>{anchorLabel(a.id)}</span></button>;
               return (
-                <button key={a.id} className={`tc-chip-p ${dragOver === a.id ? 'over' : ''} ${selected === p.id ? 'sel' : ''}`} style={style} title={`${p.name} — ${anchorTitle(a.id)} (rende ${p.slotScores[a.pos]})`} {...dragProps(p.id)} {...common}>
+                <button key={a.id} className={`tc-chip-p ${dragOver === a.id ? 'over' : ''} ${selected === p.id ? 'sel' : ''}`} style={style} title={`${p.name} — ${anchorTitle(a.id)} (rende ${to20(p.slotScores[a.pos])} de 20)`} {...dragProps(p.id)} {...common}>
                   <span className={`tc-face ${fitTone(p, a.pos)}`}>{initials(p.name)}</span>
                   <span className="tc-chip-name">{shortName(p.name)}</span>
-                  <span className="tc-chip-pos"><b>{anchorLabel(a.id)}</b><i className={fitTone(p, a.pos)}>{p.slotScores[a.pos]}</i></span>
+                  <span className="tc-chip-pos"><b>{anchorLabel(a.id)}</b><i className={fitTone(p, a.pos)}>{to20(p.slotScores[a.pos])}</i></span>
                   {chipRole(anchors.indexOf(a.id))}
                   {p.unavailable && <span className="tc-out" title={p.unavailable.kind === 'injured' ? 'Lesionado: será trocado no dia do jogo' : 'Suspenso: será trocado no dia do jogo'}>!</span>}
                 </button>
@@ -300,6 +304,8 @@ export function TacticsView({ profileId, careerId }: Props) {
       </div>
 
       {rolePlayer && roleSlot !== undefined && rolePanel(rolePlayer, roleSlot)}
+      {infoFor && <PlayerQuickView profileId={profileId} careerId={careerId} playerId={infoFor} onClose={closeInfo} onOpenFull={onOpenPlayer}
+        actions={<button className="secondary" onClick={() => startMove(infoFor)}><ArrowLeftRight size={14} aria-hidden="true" />{slotOf.has(infoFor) ? 'Trocar de lugar' : 'Colocar em campo'}</button>} />}
       {styleOpen && (
         <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) setStyleOpen(false); }}>
           <div className="modal tc-style-modal" role="dialog" aria-modal="true" aria-label="Estilo de jogo" onKeyDown={(e) => { if (e.key === 'Escape') setStyleOpen(false); }}>
