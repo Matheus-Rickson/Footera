@@ -7,6 +7,7 @@ import { uniqueIds } from '../../shared/slug.ts';
 import type {
   Attributes, Club, Country, Foot, League, Player, Position, Stadium, World, IsoDate,
 } from '../../shared/types.ts';
+import { deriveGoalkeeper } from './goalkeeper.ts';
 
 export interface WorldOptions {
   seed: string;
@@ -71,11 +72,10 @@ export function genAttributes(rng: Rng, pos: Position, ability: number): Attribu
     }
     return out;
   };
-  return {
-    technical: make(ATTR_KEYS.technical),
-    mental: make(ATTR_KEYS.mental),
-    physical: make(ATTR_KEYS.physical),
-  };
+  const technical = make(ATTR_KEYS.technical);
+  const mental = make(ATTR_KEYS.mental), physical = make(ATTR_KEYS.physical);
+  // grupo de goleiro derivado do "goalkeeping" sorteado (a força não muda); a variação sai dos próprios atributos, sem consumir a sequência
+  return { technical, mental, physical, goalkeeper: deriveGoalkeeper(technical.goalkeeping, ((technical.finishing + mental.vision + physical.pace) % 3) - 1) };
 }
 
 /** Ajuste (em pontos de atributo, escala 1..20) da habilidade atual conforme a idade. Jovens ainda não atingiram o auge. */

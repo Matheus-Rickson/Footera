@@ -5,7 +5,7 @@ import { expectedPosition, OBJECTIVE_LABEL, objectiveFor } from '../game/board-e
 import { clubStory } from '../game/world/clubStory.ts';
 
 /** Clubes e países do universo (a base fixa, na tela de nova carreira), com o resumo do painel do clube. */
-export function listClubs(w: World): ClubList {
+export function listClubs(w: World, origin?: ReadonlyMap<string, { created: string | null; edited: string[] }>): ClubList {
   const league = new Map(w.leagues.map((l) => [l.id, l]));
   const country = new Map(w.countries.map((c) => [c.id, c.name]));
   const stadium = new Map(w.stadiums.map((s) => [s.id, s]));
@@ -32,10 +32,11 @@ export function listClubs(w: World): ClubList {
       return {
         id: c.id, countryId: c.countryId, leagueId: c.leagueId, name: c.name, league: l.name, leagueTier: l.tier, country: country.get(c.countryId) ?? '?',
         reputation: c.reputation, avgOverall: Math.round((squad.reduce((s, p) => s + p.overall, 0) / Math.max(1, squad.length)) * 10) / 10,
-        stadium: st.name, capacity: st.capacity, city: c.city, fans: c.fans, balance: c.balance, facilities: { ...c.facilities },
+        stadium: st.name, stadiumId: st.id, capacity: st.capacity, city: c.city, fans: c.fans, balance: c.balance, facilities: { ...c.facilities },
         objective: OBJECTIVE_LABEL[obj.objective], expectedPosition: expected, teamCount: reps.length,
         squadSize: squad.length, avgAge: Math.round((squad.reduce((s, p) => s + ageOn(p.birthDate, w.startDate), 0) / Math.max(1, squad.length)) * 10) / 10,
         stars: [...squad].sort((a, b) => b.overall - a.overall).slice(0, 3).map((p) => ({ name: `${p.firstName} ${p.lastName}`, position: p.position, overall: p.overall })),
+        origin: { created: origin?.get(c.id)?.created ?? null, edited: [...(origin?.get(c.id)?.edited ?? [])] },
         story: clubStory({ id: c.id, name: c.name, city: c.city, country: country.get(c.countryId) ?? '', league: l.name, tier: l.tier, stadium: st.name, capacity: st.capacity, fans: c.fans, reputation: c.reputation, rival: rivalOf(c)?.name ?? null }),
       };
     }),

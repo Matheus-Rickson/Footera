@@ -1,6 +1,7 @@
 import { clamp, type Rng } from '../rng.ts';
 import { overallFor, positionWeights } from '../world/overall.ts';
 import type { Attributes, Personality, Position } from '../../shared/types.ts';
+import { deriveGoalkeeper, syncGoalkeeping } from '../world/goalkeeper.ts';
 
 /** Idade a partir da qual não há mais crescimento: antes dela a força nunca passa do potencial oculto. */
 export const PEAK_AGE = 28;
@@ -79,7 +80,9 @@ export function developPlayer(p: Developable, age: number, minutesShare: number,
   };
   const move = <T extends object>(group: keyof Attributes, attrs: T): T =>
     Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, clamp(stochastic((v as number) + shift * factor(group, k), rng), 1, 20)])) as T;
-  const attributes: Attributes = { technical: move('technical', p.attributes.technical), mental: move('mental', p.attributes.mental), physical: move('physical', p.attributes.physical) };
+  const gk = p.attributes.goalkeeper ?? deriveGoalkeeper(p.attributes.technical.goalkeeping);
+  const attributes: Attributes = { technical: move('technical', p.attributes.technical), mental: move('mental', p.attributes.mental), physical: move('physical', p.attributes.physical), goalkeeper: move('technical', gk) };
+  syncGoalkeeping(attributes); // "goleiro (geral)" acompanha os atributos de goleiro
 
   let overall = overallFor(attributes, p.position);
   if (age < PEAK_AGE && overall > p.potentialHidden) {
@@ -87,7 +90,12 @@ export function developPlayer(p: Developable, age: number, minutesShare: number,
     const weights = Object.entries(positionWeights(p.position)).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0)).map(([k]) => k);
     for (let guard = 0; overall > p.potentialHidden && guard < 200; guard++) {
       const key = weights[guard % weights.length]!;
-      for (const group of ['technical', 'mental', 'physical'] as const) {
+      if (key === 'goalkeeping' && attributes.goalkeeper) {
+        // o geral é derivado: corta nos atributos de goleiro (o de maior peso primeiro) e recalcula
+        const gkk = (['reflexes', 'oneOnOne', 'handling'] as const).find((k) => attributes.goalkeeper![k] > 1);
+        if (gkk) attributes.goalkeeper[gkk] -= 1;
+        syncGoalkeeping(attributes);
+      } else for (const group of ['technical', 'mental', 'physical'] as const) {
         const g = attributes[group] as unknown as Record<string, number>;
         if (key in g && g[key]! > 1) g[key] = g[key]! - 1;
       }

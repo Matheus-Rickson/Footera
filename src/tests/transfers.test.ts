@@ -324,14 +324,14 @@ test('Mercado: atributos resumidos são estimativas (faixas que contêm o real),
   assert.ok(Object.keys(none).every((k) => none[k as keyof typeof none].high - none[k as keyof typeof none].low >= est[k as keyof typeof est].high - est[k as keyof typeof est].low), 'observar estreita as faixas');
   const exact = (g: object) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, { low: v as number, high: v as number }]));
   const ra = world.players.find((x) => x.id === b.id)!.attributes;
-  const real = summarizeRanges({ technical: exact(ra.technical), mental: exact(ra.mental), physical: exact(ra.physical) });
+  const real = summarizeRanges({ technical: exact(ra.technical), mental: exact(ra.mental), physical: exact(ra.physical), goalkeeper: exact(ra.goalkeeper!) });
   for (const k of Object.keys(real) as Array<keyof typeof real>) {
     assert.ok(est[k].low <= real[k].low && real[k].low <= est[k].high, `${k}: real ${real[k].low} fora de ${est[k].low}–${est[k].high}`);
     assert.ok(est[k].high > est[k].low, `${k}: é faixa, não o valor real`);
   }
   assert.deepEqual(est, summarizeRanges(getPlayerProfile(db, b.id).attributes), 'mesma estimativa da ficha');
   const ea = world.players.find((x) => x.id === a.id)!.attributes;
-  assert.deepEqual(again.find((p) => p.id === a.id)!.estSummary, summarizeRanges({ technical: exact(ea.technical), mental: exact(ea.mental), physical: exact(ea.physical) }), '100%: resumo exato');
+  assert.deepEqual(again.find((p) => p.id === a.id)!.estSummary, summarizeRanges({ technical: exact(ea.technical), mental: exact(ea.mental), physical: exact(ea.physical), goalkeeper: exact(ea.goalkeeper!) }), '100%: resumo exato');
 });
 
 test('Mercado paginado: todos os disponíveis, várias posições (natural ou secundária), nacionalidade, contrato, situação, salário, pé e olheiros', async () => {

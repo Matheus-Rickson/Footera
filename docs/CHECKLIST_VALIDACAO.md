@@ -179,6 +179,37 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Transferências: jogadores de países simplificados aparecem e podem ser contratados.
 - [ ] Tempo de avanço aceitável com o(s) país(es) escolhido(s) (anotar quantos países completos e a sensação de ritmo).
 
+## 13e. Pacotes de dados (Fase 9, etapa 2)
+- [ ] Menu principal → "Pacotes de dados": base do jogo travada no topo; lista vazia com instrução.
+- [ ] "Importar .zip" com `docs/exemplos/pacote-exemplo.zip`: aparece na lista como válido (clubes e jogadores contados), desativado.
+- [ ] Ativar: o resumo do universo muda (clubes/jogadores); importar de novo o mesmo .zip pergunta antes de substituir.
+- [ ] Nova carreira com o pacote ativo: passo 1 mostra "Base + 1 pacote(s)"; Série A aparece como "Brasileirão Série A"; a Argentina
+      tem os clubes novos (Club Atlético Norte etc.) quando marcada como completa.
+- [ ] Na lista de clubes, os 4 clubes do pacote (Club Atlético Norte, Deportivo Sur, Unión Oeste, Racing Este) têm a etiqueta "novo"; no painel aparece "Criado pelo pacote …" (clubes alterados mostram "alterado" / "Alterado por …").
+- [ ] Desativar e criar outra carreira: volta ao normal; a carreira anterior não muda.
+- [ ] "Abrir pasta" abre a pasta de pacotes; copiar uma pasta de pacote com erro: aparece com "N erro(s)" e não ativa.
+- [ ] Remover pede confirmação e some da lista.
+
+## 13f. Editor de dados
+- [ ] Menu principal → "Editor de dados": criar um pacote (nome obrigatório) abre a área de trabalho; o pacote aparece ativo em Pacotes de dados.
+- [ ] Jogadores: buscar um jogador, mudar nome e alguns atributos — a força muda ao vivo; "Salvar" marca "alterado"; "Restaurar original" volta.
+- [ ] Trocar de item com alterações não salvas mostra o aviso (Salvar e continuar / Descartar / Continuar editando).
+- [ ] Campo inválido (ex.: atributo 25, nascimento 1960) fica vermelho com a mensagem e "Salvar" não habilita.
+- [ ] Criar clube (país, liga, nome, estádio) e um jogador nele pela força; criar carreira nova: clube "novo" com o jogador no elenco.
+- [ ] Excluir um clube da base: aparece como "excluído" (com Restaurar); "Só o que este pacote mudou" lista tudo que foi mexido.
+- [ ] "Detalhes do pacote" altera nome/versão; "Exportar .zip" salva um arquivo que importa em Pacotes de dados.
+
+## 13g. Goleiros e fotos
+- [ ] Editor → um goleiro: aparecem Reflexos, Um contra um, Manejo, Jogo aéreo, Saídas do gol e Reposição; mudar reflexos muda a força ao vivo; o "Goleiro" técnico não aparece para editar.
+- [ ] Ficha de um goleiro (Atributos): grupo "Goleiro" com os seis; jogador de linha não mostra o grupo.
+- [ ] Cada atributo (editor, ficha e janela do jogador) tem um (?) com o que ele é, o efeito na partida e as posições em que mais pesa; no editor, "Potencial" fica numa seção própria ("Evolução").
+- [ ] Editor → clube: "Escudo" e "Foto do estádio" (Escolher…/Trocar…/Remover); jogador: "Foto do jogador". Arquivo que não é imagem é recusado com mensagem.
+- [ ] Nova carreira com o pacote ativo: escudo na lista e no painel; foto do estádio no lugar da ilustração (sem a etiqueta "Imagem ilustrativa").
+- [ ] Editor → liga: "Logo da liga". Com o pacote ativo, o logo aparece no menu de divisões e na etiqueta da liga do painel (nova carreira) e em Competições.
+- [ ] Balão de ajuda (?) no editor fica dentro do quadro do formulário (não invade a lista).
+- [ ] Ficha do jogador com foto (no jogo); desativar o pacote em Pacotes de dados: as imagens somem (voltam o escudo gerado e as iniciais).
+- [ ] Exportar .zip de um pacote com imagens e importar em outra instalação (ou depois de remover): as imagens voltam.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

@@ -34,6 +34,9 @@ test('Rodada: simula todas as partidas do dia e grava placar, relatório e class
   const comp = listCompetitions(db).userCompetitionId!;
   const t = getCompetitionTable(db, comp);
   assert.equal(t.roundsPlayed, 1);
+  const myLeague = String(db.prepare('SELECT league_id AS l FROM clubs WHERE id = ?').get(clubId)!.l);
+  assert.equal(t.competition.leagueId, myLeague, 'a competição informa a liga (logo da liga)');
+  assert.equal(listCompetitions(db).competitions.find((c) => c.id === comp)!.leagueId, myLeague);
   assert.equal(t.rows.reduce((a, r) => a + r.played, 0), 8);
   assert.equal(t.rows.find((r) => r.clubId === clubId)!.played, 1);
   assert.equal(simulateMatchday(db).simulated, 0, 'não simula duas vezes');

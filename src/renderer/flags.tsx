@@ -2,7 +2,7 @@
  * Bandeiras dos países da base (SVG simplificado, sem arquivos externos). Código de país de 3 letras → desenho em 30×20.
  * País sem desenho: retângulo neutro com o código.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 const H = (colors: string[]) => colors.map((c, i) => <rect key={i} x={0} y={(20 / colors.length) * i} width={30} height={20 / colors.length} fill={c} />);
 const V = (colors: string[]) => colors.map((c, i) => <rect key={i} x={(30 / colors.length) * i} y={0} width={30 / colors.length} height={20} fill={c} />);
@@ -44,7 +44,10 @@ export function clubHues(id: string): { hue: number; hue2: number } {
   return { hue, hue2: (hue + 40 + (Math.abs(h >> 8) % 140)) % 360 };
 }
 
-export function ClubCrest({ id, name, size = 64 }: { id: string; name: string; size?: number }) {
+export function ClubCrest({ id, name, size = 64, src }: { id: string; name: string; size?: number; src?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]); // outro clube, outra tentativa
+  if (src && !failed) return <img className="nc-crest nc-crest-img" src={src} width={size} height={size * 1.15} alt={`Escudo de ${name}`} onError={() => setFailed(true)} />;
   const { hue, hue2 } = clubHues(id);
   const words = name.split(/\s+/).filter((w) => w.length > 2 && !/^(fc|cf|sc|sv|ac|us|as|cd|fk|nk|kv)$/i.test(w));
   const ini = (words.length ? words : name.split(/\s+/)).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');

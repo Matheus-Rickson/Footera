@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron';
 import type { OpenDialogOptions } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,8 +17,11 @@ import {
 import { ValidationError } from '../services/careerService.ts';
 import { UserError } from '../shared/errors.ts';
 import { ImageError, inspectImage, MAX_PHOTO_BYTES } from '../shared/photo.ts';
-import type { IpcResult, MarketFilter, OfferInput, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
-import { baseUniverse, setBaseUniverseDir } from '../services/universeService.node.ts';
+import type { EditorListQuery, IpcResult, MarketFilter, OfferInput, PackImportDto, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
+import { setBaseUniverseDir } from '../services/universeService.node.ts';
+import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, packsDir, removePack, setLoadOrder } from '../services/packManager.node.ts';
+import { imagesVersion, listPackImages, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
+import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest } from '../services/editorService.node.ts';
 
 // O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
 // senão carreiras criadas antes da troca de nome sumiriam da lista.
@@ -49,7 +52,71 @@ function registerHandlers(): void {
   handle('app:info', z.unknown(), () => ({ dataDir: dataDir(), version: app.getVersion() }));
   handle('profile:list', z.unknown(), () => listProfiles(dataDir()));
   handle('profile:create', z.object({ name: z.string().max(200) }), (i) => createProfile(dataDir(), i.name));
-  handle('world:clubs', z.unknown(), () => listClubs(baseUniverse().world));
+  handle('world:clubs', z.unknown(), () => { const u = careerUniverse(dataDir()); return listClubs(u.world, u.origin); });
+
+  // ---- pacotes de dados do usuário (etapa 2 da base editável)
+  let lastZip: Buffer | null = null; // último .zip escolhido (para "substituir" sem abrir o diálogo de novo)
+  const packId = z.string().min(1).max(80);
+  handle('packs:list', z.unknown(), () => listPacks(dataDir()));
+  const imageKeys = () => ({ version: imagesVersion(), keys: [...imageIndex(dataDir()).keys()] });
+  handle('images:keys', z.unknown(), () => imageKeys());
+  const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
+  const packDirFor = (id: string) => { const d = path.join(packsDir(dataDir()), id); if (!fs.existsSync(path.join(d, 'manifest.json'))) throw new ValidationError('Pacote não encontrado.'); return d; };
+  const packImageKeys = (id: string) => ({ version: imagesVersion(), keys: listPackImages(packDirFor(id)).map((im) => `${im.kind}/${im.id}`) });
+  handle('editor:imageKeys', z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) }), (i) => packImageKeys(i.packId));
+  handle('editor:setImage', imgRef, async (i) => {
+    const opts: OpenDialogOptions = { title: 'Escolher imagem (PNG ou JPEG)', properties: ['openFile'], filters: [{ name: 'Imagens PNG ou JPEG', extensions: ['png', 'jpg', 'jpeg'] }] };
+    const win = BrowserWindow.getFocusedWindow();
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    const file = res.filePaths[0];
+    if (res.canceled || !file) return null;
+    if (fs.statSync(file).size > MAX_PHOTO_BYTES) throw new ValidationError(`A imagem excede o limite de ${MAX_PHOTO_BYTES / 1024 / 1024} MB.`);
+    setPackImage(packDirFor(i.packId), i.kind as ImageKind, i.id, new Uint8Array(fs.readFileSync(file)));
+    return packImageKeys(i.packId);
+  });
+  handle('editor:removeImage', imgRef, (i) => { removePackImage(packDirFor(i.packId), i.kind as ImageKind, i.id); return packImageKeys(i.packId); });
+  handle('packs:order', z.object({ enabled: z.array(packId).max(100) }), (i) => setLoadOrder(dataDir(), i.enabled));
+  handle('packs:remove', z.object({ id: packId }), (i) => removePack(dataDir(), i.id));
+  handle('packs:folder', z.unknown(), async () => { fs.mkdirSync(packsDir(dataDir()), { recursive: true }); await shell.openPath(packsDir(dataDir())); return true as const; });
+  // ---- editor de dados (os registros são validados pelo formato dos pacotes e pela montagem do universo antes de gravar)
+  const kind = z.enum(['countries', 'leagues', 'clubs', 'players']);
+  const pk = { packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) };
+  const rec = z.record(z.unknown()).refine((r) => JSON.stringify(r).length < 200_000, 'registro grande demais');
+  handle('editor:create', z.object({ name: z.string().trim().min(1).max(80), author: z.string().max(80).optional(), description: z.string().max(1000).optional() }), (i) => editorCreatePack(dataDir(), i));
+  handle('editor:summary', z.object(pk), (i) => editorSummary(dataDir(), i.packId));
+  handle('editor:manifest', z.object({ ...pk, name: z.string().trim().min(1).max(80), version: z.string().trim().min(1).max(20), author: z.string().max(80).optional(), description: z.string().max(1000).optional() }), (i) => editorUpdateManifest(dataDir(), i.packId, i));
+  handle('editor:options', z.object(pk), (i) => editorOptions(dataDir(), i.packId));
+  handle('editor:list', z.object({ ...pk, query: z.object({
+    kind, search: z.string().max(60).optional(), countryId: z.string().max(60).optional(), leagueId: z.string().max(60).optional(), clubId: z.string().max(60).optional(),
+    position: z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']).optional(),
+    onlyChanged: z.boolean().optional(), offset: z.number().int().min(0).max(1e6).optional(), limit: z.number().int().min(1).max(300).optional(),
+  }) }), (i) => editorList(dataDir(), i.packId, i.query as EditorListQuery));
+  handle('editor:get', z.object({ ...pk, kind, id: z.string().min(1).max(60) }), (i) => editorGet(dataDir(), i.packId, i.kind, i.id));
+  handle('editor:save', z.object({ ...pk, kind, record: rec, stadium: rec.nullable() }), (i) => editorSave(dataDir(), i.packId, i.kind, i.record, i.stadium));
+  handle('editor:remove', z.object({ ...pk, kind, id: z.string().min(1).max(60) }), (i) => editorRemove(dataDir(), i.packId, i.kind, i.id));
+  handle('editor:revert', z.object({ ...pk, kind, id: z.string().min(1).max(60) }), (i) => editorRevert(dataDir(), i.packId, i.kind, i.id));
+  handle('editor:export', z.object(pk), async (i) => {
+    const win = BrowserWindow.getFocusedWindow();
+    const opts = { title: 'Exportar pacote de dados', defaultPath: `${i.packId}.zip`, filters: [{ name: 'Pacote de dados', extensions: ['zip'] }] };
+    const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+    if (res.canceled || !res.filePath) return { saved: false };
+    fs.writeFileSync(res.filePath, exportPackZip(dataDir(), i.packId));
+    return { saved: true, path: res.filePath };
+  });
+  handle('packs:import', z.object({ overwrite: z.boolean() }), async (i): Promise<PackImportDto> => {
+    if (!i.overwrite || !lastZip) {
+      const opts: OpenDialogOptions = { title: 'Importar pacote de dados (.zip)', properties: ['openFile'], filters: [{ name: 'Pacote de dados', extensions: ['zip'] }] };
+      const win = BrowserWindow.getFocusedWindow();
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+      const file = res.filePaths[0];
+      if (res.canceled || !file) return { status: 'cancelled' };
+      if (fs.statSync(file).size > 256 * 1024 * 1024) throw new ValidationError('O arquivo é grande demais (limite de 256 MB).');
+      lastZip = fs.readFileSync(file);
+    }
+    const r = importPackZip(dataDir(), lastZip, i.overwrite);
+    if (r.status === 'imported') lastZip = null;
+    return r;
+  });
 
   handle('photo:pick', z.unknown(), async (): Promise<PhotoPick | null> => {
     const opts: OpenDialogOptions = {
@@ -205,7 +272,20 @@ function createWindow(): void {
   if (dev) void win.loadURL(dev); else void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+// imagens dos pacotes: footera-img://img/<tipo>/<id> (só o que está no índice dos pacotes ativos ou do pacote em edição)
+protocol.registerSchemesAsPrivileged([{ scheme: 'footera-img', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+
 app.whenReady().then(() => {
+  protocol.handle('footera-img', (req) => {
+    const u = new URL(req.url);
+    const [, kind, id] = u.pathname.split('/');
+    const pack = u.searchParams.get('pack');
+    let file: string | null | undefined;
+    if (pack && /^[a-z0-9][a-z0-9_-]{0,59}$/.test(pack)) file = listPackImages(path.join(packsDir(dataDir()), pack)).find((im) => im.kind === kind && im.id === id)?.file;
+    else file = imageIndex(dataDir()).get(`${kind}/${id}`);
+    if (!file) return new Response(null, { status: 404 });
+    return new Response(fs.readFileSync(file), { headers: { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg', 'cache-control': 'no-cache' } });
+  });
   registerHandlers();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

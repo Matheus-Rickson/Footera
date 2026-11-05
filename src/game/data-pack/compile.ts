@@ -11,6 +11,7 @@ import { COUNTRY_TEMPLATES, type CountryTemplate } from '../world/names.ts';
 import { overallFor } from '../world/overall.ts';
 import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
 import { PackError, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
+import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
   rounds: 2, pointsWin: 3, pointsDraw: 1, tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
@@ -20,7 +21,13 @@ export const DEFAULT_RULES: LeagueRules = {
 const FILL_GOALKEEPERS = 2;
 const fillTarget = (rules: LeagueRules) => rules.squadMin + 2;
 
-export interface CompileResult { world: World; warnings: PackIssue[]; /** pacotes aplicados, na ordem (id@versão) */ applied: string[] }
+/** Origem de uma entidade: o pacote que a criou (null = a base gerada) e os que a alteraram, na ordem. */
+export interface EntityOrigin { created: string | null; edited: string[] }
+export interface CompileResult {
+  world: World; warnings: PackIssue[]; /** pacotes aplicados, na ordem (id@versão) */ applied: string[];
+  /** origem das entidades criadas ou alteradas por pacotes (por id); entidades só da base gerada não aparecem */
+  origin: Map<string, EntityOrigin>;
+}
 
 /** Atributos com a forma da posição e força (overall) o mais perto possível de `ability` (1–20, escala da tela). */
 export function attributesForAbility(rng: Rng, pos: Position, ability: number): Attributes {
@@ -32,7 +39,9 @@ export function attributesForAbility(rng: Rng, pos: Position, ability: number): 
   };
   let best = base, bestErr = Infinity;
   for (let d = -12; d <= 12; d += 0.25) { // somar d a todos os atributos sobe a força de forma monotônica
-    const a = shift(d), err = Math.abs(overallFor(a, pos) - target);
+    const a = shift(d);
+    a.goalkeeper = deriveGoalkeeper(a.technical.goalkeeping);
+    const err = Math.abs(overallFor(a, pos) - target);
     if (err < bestErr) { best = a; bestErr = err; }
   }
   return best;
@@ -46,7 +55,15 @@ function mergeAttributes(cur: Attributes | null, patch: NonNullable<PlayerRec['a
     physical: { ...(cur?.physical ?? {}), ...(patch.physical ?? {}) },
   };
   const n = Object.keys(out.technical).length + Object.keys(out.mental).length + Object.keys(out.physical).length;
-  return n === ATTR_COUNT ? (out as unknown as Attributes) : null;
+  if (n !== ATTR_COUNT) return null;
+  const a = out as unknown as Attributes;
+  // goleiro: o grupo informado vale (parcial completa o existente) e o "goalkeeping" passa a ser calculado dele;
+  // sem grupo, mas com "goalkeeping" alterado, o grupo é derivado do novo valor
+  const base = cur?.goalkeeper ?? deriveGoalkeeper(a.technical.goalkeeping);
+  if (patch.goalkeeper) { a.goalkeeper = { ...base, ...patch.goalkeeper } as Attributes['goalkeeper']; syncGoalkeeping(a); }
+  else if (patch.technical?.goalkeeping !== undefined) a.goalkeeper = deriveGoalkeeper(a.technical.goalkeeping);
+  else a.goalkeeper = cur?.goalkeeper ? { ...cur.goalkeeper } : base;
+  return a;
 }
 const missingAttributes = (patch: NonNullable<PlayerRec['attributes']>) =>
   (['technical', 'mental', 'physical'] as const).flatMap((g) => ATTR_KEYS[g].filter((k) => (patch[g] as Record<string, unknown> | undefined)?.[k] === undefined));
@@ -60,10 +77,11 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const leagues = new Map<string, League>(fresh ? [] : base.leagues.map((l) => [l.id, { ...l, rules: { ...l.rules } }]));
   const stadiums = new Map<string, Stadium>(fresh ? [] : base.stadiums.map((s) => [s.id, { ...s }]));
   const clubs = new Map<string, Club>(fresh ? [] : base.clubs.map((c) => [c.id, { ...c, facilities: { ...c.facilities } }]));
-  const players = new Map<string, Player>(fresh ? [] : base.players.map((p) => [p.id, { ...p }]));
+  const players = new Map<string, Player>(fresh ? [] : base.players.map((p) => [p.id, { ...p, attributes: withGoalkeeper(p.attributes, p.id) }]));
   const typeOf = new Map<string, string>();
   /** clubes criados por pacote sem caixa informado: o caixa é calculado depois do elenco (startingBalance) */
   const autoBalance = new Set<string>();
+  const origin = new Map<string, EntityOrigin>();
   for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players]] as const) for (const k of m.keys()) typeOf.set(k, kind);
   const economyOf = (code: string) => [...countries.values()].find((c) => c.code === code)?.economy ?? 1;
   const tplOf = (code: string): CountryTemplate => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
@@ -169,16 +187,23 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
         return;
       }
       const cur = map.get(rec.id);
-      if (cur) { patch(cur, rec); return; }
+      if (cur) {
+        patch(cur, rec);
+        const o = origin.get(rec.id) ?? { created: null, edited: [] };
+        if (!o.edited.includes(P) && o.created !== P) o.edited.push(P);
+        origin.set(rec.id, o);
+        return;
+      }
       if (!claim(file, rec.id, kind)) return;
       const made = create(rec);
-      if (made) map.set(rec.id, made); else typeOf.delete(rec.id);
+      if (made) { map.set(rec.id, made); origin.set(rec.id, { created: P, edited: [] }); } else typeOf.delete(rec.id);
     }
   });
 
   /** valores derivados do jogador depois de criar/alterar (força, potencial, valor, contrato) */
   function finishPlayer(pl: Player, rec: PlayerRec, created: boolean) {
     const rng = createRng(`pack-finish:${seed}:${pl.id}`);
+    if (!rec.attributes?.goalkeeper && rec.attributes?.technical?.goalkeeping === undefined) pl.attributes = withGoalkeeper(pl.attributes, pl.id); // dados antigos
     pl.overall = overallFor(pl.attributes, pl.position);
     const age = ageOn(pl.birthDate, startDate);
     if (rec.internal?.potentialHidden !== undefined) pl.potentialHidden = rec.internal.potentialHidden;
@@ -263,6 +288,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     world: { seed, startDate, countries: [...countries.values()], leagues: [...leagues.values()], stadiums: [...stadiums.values()].filter((s) => usedStadiums.has(s.id)), clubs: [...clubs.values()], players: [...players.values()] },
     warnings,
     applied: packs.map((p) => `${p.manifest.id}@${p.manifest.version}`),
+    origin,
   };
 }
 

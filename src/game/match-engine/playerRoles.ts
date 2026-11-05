@@ -27,11 +27,11 @@ const SS: Position[] = ['SS', 'ST'], CF: Position[] = ['CF', 'ST'];
 export const ROLES: RoleDef[] = [
   // ---------------- goleiro
   { id: 'gk_tradicional', name: 'Goleiro Tradicional', positions: ['GK'], summary: ['Prioriza a defesa da meta e o posicionamento.', 'Evita sair do gol; defesas convencionais.', 'Reposição segura e simples.'],
-    weights: { goalkeeping: 4, positioning: 2, agility: 1.5, composure: 1 }, fx: {} },
+    weights: { reflexes: 3, handling: 2.5, aerial: 1.5, positioning: 1.5, agility: 1, composure: 1 }, fx: {} },
   { id: 'gk_libero', name: 'Goleiro Líbero', positions: ['GK'], summary: ['Joga adiantado, acompanhando a linha defensiva.', 'Sai da área para cortar lançamentos e bolas em profundidade.', 'Participa da construção com passes e lançamentos.'],
-    weights: { goalkeeping: 3, pace: 1.5, decisions: 1.5, positioning: 1.5, passing: 1 }, fx: { sweep: 1, build: 0.4, risk: 0.3 } },
+    weights: { rushingOut: 3, oneOnOne: 2.5, pace: 1.5, decisions: 1.5, positioning: 1, reflexes: 1 }, fx: { sweep: 1, build: 0.4, risk: 0.3 } },
   { id: 'gk_construtor', name: 'Goleiro Construtor', positions: ['GK'], summary: ['Prioriza a distribuição e o início das jogadas.', 'Procura passes curtos para defensores e meio-campistas.', 'Participa mais da construção desde a defesa.'],
-    weights: { goalkeeping: 3, passing: 2.5, firstTouch: 1.5, composure: 1.5, vision: 1 }, fx: { build: 1.4, risk: 0.3 } },
+    weights: { kicking: 3, passing: 2.5, firstTouch: 1.5, composure: 1.5, vision: 1, reflexes: 1.5 }, fx: { build: 1.4, risk: 0.3 } },
   // ---------------- zagueiro
   { id: 'cb_defensivo', name: 'Zagueiro Defensivo', positions: ['CB'], summary: ['Prioriza marcação, posicionamento e proteção da área.', 'Não abandona a linha para perseguir adversários.', 'Intercepta passes e neutraliza atacantes.'],
     weights: { marking: 3, tackling: 2.5, positioning: 2.5, heading: 2, strength: 1.5 }, fx: { tackle: 1.1, pass: 0.85, risk: -0.4 } },

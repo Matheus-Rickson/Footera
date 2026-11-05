@@ -64,6 +64,7 @@ export const clubSchema = z.object({
 const technical = z.object({ finishing: attr, passing: attr, dribbling: attr, tackling: attr, marking: attr, firstTouch: attr, crossing: attr, heading: attr, longShots: attr, goalkeeping: attr }).strict();
 const mental = z.object({ vision: attr, composure: attr, decisions: attr, positioning: attr, workRate: attr, leadership: attr, aggression: attr }).strict();
 const physical = z.object({ pace: attr, stamina: attr, strength: attr, agility: attr, jumping: attr, naturalFitness: attr }).strict();
+const goalkeeper = z.object({ reflexes: attr, oneOnOne: attr, handling: attr, aerial: attr, rushingOut: attr, kicking: attr }).strict();
 export const playerSchema = z.object({
   id, ...remove,
   firstName: text(40).optional(), lastName: text(40).optional(), birthDate: date.optional(),
@@ -73,7 +74,9 @@ export const playerSchema = z.object({
   position: position.optional(), secondaryPositions: z.array(position).max(3).optional(),
   foot: z.enum(['right', 'left', 'both']).optional(), heightCm: int(140, 220).optional(), weightKg: int(40, 130).optional(),
   /** os 23 atributos (1–20); ao alterar, pode informar só alguns */
-  attributes: z.object({ technical: technical.partial().optional(), mental: mental.partial().optional(), physical: physical.partial().optional() }).strict().optional(),
+  attributes: z.object({ technical: technical.partial().optional(), mental: mental.partial().optional(), physical: physical.partial().optional(),
+    /** atributos de goleiro (reflexos, um contra um, manejo, jogo aéreo, saídas, reposição); o "goalkeeping" técnico é calculado deles */
+    goalkeeper: goalkeeper.partial().optional() }).strict().optional(),
   /** força 1–20 (como na tela): sem `attributes`, o jogo gera atributos coerentes com a posição para chegar nela */
   ability: attr.optional(),
   /** potencial 1–20 */

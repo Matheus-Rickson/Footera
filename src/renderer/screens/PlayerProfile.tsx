@@ -8,14 +8,20 @@ import type { Position } from '../../shared/types.ts';
 import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, POS_NAME, PosPill, to20, tone } from '../playerUi.tsx';
+import { useImages } from '../images.ts';
+import { attributeHelp } from '../../game/world/attributeInfo.ts';
+import { HelpTip } from '../help.tsx';
 
 const ATTR_LABEL: Record<string, string> = {
   finishing: 'Finalização', passing: 'Passe', dribbling: 'Drible', tackling: 'Desarme', marking: 'Marcação', firstTouch: 'Primeiro toque', crossing: 'Cruzamento',
-  heading: 'Cabeceio', longShots: 'Chute de longe', goalkeeping: 'Goleiro', vision: 'Visão de jogo', composure: 'Compostura', decisions: 'Decisões',
+  heading: 'Cabeceio', longShots: 'Chute de longe', goalkeeping: 'Goleiro (geral)', vision: 'Visão de jogo', composure: 'Compostura', decisions: 'Decisões',
   positioning: 'Posicionamento', workRate: 'Empenho', leadership: 'Liderança', aggression: 'Agressividade', pace: 'Velocidade', stamina: 'Resistência',
   strength: 'Força física', agility: 'Agilidade', jumping: 'Impulsão', naturalFitness: 'Preparo natural',
+  reflexes: 'Reflexos', oneOnOne: 'Um contra um', handling: 'Manejo', aerial: 'Jogo aéreo', rushingOut: 'Saídas do gol', kicking: 'Reposição',
 };
-const GROUP_LABEL = { technical: 'Técnicos', mental: 'Mentais', physical: 'Físicos' } as const;
+const GROUP_LABEL = { goalkeeper: 'Goleiro', technical: 'Técnicos', mental: 'Mentais', physical: 'Físicos' } as const;
+/** grupos exibidos: o de goleiro só para goleiros (nos demais ele existe, mas não interessa) */
+const groupsFor = (pos: Position) => (Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).filter((g) => g !== 'goalkeeper' || pos === 'GK');
 /** Posições num campo vertical (ataque para cima), em % da largura/altura. */
 const POS_XY: Record<Position, [number, number]> = { GK: [50, 91], CB: [50, 76], LB: [17, 70], RB: [83, 70], LWB: [9, 57], RWB: [91, 57], DM: [50, 61], CM: [50, 49], LM: [13, 43], RM: [87, 43], AM: [50, 36], LW: [17, 28], RW: [83, 28], SS: [36, 22], CF: [50, 11], ST: [64, 14] };
 const VERDICT_CLASS = { starter: 'ok', rotation: 'notice', depth: 'notice', no: 'error' } as const;
@@ -52,6 +58,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
+  const img = useImages();
   const load = useCallback(async () => { setP(await unwrap(window.api.getPlayerProfile(profileId, careerId, playerId))); }, [profileId, careerId, playerId]);
   useEffect(() => { setTab('overview'); load().catch((e) => setError(errMsg(e))); }, [load]);
 
@@ -71,7 +78,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
       <section className="card pf-head">
         <div className="pf-top">
           <div className="pf-id">
-            <div className="pf-avatar" aria-hidden="true">{initials(p.name)}</div>
+            {img.url('players', p.id) ? <img className="pf-avatar pf-photo" src={img.url('players', p.id)!} alt={`Foto de ${p.name}`} /> : <div className="pf-avatar" aria-hidden="true">{initials(p.name)}</div>}
             <div className="pf-level" title={p.own ? 'Força atual' : `Força estimada pelos olheiros: ${fmtRange20(p.estOverall)}`}>
               <strong>{level}</strong><span>{p.own ? 'NÍVEL' : `~ ${fmtRange20(p.estOverall)}`}</span>
             </div>
@@ -199,9 +206,9 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           <h2>Atributos detalhados (1 a 20)</h2>
           {(
             <div className="attrs">
-              {(Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).map((g) => (
+              {groupsFor(p.position).filter((g) => p.attributes[g]).map((g) => (
                 <table key={g}><thead><tr><th colSpan={2}>{GROUP_LABEL[g]}</th></tr></thead>
-                  <tbody>{Object.entries(p.attributes[g]).map(([k, r]) => <tr key={k}><td>{ATTR_LABEL[k] ?? k}</td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
+                  <tbody>{Object.entries(p.attributes[g]!).map(([k, r]) => <tr key={k}><td><span className="pf-attr-name">{ATTR_LABEL[k] ?? k}<HelpTip text={attributeHelp(k)} /></span></td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
               ))}
             </div>
           )}
@@ -294,6 +301,7 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
 }) {
   const [p, setP] = useState<PlayerProfileDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const img = useImages();
   useEffect(() => { setP(null); unwrap(window.api.getPlayerProfile(profileId, careerId, playerId)).then(setP).catch((e) => setError(errMsg(e))); }, [profileId, careerId, playerId]);
   useEffect(() => { const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc); }, [onClose]);
   const roles = p?.roles ? [...p.roles.list].sort((a, b) => b.familiarity - a.familiarity || b.suitability - a.suitability) : [];
@@ -303,7 +311,7 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
         <header className="modal-head">
           {p ? (
             <div className="pq-head">
-              <div className="pf-avatar pq-avatar" aria-hidden="true">{initials(p.name)}</div>
+              {img.url('players', p.id) ? <img className="pf-avatar pq-avatar pf-photo" src={img.url('players', p.id)!} alt={`Foto de ${p.name}`} /> : <div className="pf-avatar pq-avatar" aria-hidden="true">{initials(p.name)}</div>}
               <div className="pq-id">
                 <h2>{p.name}</h2>
                 <div className="row pf-meta"><PosPill pos={p.position} />{p.secondaryPositions.map((s) => <PosPill key={s} pos={s} minor />)}
@@ -319,9 +327,9 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
           {!p ? (error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando…</p>) : (
             <>
               <section className="pq-attrs">
-                {(Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).map((g) => (
+                {groupsFor(p.position).filter((g) => p.attributes[g]).map((g) => (
                   <table key={g}><thead><tr><th colSpan={2}>{GROUP_LABEL[g]}</th></tr></thead>
-                    <tbody>{Object.entries(p.attributes[g]).map(([k, r]) => <tr key={k}><td>{ATTR_LABEL[k] ?? k}</td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
+                    <tbody>{Object.entries(p.attributes[g]!).map(([k, r]) => <tr key={k}><td><span className="pf-attr-name">{ATTR_LABEL[k] ?? k}<HelpTip text={attributeHelp(k)} /></span></td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
                 ))}
               </section>
               <section className="pq-side">

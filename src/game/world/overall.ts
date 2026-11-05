@@ -27,7 +27,7 @@ const WEIGHTS: Record<Position, Weights> = {
 };
 
 export function flattenAttributes(a: Attributes): Record<string, number> {
-  return { ...a.technical, ...a.mental, ...a.physical };
+  return { ...a.technical, ...a.mental, ...a.physical, ...(a.goalkeeper ?? {}) };
 }
 
 export function positionWeights(pos: Position): Weights { return WEIGHTS[pos]; }

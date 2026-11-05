@@ -13,13 +13,15 @@ export interface ProfileDto { id: string; name: string; createdAt: string }
 
 export interface ClubOption {
   id: string; countryId: string; leagueId: string; name: string; league: string; leagueTier: number; country: string;
-  reputation: number; avgOverall: number; stadium: string; capacity: number;
+  reputation: number; avgOverall: number; stadium: string; stadiumId: string; capacity: number;
   city: string; fans: number; balance: number; facilities: { training: number; youth: number; medical: number; stadium: number };
   /** objetivo que a diretoria vai cobrar (mesma regra da Diretoria) e posição esperada na liga */
   objective: string; expectedPosition: number; teamCount: number;
   squadSize: number; avgAge: number;
   /** 3 jogadores mais fortes (força 0–100; a tela mostra 1–20) */
   stars: Array<{ name: string; position: Position; overall: number }>;
+  /** pacote de dados que criou o clube (null = base do jogo) e os que o alteraram */
+  origin: { created: string | null; edited: string[] };
   /** história resumida de EXEMPLO (gerada; provisória até a base ter histórias próprias) */
   story: { founded: number; nickname: string; colors: string; text: string[] };
 }
@@ -29,6 +31,45 @@ export interface ClubList {
   countries: Array<{ id: string; code: string; name: string; divisions: number; clubs: number; leagues: Array<{ id: string; name: string; tier: number; clubs: number }> }>;
   clubs: ClubOption[];
 }
+
+/** Pacote de dados do usuário (pasta em <dados>/packs). `issues` = erros de estrutura (impedem ativar). */
+export interface PackInfoDto {
+  id: string; folder: string; name: string; version: string; author: string | null; description: string | null;
+  enabled: boolean; order: number | null; requires: string[]; fullBase: boolean;
+  counts: { countries: number; leagues: number; stadiums: number; clubs: number; players: number } | null;
+  issues: string[];
+}
+/** Tela de pacotes: base fixa, pacotes encontrados e o universo resultante da ordem de carga atual. */
+export interface PacksOverviewDto {
+  base: { name: string; version: string }; packs: PackInfoDto[]; folder: string;
+  universe: { ok: boolean; errors: string[]; warnings: string[]; countries: number; leagues: number; clubs: number; players: number };
+}
+// ---------------------------------------------------------------- editor de dados (pacote do usuário em cima da base)
+export type EditorKind = 'countries' | 'leagues' | 'clubs' | 'players';
+/** base = como na base; edited = alterado por este pacote; created = criado por ele; removed = excluído por ele */
+export type EditorStatus = 'base' | 'edited' | 'created' | 'removed';
+export interface EditorListQuery {
+  kind: EditorKind; search?: string; countryId?: string; leagueId?: string; clubId?: string; position?: Position;
+  /** só o que este pacote mudou */ onlyChanged?: boolean; offset?: number; limit?: number;
+}
+export interface EditorListDto { total: number; rows: Array<{ id: string; title: string; subtitle: string; status: EditorStatus; extra: string | null }> }
+export interface EditorOptionsDto {
+  countries: Array<{ id: string; name: string; code: string }>;
+  leagues: Array<{ id: string; name: string; countryId: string; tier: number }>;
+  clubs: Array<{ id: string; name: string; leagueId: string; countryId: string }>;
+}
+/** Registro no formato do pacote (atributos, força e potencial de 1 a 20). Clubes trazem o estádio junto. */
+export interface EditorEntityDto {
+  kind: EditorKind; id: string; status: EditorStatus; inBase: boolean;
+  record: Record<string, unknown>; stadium: Record<string, unknown> | null;
+  derived: { overall?: number | null; marketValue?: number; age?: number; squad?: number };
+}
+export interface EditorSummaryDto {
+  pack: { id: string; name: string; version: string; author: string | null; description: string | null };
+  changes: Record<EditorKind, { created: number; edited: number; removed: number }>;
+  /** pacote ativo na ordem de carga (vale nas próximas carreiras) */ enabled: boolean;
+}
+export type PackImportDto = { status: 'imported' | 'exists' | 'cancelled'; id?: string; name?: string };
 
 export interface PhotoPick { token: string; dataUrl: string; width: number; height: number; format: 'png' | 'jpeg'; bytes: number; fileName: string }
 
@@ -57,7 +98,7 @@ export interface FixtureDto {
   status: 'scheduled' | 'played'; homeGoals: number | null; awayGoals: number | null;
   /** há relatório lance a lance (não há em países com simulação simplificada) */ hasReport: boolean;
 }
-export interface CompetitionInfoDto { id: string; name: string; country: string; tier: number; teamCount: number }
+export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number }
 export type TableZone = 'promotion' | 'continental' | 'relegation' | null;
 export interface StandingRowDto {
   position: number; clubId: string; clubName: string; played: number; won: number; drawn: number; lost: number;
@@ -281,7 +322,7 @@ export interface PlayerProfileDto {
   clubId: string | null; clubName: string | null; own: boolean; youth: boolean; marketValue: number; salary: number; contractEnd: string;
   knowledge: number; estOverall: Range; estPotential: Range;
   /** faixas (exatas no próprio clube ou com 100% de conhecimento) */
-  attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range> };
+  attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range>; goalkeeper?: Record<string, Range> };
   stats: { appearances: number; goals: number; assists: number; avgRating: number | null };
   verdict: { level: 'starter' | 'rotation' | 'depth' | 'no'; text: string } | null;
   /** Para negociar a partir da ficha (null para jogadores do próprio clube). */
@@ -352,6 +393,30 @@ export interface GameApi {
   listClubs(): Promise<IpcResult<ClubList>>;
   pickPhoto(): Promise<IpcResult<PhotoPick | null>>;
   discardPhoto(token: string): Promise<IpcResult<true>>;
+  listPacks(): Promise<IpcResult<PacksOverviewDto>>;
+  setPackOrder(enabled: string[]): Promise<IpcResult<PacksOverviewDto>>;
+  /** escolhe um .zip (diálogo); com `overwrite`, reimporta o último escolhido substituindo o pacote de mesmo id */
+  importPack(overwrite: boolean): Promise<IpcResult<PackImportDto>>;
+  removePack(id: string): Promise<IpcResult<PacksOverviewDto>>;
+  openPacksFolder(): Promise<IpcResult<true>>;
+  /** imagens disponíveis nos pacotes ativos ("players/<id>", "clubs/<id>", "stadiums/<id>", "leagues/<id>") e a versão do índice */
+  imageKeys(): Promise<IpcResult<{ version: number; keys: string[] }>>;
+  /** escolhe uma imagem (diálogo) e grava no pacote para a entidade; devolve as chaves atualizadas (ou null se cancelou) */
+  editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
+  editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
+  /** imagens deste pacote (mesmo inativo), para o editor */
+  editorImageKeys(packId: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
+  editorCreatePack(input: { name: string; author?: string; description?: string }): Promise<IpcResult<EditorSummaryDto>>;
+  editorSummary(packId: string): Promise<IpcResult<EditorSummaryDto>>;
+  editorUpdateManifest(packId: string, m: { name: string; version: string; author?: string; description?: string }): Promise<IpcResult<EditorSummaryDto>>;
+  editorOptions(packId: string): Promise<IpcResult<EditorOptionsDto>>;
+  editorList(packId: string, query: EditorListQuery): Promise<IpcResult<EditorListDto>>;
+  editorGet(packId: string, kind: EditorKind, id: string): Promise<IpcResult<EditorEntityDto>>;
+  editorSave(packId: string, kind: EditorKind, record: Record<string, unknown>, stadium?: Record<string, unknown> | null): Promise<IpcResult<EditorEntityDto>>;
+  editorRemove(packId: string, kind: EditorKind, id: string): Promise<IpcResult<EditorSummaryDto>>;
+  editorRevert(packId: string, kind: EditorKind, id: string): Promise<IpcResult<EditorEntityDto>>;
+  /** grava o pacote em .zip (diálogo "salvar como") */
+  editorExport(packId: string): Promise<IpcResult<{ saved: boolean; path?: string }>>;
   createCareer(input: CreateCareerInput): Promise<IpcResult<CareerSummaryDto>>;
   listCareers(profileId: string): Promise<IpcResult<CareerListDto>>;
   openCareer(profileId: string, careerId: string): Promise<IpcResult<CareerOverviewDto>>;

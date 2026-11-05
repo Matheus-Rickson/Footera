@@ -109,7 +109,8 @@ export function estimateAttributes(attrs: Attributes, seed: string, playerId: st
     const c = g[k]! + Math.round(rng.int(-2, 2) * f);
     return [k, { low: Math.max(1, c - half), high: Math.min(20, c + half) }];
   }));
-  return { technical: group(attrs.technical as unknown as Record<string, number>), mental: group(attrs.mental as unknown as Record<string, number>), physical: group(attrs.physical as unknown as Record<string, number>) };
+  return { technical: group(attrs.technical as unknown as Record<string, number>), mental: group(attrs.mental as unknown as Record<string, number>), physical: group(attrs.physical as unknown as Record<string, number>),
+    ...(attrs.goalkeeper ? { goalkeeper: group(attrs.goalkeeper as unknown as Record<string, number>) } : {}) };
 }
 
 /** Titulares por setor numa formação típica (4-4-2), usados no parecer do olheiro. */

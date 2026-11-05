@@ -214,7 +214,7 @@ export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto 
     const exact = (g: object) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, { low: v as number, high: v as number }]));
     const pot = Math.max(p.overall, p.potentialEstimated); // o próprio clube vê a força real e o potencial ESTIMADO (como no elenco)
     return { ...base, knowledge: 100, estOverall: { low: p.overall, high: p.overall }, estPotential: { low: pot, high: pot },
-      attributes: { technical: exact(p.attributes.technical), mental: exact(p.attributes.mental), physical: exact(p.attributes.physical) }, verdict: null, market: null, negotiable: false };
+      attributes: { technical: exact(p.attributes.technical), mental: exact(p.attributes.mental), physical: exact(p.attributes.physical), ...(p.attributes.goalkeeper ? { goalkeeper: exact(p.attributes.goalkeeper) } : {}) }, verdict: null, market: null, negotiable: false };
   }
   const k = knowledgeMap(db).get(p.id) ?? 0;
   const market = toScoutedDto(db, r, st.gameDate, k, !!db.prepare('SELECT 1 AS x FROM scout_shortlist WHERE player_id = ?').get(p.id));

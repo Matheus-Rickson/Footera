@@ -1,6 +1,7 @@
 import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import type { World, Club, League, Player, Stadium, Country } from '../../shared/types.ts';
+import { withGoalkeeper } from '../../game/world/goalkeeper.ts';
 
 export function saveWorld(db: SqlDb, w: World): void {
   withTransaction(db, () => {
@@ -76,7 +77,7 @@ export function rowToPlayer(r: Record<string, unknown>): Player {
     birthDate: s(r.birth_date), nationality: s(r.nationality), extraNationalities: JSON.parse(s(r.extra_nationalities_json)),
     position: s(r.position) as Player['position'], secondaryPositions: JSON.parse(s(r.secondary_positions_json)),
     foot: s(r.foot) as Player['foot'], heightCm: n(r.height_cm), weightKg: n(r.weight_kg),
-    attributes: JSON.parse(s(r.attributes_json)), personality: JSON.parse(s(r.personality_json)),
+    attributes: withGoalkeeper(JSON.parse(s(r.attributes_json)), s(r.id)), personality: JSON.parse(s(r.personality_json)),
     potentialEstimated: n(r.potential_estimated), potentialHidden: n(r.potential_hidden), condition: n(r.condition_pct),
     fatigue: n(r.fatigue), morale: n(r.morale), form: n(r.form), marketValue: n(r.market_value), salary: n(r.salary),
     contractEnd: s(r.contract_end), overall: n(r.overall),

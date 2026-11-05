@@ -204,3 +204,15 @@ test('Moeda única do jogo: euro, com separador de milhar e sinal de negativo', 
   assert.equal(fmtMoney(-1_200_000), '−€ 1.200.000');
   assert.equal(fmtMoney(0), '€ 0');
 });
+
+test('Gravar pacote: lista que ficou vazia apaga o arquivo antigo (a alteração desfeita não volta)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'footera-pack-'));
+  try {
+    const p = pack('vazio', { players: [{ id: base.players[0]!.id, firstName: 'X' }] });
+    writePackDir(p, dir);
+    assert.ok(fs.existsSync(path.join(dir, 'players.json')));
+    writePackDir({ ...p, data: { ...p.data, players: [] } }, dir);
+    assert.ok(!fs.existsSync(path.join(dir, 'players.json')));
+    assert.deepEqual(readPackDir(dir).data.players, []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

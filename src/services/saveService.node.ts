@@ -28,7 +28,7 @@ import type { SqlDb } from '../database/types.ts';
 import { withTransaction } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
-import { baseUniverse } from './universeService.node.ts';
+import { careerUniverse } from './packManager.node.ts';
 import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology, World } from '../shared/types.ts';
@@ -63,7 +63,7 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
 
   // universo = base fixa (data/base) + pacotes de dados (a escolha dos pacotes na tela chega na etapa 2 da base de dados).
   // A semente da carreira é só para o acaso (resultados, lesões, peneiras): o universo é sempre o mesmo.
-  const universe = input.universe ?? baseUniverse();
+  const universe = input.universe ?? careerUniverse(base);
   const world: World = { ...universe.world, seed: `carreira-${randomUUID().slice(0, 8)}` };
   const applied = universe.applied;
   const coach: Coach = {

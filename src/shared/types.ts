@@ -20,11 +20,17 @@ export interface MentalAttributes {
 export interface PhysicalAttributes {
   pace: number; stamina: number; strength: number; agility: number; jumping: number; naturalFitness: number;
 }
+/** Atributos específicos de goleiro (o "goalkeeping" técnico é a média ponderada deles; ver game/world/goalkeeper.ts). */
+export interface GoalkeeperAttributes {
+  reflexes: number; oneOnOne: number; handling: number; aerial: number; rushingOut: number; kicking: number;
+}
 /** Todos os atributos usam a escala 1..20. */
 export interface Attributes {
   technical: TechnicalAttributes;
   mental: MentalAttributes;
   physical: PhysicalAttributes;
+  /** ausente só em dados antigos (é derivado ao ler; ver withGoalkeeper) */
+  goalkeeper?: GoalkeeperAttributes;
 }
 
 export interface Personality {

@@ -41,14 +41,15 @@ export function readPackDir(dir: string): Pack {
   return parsePack({ manifest, files }, source);
 }
 
-/** Grava um pacote numa pasta (cria a pasta; sobrescreve os arquivos do pacote). Arquivos vazios não são gravados. */
+/** Grava um pacote numa pasta (cria a pasta; sobrescreve os arquivos do pacote). Lista vazia = o arquivo é apagado (não fica um antigo). */
 export function writePackDir(pack: Pack, dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify(pack.manifest, null, 2)}\n`);
   for (const f of PACK_FILES) {
     const rows = pack.data[f];
-    if (!rows.length) continue;
+    const file = path.join(dir, `${f}.json`);
+    if (!rows.length) { fs.rmSync(file, { force: true }); continue; }
     // um registro por linha: arquivos grandes continuam navegáveis e o diff entre versões de um patch fica limpo
-    fs.writeFileSync(path.join(dir, `${f}.json`), `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(',\n')}\n]\n`);
+    fs.writeFileSync(file, `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(',\n')}\n]\n`);
   }
 }

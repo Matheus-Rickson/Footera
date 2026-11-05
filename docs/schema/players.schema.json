@@ -249,6 +249,42 @@
               }
             },
             "additionalProperties": false
+          },
+          "goalkeeper": {
+            "type": "object",
+            "properties": {
+              "reflexes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "oneOnOne": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "handling": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "aerial": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "rushingOut": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "kicking": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false

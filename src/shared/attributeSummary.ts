@@ -5,7 +5,7 @@ import type { Range } from './api.ts';
  * Goleiros usam "Goleiro" no lugar de "Finalização".
  */
 export const SUMMARY_KEYS = {
-  gol: ['goalkeeping', 'positioning', 'agility'],
+  gol: ['reflexes', 'oneOnOne', 'handling', 'aerial', 'rushingOut'],
   fin: ['finishing', 'longShots', 'composure'],
   tec: ['dribbling', 'firstTouch', 'crossing'],
   pas: ['passing', 'vision', 'decisions'],
@@ -15,10 +15,10 @@ export const SUMMARY_KEYS = {
 } as const;
 export type SummaryKey = keyof typeof SUMMARY_KEYS;
 export type AttrSummary = Record<SummaryKey, Range>;
-type RangeGroups = { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range> };
+type RangeGroups = { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range>; goalkeeper?: Record<string, Range> };
 
 export function summarizeRanges(attrs: RangeGroups): AttrSummary {
-  const flat: Record<string, Range> = { ...attrs.technical, ...attrs.mental, ...attrs.physical };
+  const flat: Record<string, Range> = { ...attrs.technical, ...attrs.mental, ...attrs.physical, ...(attrs.goalkeeper ?? {}) };
   const one = (keys: readonly string[]): Range => {
     const rs = keys.map((k) => flat[k]).filter((r): r is Range => !!r);
     const avg = (f: (r: Range) => number) => Math.round((rs.reduce((s, r) => s + f(r), 0) / Math.max(1, rs.length)) * 5);

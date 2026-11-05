@@ -96,10 +96,10 @@ export function getNextFixture(db: SqlDb): FixtureDto | null {
 export function listCompetitions(db: SqlDb): { userCompetitionId: string | null; competitions: CompetitionInfoDto[] } {
   const st = getCareerState(db);
   const competitions = db.prepare(
-    `SELECT c.id, c.name, l.tier, l.team_count, co.name AS country
+    `SELECT c.id, c.name, c.league_id, l.tier, l.team_count, co.name AS country
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id
       WHERE c.season = ? ORDER BY co.name, l.tier`).all(st.season)
-    .map((r) => ({ id: S(r.id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count) }));
+    .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count) }));
   const mine = db.prepare(
     'SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(st.season, st.clubId);
   return { userCompetitionId: mine ? S(mine.id) : null, competitions };
@@ -136,7 +136,7 @@ export function getCompetitionTable(db: SqlDb, competitionId: string): Competiti
     zone: zoneFor(r.position, table.length, rules), isUserClub: r.teamId === st.clubId,
   }));
   return {
-    competition: { id: S(c.id), name: S(c.name), country: S(c.country), tier: N(c.tier), teamCount: rows.length },
+    competition: { id: S(c.id), leagueId: S(c.league_id), name: S(c.name), country: S(c.country), tier: N(c.tier), teamCount: rows.length },
     rows, roundsPlayed, totalRounds, tiebreakers: rules.tiebreakers,
   };
 }

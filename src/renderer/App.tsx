@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FolderOpen, Moon, Play, Plus, Power, Sun, Upload } from 'lucide-react';
+import { FolderOpen, Moon, Package, PencilRuler, Play, Plus, Power, Sun, Upload } from 'lucide-react';
 import { useTheme } from './theme.ts';
 import footeraMark from './assets/footera-mark.png';
 import type { AppInfo, CareerListDto, CareerOverviewDto, ProfileDto } from '../shared/api.ts';
 import { errMsg, fmtDate, fmtDateTime, unwrap } from './util.ts';
 import { NewCareer } from './screens/NewCareer.tsx';
+import { PacksView } from './screens/PacksView.tsx';
+import { EditorView } from './screens/EditorView.tsx';
 import { CareerList } from './screens/CareerList.tsx';
 import { CareerDashboard } from './screens/CareerDashboard.tsx';
 
-type Screen = { name: 'home' } | { name: 'new' } | { name: 'load' } | { name: 'career'; overview: CareerOverviewDto };
+type Screen = { name: 'home' } | { name: 'new' } | { name: 'load' } | { name: 'packs' } | { name: 'editor' } | { name: 'career'; overview: CareerOverviewDto };
 const LS_KEY = 'fmsim.profileId';
 
 function readStoredProfile(): string | null { try { return localStorage.getItem(LS_KEY); } catch { return null; } }
@@ -61,6 +63,8 @@ export function App() {
   if (screen.name === 'new' && profileId) {
     return <NewCareer profileId={profileId} onBack={() => setScreen({ name: 'home' })} onCreated={(id) => openCareer(id)} />;
   }
+  if (screen.name === 'packs') return <PacksView onBack={() => setScreen({ name: 'home' })} />;
+  if (screen.name === 'editor') return <EditorView onBack={() => setScreen({ name: 'home' })} />;
   if (screen.name === 'load' && profileId) {
     return <CareerList profileId={profileId} data={careers} error={error} onBack={() => setScreen({ name: 'home' })} onOpen={openCareer} busy={busy} />;
   }
@@ -118,6 +122,8 @@ export function App() {
       <section className="card menu">
         <button disabled={!profileId} onClick={() => setScreen({ name: 'new' })}><Plus size={18} aria-hidden="true" />Nova carreira</button>
         <button className="secondary" disabled={!profileId} onClick={() => setScreen({ name: 'load' })}><FolderOpen size={18} aria-hidden="true" />Carregar carreira</button>
+        <button className="secondary" onClick={() => setScreen({ name: 'packs' })}><Package size={18} aria-hidden="true" />Pacotes de dados</button>
+        <button className="secondary" onClick={() => setScreen({ name: 'editor' })}><PencilRuler size={18} aria-hidden="true" />Editor de dados</button>
         <button className="secondary" disabled title="Disponível na Fase 10 (exportação e importação de saves)"><Upload size={18} aria-hidden="true" />Importar save <span className="muted small">— em breve (Fase 10)</span></button>
         <button className="danger" onClick={() => void window.api.quit()}><Power size={18} aria-hidden="true" />Sair</button>
       </section>

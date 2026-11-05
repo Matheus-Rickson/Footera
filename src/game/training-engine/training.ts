@@ -17,7 +17,7 @@ export const FOCUS_KEYS: Record<Focus, readonly string[]> = {
   defense: ['tackling', 'marking', 'positioning', 'heading', 'workRate'],
   physical: ['pace', 'stamina', 'strength', 'agility', 'jumping', 'naturalFitness'],
   technical: ['firstTouch', 'dribbling', 'passing', 'finishing', 'crossing'],
-  goalkeeping: ['goalkeeping', 'positioning', 'agility', 'jumping', 'decisions'],
+  goalkeeping: ['reflexes', 'oneOnOne', 'handling', 'aerial', 'rushingOut', 'kicking', 'positioning', 'agility'],
 };
 
 /** Efeitos da intensidade: crescimento, recuperação diária de condição (pontos) e risco de lesão no treino. */

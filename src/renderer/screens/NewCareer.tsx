@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, CircleHelp, Coins, Search, Target, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, Coins, Search, Target, Users } from 'lucide-react';
 import type { ClubList, ClubOption, PhotoPick } from '../../shared/api.ts';
 import type { Methodology } from '../../shared/types.ts';
 import { errMsg, fmtMoney, fmtNum, METHODOLOGY, unwrap } from '../util.ts';
@@ -8,6 +8,8 @@ import { ClubCrest, clubHues, Flag, StadiumArt } from '../flags.tsx';
 import footeraMark from '../assets/footera-mark.png';
 import { baseCoachAttributes, COACH_ATTR_BASE, COACH_ATTR_MAX_START, COACH_ATTR_POINTS, COACH_ATTRS, spentPoints, type CoachAttributes, type CoachAttrKey } from '../../shared/coachAttributes.ts';
 import type { CSSProperties } from 'react';
+import { useImages } from '../images.ts';
+import { HelpTip } from '../help.tsx';
 
 interface Props { profileId: string; onBack: () => void; onCreated: (careerId: string) => void }
 
@@ -22,6 +24,7 @@ const divisionsLabel = (n: number) => `${n} ${n === 1 ? 'divisão' : 'divisões'
 export function NewCareer({ profileId, onBack, onCreated }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [list, setList] = useState<ClubList | null>(null);
+  const img = useImages();
   /** países marcados (= simulação completa); só neles há clubes para escolher e propostas de emprego */
   const [full, setFull] = useState<Set<string>>(() => new Set(['bra']));
   /** divisões desmarcadas dentro dos países marcados (ficam simplificadas) */
@@ -50,10 +53,12 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
   const photoRef = useRef<PhotoPick | null>(null);
   photoRef.current = photo;
 
-  // Carrega a base de dados fixa (a mesma para todas as carreiras).
+  // Carrega o universo: base fixa + pacotes de dados ativos (o mesmo para todas as carreiras com os mesmos pacotes).
+  const [activePacks, setActivePacks] = useState<string[]>([]);
   useEffect(() => {
     let stale = false;
     unwrap(window.api.listClubs()).then((r) => { if (!stale) { setList(r); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
+    unwrap(window.api.listPacks()).then((r) => { if (!stale) setActivePacks(r.packs.filter((p) => p.enabled).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((p) => `${p.name} (v${p.version})`)); }).catch(() => { /* a lista de clubes já mostra o erro */ });
     return () => { stale = true; };
   }, []);
   // Descarta a foto pendente ao sair da tela sem criar a carreira.
@@ -153,6 +158,8 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
             <div className="nc-section-head">
               <h2>Escolha os países <HelpTip text="Os países marcados têm simulação completa: partidas lance a lance, finanças, mercado, categorias de base, treino e diretoria — e só neles você pode treinar e ser contratado. Os desmarcados existem por inteiro (clubes, tabelas e jogadores contratáveis), com simulação simplificada: só o placar das partidas e a evolução dos jogadores uma vez por ano. A escolha vale para a carreira toda." /></h2>
               <div className="nc-presets">
+                <span className="nc-packs-chip">{activePacks.length ? `Base + ${activePacks.length} pacote(s)` : 'Base do jogo'}
+                  <HelpTip text={activePacks.length ? `Pacotes de dados ativos, na ordem: ${activePacks.join(' → ')}. Gerencie em "Pacotes de dados", no menu principal.` : 'Nenhum pacote de dados ativo: a carreira usa só a base do jogo. Gerencie em "Pacotes de dados", no menu principal.'} /></span>
                 <button className="nc-ghost" onClick={() => preset(['bra'])}>Só o Brasil</button>
                 <button className="nc-ghost" onClick={() => preset(countries.map((c) => c.id))}>Todos</button>
                 <button className="nc-ghost" onClick={() => preset([])}>Limpar</button>
@@ -169,7 +176,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
                       <Flag code={c.code} size={22} title={`Bandeira: ${c.name}`} />
                       <span className="nc-country-name"><strong>{c.name}</strong><span>{divisionsLabel(c.divisions)}</span></span>
                       {on && c.divisions > 1 && (
-                        <DivisionsMenu country={c.name} leagues={c.leagues} isFull={(id) => fullLeagues.has(id)} onToggle={toggleLeague} />
+                        <DivisionsMenu country={c.name} leagues={c.leagues} isFull={(id) => fullLeagues.has(id)} onToggle={toggleLeague} logo={(id) => img.url('leagues', id)} />
                       )}
                     </div>
                   );
@@ -220,8 +227,8 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
               <div className="nc-club-scroll" role="listbox" aria-label="Clubes">
                 {visible.map((c) => (
                   <button key={c.id} role="option" aria-selected={c.id === clubId} className={`nc-club-row ${c.id === clubId ? 'on' : ''}`} onClick={() => setClubId(c.id)}>
-                    <ClubCrest id={c.id} name={c.name} size={26} />
-                    <span className="nc-club-row-name"><strong>{c.name}</strong><span className="muted small">{c.league}</span></span>
+                    <ClubCrest id={c.id} name={c.name} size={26} src={img.url('clubs', c.id)} />
+                    <span className="nc-club-row-name"><strong>{c.name}</strong><span className="muted small">{c.league}{c.origin.created && <span className="nc-new" title={`Criado pelo pacote "${c.origin.created}"`}>novo</span>}{!c.origin.created && c.origin.edited.length > 0 && <span className="nc-edited" title={`Alterado por: ${c.origin.edited.join(', ')}`}>alterado</span>}</span></span>
                     <span className={`sq-ovr ${tone(c.avgOverall)}`} title="Força média do elenco">{to20(c.avgOverall)}</span>
                   </button>
                 ))}
@@ -229,7 +236,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
               </div>
               <p className="muted small nc-count">{visible.length} clube(s) <HelpTip up text="Só aparecem clubes de divisões com simulação completa: é onde você pode treinar e ser contratado. Para ver outros, volte e marque mais países ou divisões." /></p>
             </section>
-            {chosen ? <ClubPanel c={chosen} code={countries.find((x) => x.id === chosen.countryId)?.code ?? ''} /> : <section className="card"><p className="muted">Escolha um clube na lista.</p></section>}
+            {chosen ? <ClubPanel c={chosen} code={countries.find((x) => x.id === chosen.countryId)?.code ?? ''} crest={img.url('clubs', chosen.id)} photo={img.url('stadiums', chosen.stadiumId)} leagueLogo={img.url('leagues', chosen.leagueId)} /> : <section className="card"><p className="muted">Escolha um clube na lista.</p></section>}
           </div>
           <div className="row end">
             <button className="secondary" onClick={() => setStep(1)}><ArrowLeft size={16} aria-hidden="true" />Países</button>
@@ -321,19 +328,10 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
   );
 }
 
-/** Ícone de interrogação: a explicação aparece ao passar o mouse (ou ao focar com o teclado), sem ocupar a tela. */
-function HelpTip({ text, up = false }: { text: string; up?: boolean }) {
-  return (
-    <span className={`nc-help ${up ? 'nc-help-up' : ''}`} tabIndex={0} aria-label={`Ajuda: ${text}`} onClick={(e) => e.stopPropagation()}>
-      <CircleHelp size={15} aria-hidden="true" />
-      <span className="nc-help-pop" role="tooltip">{text}</span>
-    </span>
-  );
-}
 
 /** Escolha opcional das divisões de um país marcado: fechada por padrão, abre num painel a partir do cartão do país. */
-function DivisionsMenu({ country, leagues, isFull, onToggle }: {
-  country: string; leagues: Array<{ id: string; name: string; tier: number; clubs: number }>; isFull: (id: string) => boolean; onToggle: (id: string) => void;
+function DivisionsMenu({ country, leagues, isFull, onToggle, logo }: {
+  country: string; leagues: Array<{ id: string; name: string; tier: number; clubs: number }>; isFull: (id: string) => boolean; onToggle: (id: string) => void; logo: (id: string) => string | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -371,7 +369,7 @@ function DivisionsMenu({ country, leagues, isFull, onToggle }: {
             return (
               <label key={l.id} className="nc-divopt" title={last ? 'Ao menos uma divisão fica completa (desmarque o país para simplificá-lo inteiro)' : undefined}>
                 <input type="checkbox" checked={checked} disabled={last} onChange={() => onToggle(l.id)} />
-                <span>{l.tier}ª · {l.name}</span><em>{l.clubs} clubes</em>
+                <span className="nc-divopt-name">{logo(l.id) && <img className="nc-league-logo" src={logo(l.id)!} alt="" />}{l.tier}ª · {l.name}</span><em>{l.clubs} clubes</em>
               </label>
             );
           })}
@@ -382,23 +380,25 @@ function DivisionsMenu({ country, leagues, isFull, onToggle }: {
 }
 
 /** Painel do clube destacado: só dados reais da base (escudo gerado até a etapa de fotos e escudos). */
-function ClubPanel({ c, code }: { c: ClubOption; code: string }) {
+function ClubPanel({ c, code, crest, photo, leagueLogo }: { c: ClubOption; code: string; crest: string | null; photo: string | null; leagueLogo: string | null }) {
   const fac: Array<[string, number]> = [['Centro de treinamento', c.facilities.training], ['Categorias de base', c.facilities.youth], ['Departamento médico', c.facilities.medical], ['Estádio', c.facilities.stadium]];
   return (
     <section className="card nc-panel" aria-label={`Clube ${c.name}`}>
       <header className="nc-panel-head">
-        <ClubCrest id={c.id} name={c.name} size={68} />
+        <ClubCrest id={c.id} name={c.name} size={68} src={crest} />
         <div>
           <h2>{c.name}</h2>
           <span className="row muted"><Flag code={code} size={14} title={c.country} />{c.city} · {c.country}</span>
-          <span className="nc-chip">{c.league} · {c.leagueTier}ª divisão</span>
+          <span className="row nc-chips"><span className="nc-chip">{leagueLogo && <img className="nc-league-logo" src={leagueLogo} alt="" />}{c.league} · {c.leagueTier}ª divisão</span>
+            {c.origin.created && <span className="nc-chip nc-chip-pack" title="Clube que não existe na base do jogo">Criado pelo pacote "{c.origin.created}"</span>}
+            {c.origin.edited.length > 0 && <span className="nc-chip nc-chip-pack" title="Dados da base alterados por pacote de dados">Alterado por {c.origin.edited.map((x) => `"${x}"`).join(', ')}</span>}</span>
         </div>
       </header>
       <div className="nc-panel-main">
         <div className="nc-panel-side">
           <div className="nc-hero">
-            <StadiumArt id={c.id} title={c.stadium} />
-            <span className="nc-hero-tag" title="Imagem fictícia gerada pelo jogo; fotos reais chegam com a etapa de fotos da base de dados">Imagem ilustrativa</span>
+            {photo ? <img className="nc-stadium-photo" src={photo} alt={`Foto do ${c.stadium}`} /> : <StadiumArt id={c.id} title={c.stadium} />}
+            {!photo && <span className="nc-hero-tag" title="Imagem gerada pelo jogo; adicione uma foto pelo Editor de dados (pacote)">Imagem ilustrativa</span>}
             <div className="nc-hero-caption"><Building2 size={22} aria-hidden="true" /><div><strong>{c.stadium}</strong><span>{fmtNum(c.capacity)} lugares</span></div></div>
           </div>
           <div className="nc-story">

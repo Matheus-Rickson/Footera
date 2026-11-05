@@ -83,6 +83,8 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
   `contract` (`salary`, `end`), `marketValue`. O que faltar é calculado (valor pela força/idade/potencial; salário 1,2% do valor; contrato 1–4 anos).
 - `internal`: valores do motor (0–100) que a exportação grava para reproduzir a base exatamente; autores normalmente não usam.
 - Posições: `GK`, `CB`, `LB`, `RB`, `LWB`, `RWB`, `DM`, `CM`, `LM`, `RM`, `AM`, `LW`, `RW`, `SS`, `CF` (`ST` = atacante dos universos antigos).
+- **Goleiro:** `attributes.goalkeeper` com `reflexes`, `oneOnOne`, `handling`, `aerial`, `rushingOut`, `kicking` (1–20). O
+  `technical.goalkeeping` passa a ser calculado deles (média ponderada 3/2/2/1,5/1/0,5); informar só o `goalkeeping` deriva o grupo.
 
 ## Ferramentas
 - `npm run pack -- validate <pasta> [<pasta> …] [--seed <semente>]` — valida na ordem de carga e mostra erros e avisos com pacote › arquivo › registro.
@@ -102,7 +104,22 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
 1. **Formato, IDs fixos, montagem do universo, validador, exportação e JSON Schema** — feito (v0.9.0-dev). A carreira nova já passa
    pela montagem (sem pacotes ainda: a escolha chega na etapa 2).
 1b. **Base fixa (16 países) e países completos × simplificados** — feito (sem commit). Ver PROGRESS.md.
-2. Pacotes e ordem de carga na interface (tela "Pacotes de dados" no menu principal; `.zip`; pasta de pacotes do usuário).
-3. Fotos e escudos (jogadores, clubes, técnicos, competições), por pacote e pela pasta de fotos do usuário; protocolo próprio do Electron.
-4. Editor no jogo (salva num pacote do usuário) + importação/exportação CSV.
+2. **Pacotes e ordem de carga na interface** — feito (sem commit). Tela "Pacotes de dados" no menu principal: pasta do usuário
+   `<dados>/packs/<id>/` (no app instalado: `%APPDATA%\football-manager-simulator\data\packs`), ordem em `packs/load-order.json`;
+   ativar/desativar, subir/descer, importar `.zip` (raiz ou uma pasta; leitor próprio com limites e caminhos seguros), substituir
+   (pergunta antes), remover, abrir a pasta, erros por pacote e resumo/erros do universo resultante. A base é sempre a primeira.
+   Pacotes com erro de estrutura não ativam; combinação com erro bloqueia a carreira nova com mensagem. A carreira nova usa base +
+   pacotes ativos e grava a lista em `meta.data_packs`. `npm run pack -- zip <pasta> <arquivo.zip>` gera o .zip;
+   exemplo pronto: `docs/exemplos/pacote-exemplo.zip`.
+3. **Fotos e escudos** — feito (sem commit). No pacote: `images/players/<id>.png|jpg` (foto do jogador), `images/clubs/<id>` (escudo) e
+   `images/stadiums/<id>` (foto do estádio) e `images/leagues/<id>` (logo da liga); PNG ou JPEG validados pelo conteúdo, até 5 MB, de 64 a 4096 px. Vêm dos pacotes ATIVOS (o último
+   da ordem vence), inclusive em carreiras já criadas; desativar o pacote tira as imagens. O jogo serve só o que está no índice
+   (`footera-img://img/<tipo>/<id>`), sem caminho vindo da tela. Importar/exportar .zip leva as imagens; imagem inválida recusa o pacote.
+   No editor: campo de imagem na liga (logo), no clube (escudo e foto do estádio) e no jogador (gravado na hora). O logo da liga aparece
+   nas divisões e no painel do clube (nova carreira) e em Competições. Técnicos e competições continentais ficam para quando existirem.
+4. **Editor de dados** — feito (sem commit), menu principal → "Editor de dados". Edita um pacote do usuário em cima da base (o que
+   aparece é "base + este pacote"): países, ligas, clubes (com estádio) e jogadores; criar (jogador pela força, clube com estádio),
+   alterar (o pacote guarda só a diferença; voltar ao original tira o registro), excluir (da base vira `$remove`, restaurável), restaurar,
+   detalhes do pacote (nome, versão, autor, descrição) e exportar .zip. Cada gravação valida o universo inteiro antes de escrever.
+   Pacote novo já entra ativo no fim da ordem de carga. CSV fica para depois.
 5. Técnicos dos clubes da IA como entidade (nome, nacionalidade, foto, reputação, metodologia → tática da IA).

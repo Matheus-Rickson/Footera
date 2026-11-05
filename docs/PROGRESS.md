@@ -811,3 +811,50 @@ propostas de emprego só de clubes completos; competições continentais depois 
   contratar; ver `docs/FINANCE.md`); base fixa regenerada (ainda não publicada). Moeda única **euro (€)** em todas as telas e nas mensagens
   do jogo (`fmtMoney`, 60 pontos trocados; capacidade, torcida, público e lugares seguem sem moeda). Testes: 204 (caixa cobre o melhor
   jogador do clube mais forte de cada 1ª divisão + clube de pacote; formato da moeda). Mutação no caixa detectada. Telas NÃO verificadas.
+### Etapa 2 — pacotes de dados na interface (sem commit; telas NÃO verificadas no Electron)
+Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
+- `packManager.node.ts` (pasta `<dados>/packs`, `load-order.json`, universo base + pacotes com cache por versão e data dos arquivos),
+  `zip.node.ts` (leitor/gravador .zip sem dependências: deflate, UTF-8, limites contra zip bomb, recusa "..", caminho absoluto e senha),
+  IPC `packs:list|order|import|remove|folder`, tela `PacksView` (menu principal → "Pacotes de dados") e indicação dos pacotes ativos no
+  passo 1 da nova carreira. Carreira nova = base + pacotes ativos; `meta.data_packs` grava a lista.
+- `npm run pack -- zip`; exemplo pronto `docs/exemplos/pacote-exemplo.zip` (renomeia a Série A e a liga argentina, cria 4 clubes).
+- Testes: 207 (3 novos em `packs.test.ts`: zip; importar/ativar/ordem/substituir/remover e carreira com o patch; erros de importação,
+  pasta quebrada que não ativa nem fica gravada, combinação com erro que bloqueia). **Mutação 8/8** (uma só depois de checar o arquivo
+  de ordem). Typecheck limpo.
+- **Próximo (pedido do usuário):** editor de dados externo, para testar 100% os patches, antes do sistema de reputação do treinador.
+- **Origem dos dados na seleção de clube (após teste do usuário, que não achou os clubes criados):** `compileUniverse` registra que pacote criou ou alterou cada entidade; a lista de clubes mostra "novo"/"alterado" e o painel "Criado pelo pacote …" / "Alterado por …". Teste e mutação. 207 testes.
+### Editor de dados (pedido do usuário: "fácil, interface amigável, boas práticas de UI/UX"; sem commit; telas NÃO verificadas)
+- **Serviço** `editorService.node.ts`: resumo de alterações, opções (países/ligas/clubes), lista paginada com busca, filtros e "só o que
+  o pacote mudou" (excluídos aparecem para restaurar), obter, salvar (diferença em relação à base via `game/data-pack/diff.ts`;
+  entidade criada = registro completo; clube grava o estádio junto), excluir, restaurar, criar pacote (já ativo), editar manifesto,
+  exportar .zip. Toda gravação monta o universo antes de escrever (erro = nada muda). IPC `editor:*` validado com Zod.
+- **Tela** `EditorView`: escolha/criação do pacote; área de trabalho em 3 colunas (categorias com contador de alterações | lista com
+  busca, filtros e etiquetas novo/alterado/excluído | formulário). Formulários por tipo com seções, rótulos claros, ajuda (?) só onde
+  precisa, validação imediata por campo, força do jogador recalculada ao vivo pelos atributos, valor de mercado calculado, "Restaurar
+  original", excluir com confirmação, aviso de alterações não salvas ao trocar de item ("Salvar e continuar" só segue se salvar),
+  detalhes do pacote e exportar .zip. Cabe na janela (rolagem só dentro da lista e do formulário).
+- **Defeito encontrado pelos testes e corrigido:** ao esvaziar uma lista do pacote, o arquivo antigo ficava no disco e a alteração
+  desfeita "voltava" (`writePackDir` agora apaga o arquivo). Teste próprio.
+- Testes: 211 (4 novos: diferença, fluxo de edição/restauração/resumo, criar clube e jogador/excluir/restaurar/inválido não grava/
+  exportar e importar, arquivo vazio apagado). Mutação 6/6. Typecheck limpo.
+### Atributos de goleiro e fotos (pedido do usuário após testar o editor; sem commit; telas NÃO verificadas)
+- **Goleiro** (`game/world/goalkeeper.ts`): reflexos, um contra um, manejo, jogo aéreo, saídas do gol e reposição. O "goleiro (geral)"
+  que o motor usa é a média ponderada deles (o motor não mudou; agora cada específico influencia). Funções de goleiro usam os específicos
+  (Tradicional: reflexos/manejo/jogo aéreo; Líbero: saídas/1×1; Construtor: reposição/passe). Dados antigos (base fixa, saves) ganham o
+  grupo derivado sem mudar a força (média exata igual). Evolução mensal move o grupo e recalcula o geral (também no corte pelo potencial);
+  foco de treino "goleiro" passou a mirar os específicos. Pacotes: `attributes.goalkeeper` (parcial vale; só o geral deriva o grupo).
+  Ficha e janela do jogador mostram o grupo "Goleiro" para goleiros; o editor mostra os seis e o geral calculado ao vivo.
+- **Fotos** (`imageService.node.ts`, índice em `packManager.imageIndex`, protocolo `footera-img` no processo principal, CSP liberada só
+  para ele): escudos na escolha de clube (lista e painel), foto do estádio no painel (no lugar da ilustração), foto do jogador na ficha e
+  na janela rápida; campos de imagem no editor; .zip leva e traz as imagens.
+- **Logo da liga** (`images/leagues/<id>`): campo "Logo da liga" no editor de ligas; aparece no menu de divisões e na etiqueta da liga no
+  painel do clube (nova carreira) e ao lado do seletor em Competições (`CompetitionInfoDto.leagueId`). Testes: índice e .zip aceitam o logo;
+  a competição informa a liga. Mutação 2/2 (tipo fora do padrão de caminho; liga trocada pelo id da competição). Telas NÃO verificadas.
+- **Balão de ajuda (?)** limitado ao quadro em que está (cartão/janela): alinha às bordas, abre em cima se faltar espaço, encolhe em quadro
+  estreito. Tela NÃO verificada.
+- Testes: 216 (4 de goleiro: derivação exata, efeito na força e no Líbero, patches, evolução, save antigo; 1 de imagens). Mutação: goleiro
+  5/5 (uma só depois de checar a média exata, sem depender do arredondamento); imagens 6/6. Testes antigos ajustados: resumo do mercado
+  com o grupo de goleiro; "safra não sobe direto" checado logo após a peneira (na virada, a carência de goleiro do usuário promoveu um jovem,
+  regra própria). JSON Schema regenerado.
+- **Informativo dos atributos (pedido do usuário):** `game/world/attributeInfo.ts` descreve cada atributo e o efeito real no motor (conferido no código: finalização 60% da qualidade do chute; passe/visão/primeiro toque na precisão de passe e em quem dá a assistência; cabeceio/impulsão no cabeceio; agressividade em faltas e cartões; resistência e preparo natural no cansaço e lesões; compostura em finalização, pênaltis e vestiário; etc.). "Pesa na força de…" é calculado da tabela de pesos. **Liderança ainda não tem efeito na partida** e o texto diz isso. (?) em cada atributo no editor, na ficha e na janela do jogador. No editor, "Potencial" saiu da grade de atributos (estava esticado). Teste de guarda: todo atributo tem texto e quem diz "não influencia" não pode aparecer no motor (o teste só passou a valer depois de corrigir um `` mal escapado — detectado pela mutação). 217 testes.
+- **Correção (balões de ajuda cortados no editor):** o (?) passou a ser um componente único (`renderer/help.tsx`) com o balão posicionado pela janela (abre embaixo ou em cima e respeita as bordas), então não é mais cortado por áreas com rolagem. Vale para editor, nova carreira, pacotes, ficha e janela do jogador. Tela NÃO verificada no Electron.

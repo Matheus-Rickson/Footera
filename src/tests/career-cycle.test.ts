@@ -145,6 +145,8 @@ test('Virada: desenvolvimento respeita o teto antes dos 28, snapshot registrado,
   playSeason(db); toTurnover(db);
   const active = n(db, 'SELECT COUNT(*) AS n FROM players WHERE retired = 0');
   db.exec("UPDATE player_status SET suspension_matches = 2, yellow_cards = 3");
+  // a safra de março chega às categorias de base, não ao elenco principal (na virada, uma carência pode promovê-la — regra própria)
+  const safraNoPrincipal = n(db, "SELECT COUNT(*) AS n FROM players WHERE id LIKE 'plr_y2027_%' AND club_id IS NOT NULL AND youth_club_id IS NULL");
   const report = startNextSeason(db);
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM player_development WHERE season = 2026'), active - report.retiredTotal);
   for (const r of db.prepare('SELECT * FROM players WHERE retired = 0').all()) {
@@ -157,7 +159,7 @@ test('Virada: desenvolvimento respeita o teto antes dos 28, snapshot registrado,
   assert.ok(n(db, 'SELECT COUNT(*) AS n FROM player_development WHERE overall_after > overall_before AND age < 24') > n(db, 'SELECT COUNT(*) AS n FROM player_development WHERE overall_after < overall_before AND age < 24'), 'jovens mais crescem do que regridem');
   // a safra chega na peneira de março, às categorias de base (fora do elenco principal)
   assert.ok(n(db, "SELECT COUNT(*) AS n FROM players WHERE id LIKE 'plr_y2027_%' AND youth_club_id = ?", clubId) >= 2);
-  assert.equal(n(db, "SELECT COUNT(*) AS n FROM players WHERE id LIKE 'plr_y2027_%' AND club_id IS NOT NULL AND youth_club_id IS NULL AND birth_date > '2010-07-01'"), 0, 'safra de 15–16 anos não sobe direto ao principal');
+  assert.equal(safraNoPrincipal, 0, 'a safra chega à base, não direto ao principal');
   for (const c of db.prepare('SELECT id FROM clubs').all()) assert.ok(n(db, "SELECT COUNT(*) AS n FROM players WHERE youth_club_id = ?", String(c.id)) >= 1, `${String(c.id)}: base vazia`);
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE youth_club_id IS NOT NULL AND birth_date <= ?', '2008-07-01'), 0, 'ninguém com 19+ fica na base depois da virada');
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM player_status WHERE suspension_matches > 0 OR yellow_cards > 0'), 0);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CompetitionInfoDto, CompetitionTableDto } from '../../shared/api.ts';
 import { errMsg, TIEBREAKER_LABEL, unwrap } from '../util.ts';
+import { useImages } from '../images.ts';
 
 interface Props { profileId: string; careerId: string; refreshKey: string }
 
@@ -9,6 +10,7 @@ export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [table, setTable] = useState<CompetitionTableDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const img = useImages();
 
   useEffect(() => {
     let stale = false;
@@ -30,15 +32,19 @@ export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
 
   if (error) return <p className="error" role="alert">{error}</p>;
   if (!comps || !table) return <p className="muted">Carregando competições…</p>;
+  const logo = img.url('leagues', table.competition.leagueId);
 
   return (
     <>
       <section className="card">
-        <label>Competição
-          <select value={selected ?? ''} onChange={(e) => setSelected(e.target.value)}>
-            {comps.map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}
-          </select>
-        </label>
+        <div className="cp-pick">
+          {logo && <img className="cp-league-logo" src={logo} alt={`Logo: ${table.competition.name}`} />}
+          <label>Competição
+            <select value={selected ?? ''} onChange={(e) => setSelected(e.target.value)}>
+              {comps.map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}
+            </select>
+          </label>
+        </div>
         <p className="muted small">
           Rodadas concluídas: {table.roundsPlayed} de {table.totalRounds} · Desempate: {table.tiebreakers.map((t) => TIEBREAKER_LABEL[t] ?? t).join(' → ')}
         </p>
