@@ -73,8 +73,8 @@ export function hatTrickText(rng: Rng, a: { player: string; club: string; goals:
   const v = { p: a.player, c: a.club, o: a.opp, g: String(a.goals) };
   return fill(a.goals >= 4 ? pick(rng, ['{g} GOLS! {p} faz chover e é o nome do jogo contra o {o}.']) : pick(rng, ['Hat-trick! {p} marca três vezes para o {c} contra o {o}. 🎩⚽', 'Noite de {p}: três gols contra o {o}.']), v);
 }
-export function sackingText(rng: Rng, a: { club: string }): string {
-  return fill(pick(rng, ['URGENTE: {c} demite o técnico após sequência ruim. Clube já procura substituto.', 'Não resistiu: o técnico do {c} está fora. Diretoria anuncia a demissão.']), { c: a.club });
+export function sackingText(rng: Rng, a: { club: string; coach: string }): string {
+  return fill(pick(rng, ['URGENTE: {c} demite o técnico {n} após sequência ruim. Clube já procura substituto.', 'Não resistiu: {n} não é mais o técnico do {c}. Diretoria anuncia a demissão.']), { c: a.club, n: a.coach });
 }
 export function coachText(rng: Rng, a: { coach: string; club: string; sacked: boolean }): string {
   const v = { n: a.coach, c: a.club };

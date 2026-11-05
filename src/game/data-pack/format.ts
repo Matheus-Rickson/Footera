@@ -1,7 +1,7 @@
 /**
  * Formato dos pacotes de dados (patches) — versão 1. Ver docs/DATABASE.md e docs/schema/.
  *
- * Um pacote é uma pasta com `manifest.json` e arquivos JSON por tipo (countries, leagues, stadiums, clubs, players). Cada registro tem um `id`
+ * Um pacote é uma pasta com `manifest.json` e arquivos JSON por tipo (countries, leagues, stadiums, clubs, players, coaches). Cada registro tem um `id`
  * fixo: se o id ainda não existe no universo, o registro CRIA a entidade (precisa dos campos obrigatórios); se já existe, ALTERA só os campos
  * informados; `"$remove": true` REMOVE. Campos desconhecidos são erro (pega erros de digitação). Escalas: atributos, habilidade e potencial
  * de 1 a 20 (como na tela); reputação de 1 a 100.
@@ -12,7 +12,7 @@ import type { Position } from '../../shared/types.ts';
 
 export const PACK_FORMAT = 1;
 /** Arquivos de dados, na ordem em que são aplicados (dependências primeiro). */
-export const PACK_FILES = ['countries', 'leagues', 'stadiums', 'clubs', 'players'] as const;
+export const PACK_FILES = ['countries', 'leagues', 'stadiums', 'clubs', 'players', 'coaches'] as const;
 export type PackFile = typeof PACK_FILES[number];
 
 const id = z.string().regex(ID_PATTERN, 'id inválido: use minúsculas, números, "-" ou "_" (até 60 caracteres)');
@@ -92,13 +92,26 @@ export const playerSchema = z.object({
   }).strict().optional(),
 }).strict();
 
-export const fileSchemas = { countries: countrySchema, leagues: leagueSchema, stadiums: stadiumSchema, clubs: clubSchema, players: playerSchema } as const;
+/** técnico (Fase 9): clubes da IA e mercado. Criar exige nome, sobrenome, nascimento e nacionalidade; o resto o jogo completa. */
+export const coachSchema = z.object({
+  id, ...remove,
+  firstName: text(40).optional(), lastName: text(40).optional(), birthDate: date.optional(), nationality: code3.optional(),
+  /** null = sem clube; um clube tem no máximo um técnico (o técnico padrão do clube sai para o mercado) */
+  club: id.nullable().optional(),
+  reputation: int(1, 100).optional(),
+  methodology: z.enum(['defensive', 'possession', 'aggressive']).optional(),
+  /** os 6 atributos do técnico (1–20); pode informar só alguns */
+  attributes: z.object({ tactics: attr, motivation: attr, youth: attr, discipline: attr, negotiation: attr, adaptability: attr }).partial().strict().optional(),
+}).strict();
+
+export const fileSchemas = { countries: countrySchema, leagues: leagueSchema, stadiums: stadiumSchema, clubs: clubSchema, players: playerSchema, coaches: coachSchema } as const;
 export type CountryRec = z.infer<typeof countrySchema>;
 export type LeagueRec = z.infer<typeof leagueSchema>;
 export type StadiumRec = z.infer<typeof stadiumSchema>;
 export type ClubRec = z.infer<typeof clubSchema>;
 export type PlayerRec = z.infer<typeof playerSchema>;
-export interface PackData { countries: CountryRec[]; leagues: LeagueRec[]; stadiums: StadiumRec[]; clubs: ClubRec[]; players: PlayerRec[] }
+export type CoachRec = z.infer<typeof coachSchema>;
+export interface PackData { countries: CountryRec[]; leagues: LeagueRec[]; stadiums: StadiumRec[]; clubs: ClubRec[]; players: PlayerRec[]; coaches: CoachRec[] }
 export interface Pack { manifest: PackManifest; data: PackData }
 
 /** Problema encontrado num pacote: onde (pacote, arquivo, registro) e o quê. */
@@ -121,7 +134,7 @@ export function parsePack(raw: { manifest: unknown; files: Partial<Record<PackFi
   const m = manifestSchema.safeParse(raw.manifest);
   const packName = m.success ? m.data.id : source;
   if (!m.success) for (const e of m.error.issues) issues.push({ pack: source, file: 'manifest.json', message: `${e.path.join('.') || '(raiz)'}: ${e.message}` });
-  const data = { countries: [], leagues: [], stadiums: [], clubs: [], players: [] } as PackData;
+  const data = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] } as PackData;
   for (const f of PACK_FILES) {
     const content = raw.files[f];
     if (content === undefined) continue;

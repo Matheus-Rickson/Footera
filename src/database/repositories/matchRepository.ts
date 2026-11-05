@@ -23,6 +23,8 @@ import { processSocialMatchday } from './socialRepository.ts';
 import { quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
 import { lightClubIds } from './simLevelRepository.ts';
 import { addNews } from './newsRepository.ts';
+import { aiCoachAttributes } from './aiCoachRepository.ts';
+import type { CoachAttributes } from '../../shared/coachAttributes.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -61,7 +63,7 @@ function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasR
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
 }
 
-interface Ctx { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[] }
+interface Ctx { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[]; aiCoaches?: Map<string, CoachAttributes> }
 /** Decisões do técnico na partida acompanhada ao vivo. `controlUntil` null = o técnico decide a partida toda. */
 export interface LiveOptions { interventions: LiveInterventionInput[]; controlUntil: number | null }
 
@@ -81,7 +83,8 @@ function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
       const why = s0?.injuryUntil && s0.injuryUntil > f.date ? 'lesionado' : (s0?.suspension ?? 0) > 0 ? 'suspenso' : 'indisponível';
       ctx.notes.push(`Escalação ajustada: ${wanted ? `${wanted.firstName} ${wanted.lastName}` : 'jogador escolhido'} (${why}) foi substituído por ${x.chosen.name} como ${POS_NAME[r.sheet.lineup[x.slotIndex]!.slot].toLowerCase()}.`);
     }
-    return id === ctx.userClub && ctx.coach.attributes ? { ...r.sheet, coach: ctx.coach.attributes } : r.sheet;
+    const coach = id === ctx.userClub ? ctx.coach.attributes : ctx.aiCoaches?.get(id); // técnicos da IA: tática e disciplina valem também
+    return coach ? { ...r.sheet, coach } : r.sheet;
   };
   let hSheet = mk(home, f.homeId, f.homeName, hs), aSheet = mk(away, f.awayId, f.awayName, as);
   const rep = (id: string) => db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(id)!.reputation as number;
@@ -200,7 +203,7 @@ function contextOf(db: SqlDb): Ctx {
   return {
     seed: S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value),
     coach: JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as Coach,
-    userClub: getCareerState(db).clubId, scheme: getActiveScheme(db), notes: [],
+    userClub: getCareerState(db).clubId, scheme: getActiveScheme(db), notes: [], aiCoaches: aiCoachAttributes(db),
   };
 }
 

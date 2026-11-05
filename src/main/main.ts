@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron';
-import type { OpenDialogOptions } from 'electron';
+import type { OpenDialogOptions, SaveDialogOptions } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,7 @@ import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget, spendCoachPointFor,
+  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, aiCoachInfo, unemployedCoaches,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -21,7 +21,8 @@ import type { EditorListQuery, IpcResult, MarketFilter, OfferInput, PackImportDt
 import { setBaseUniverseDir } from '../services/universeService.node.ts';
 import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, packsDir, removePack, setLoadOrder } from '../services/packManager.node.ts';
 import { imagesVersion, listPackImages, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
-import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest } from '../services/editorService.node.ts';
+import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest, editorImportCsv, editorExportCsv } from '../services/editorService.node.ts';
+import { decodeCsv } from '../game/data-pack/csv.ts';
 
 // O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
 // senão carreiras criadas antes da troca de nome sumiriam da lista.
@@ -60,7 +61,7 @@ function registerHandlers(): void {
   handle('packs:list', z.unknown(), () => listPacks(dataDir()));
   const imageKeys = () => ({ version: imagesVersion(), keys: [...imageIndex(dataDir()).keys()] });
   handle('images:keys', z.unknown(), () => imageKeys());
-  const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
+  const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues', 'coaches']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
   const packDirFor = (id: string) => { const d = path.join(packsDir(dataDir()), id); if (!fs.existsSync(path.join(d, 'manifest.json'))) throw new ValidationError('Pacote não encontrado.'); return d; };
   const packImageKeys = (id: string) => ({ version: imagesVersion(), keys: listPackImages(packDirFor(id)).map((im) => `${im.kind}/${im.id}`) });
   handle('editor:imageKeys', z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) }), (i) => packImageKeys(i.packId));
@@ -74,12 +75,32 @@ function registerHandlers(): void {
     setPackImage(packDirFor(i.packId), i.kind as ImageKind, i.id, new Uint8Array(fs.readFileSync(file)));
     return packImageKeys(i.packId);
   });
+  const csvRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs']) });
+  handle('editor:importCsv', csvRef, async (i) => {
+    const opts: OpenDialogOptions = { title: 'Importar planilha (CSV)', properties: ['openFile'], filters: [{ name: 'Planilha CSV', extensions: ['csv', 'txt'] }] };
+    const win = BrowserWindow.getFocusedWindow();
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    const file = res.filePaths[0];
+    if (res.canceled || !file) return null;
+    if (fs.statSync(file).size > 20 * 1024 * 1024) throw new ValidationError('A planilha excede o limite de 20 MB.');
+    const buf = fs.readFileSync(file);
+    // o Excel em português salva CSV em Windows-1252 por padrão; UTF-8 (com ou sem BOM) também é aceito
+    return editorImportCsv(dataDir(), i.packId, i.kind, decodeCsv(new Uint8Array(buf)));
+  });
+  handle('editor:exportCsv', csvRef.extend({ template: z.boolean() }), async (i) => {
+    const opts: SaveDialogOptions = { title: i.template ? 'Salvar modelo de planilha' : 'Exportar planilha', defaultPath: `${i.kind === 'players' ? 'jogadores' : 'clubes'}${i.template ? '-modelo' : ''}.csv`, filters: [{ name: 'Planilha CSV', extensions: ['csv'] }] };
+    const win = BrowserWindow.getFocusedWindow();
+    const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+    if (res.canceled || !res.filePath) return null;
+    fs.writeFileSync(res.filePath, editorExportCsv(dataDir(), i.packId, i.kind, i.template), 'utf8');
+    return res.filePath;
+  });
   handle('editor:removeImage', imgRef, (i) => { removePackImage(packDirFor(i.packId), i.kind as ImageKind, i.id); return packImageKeys(i.packId); });
   handle('packs:order', z.object({ enabled: z.array(packId).max(100) }), (i) => setLoadOrder(dataDir(), i.enabled));
   handle('packs:remove', z.object({ id: packId }), (i) => removePack(dataDir(), i.id));
   handle('packs:folder', z.unknown(), async () => { fs.mkdirSync(packsDir(dataDir()), { recursive: true }); await shell.openPath(packsDir(dataDir())); return true as const; });
   // ---- editor de dados (os registros são validados pelo formato dos pacotes e pela montagem do universo antes de gravar)
-  const kind = z.enum(['countries', 'leagues', 'clubs', 'players']);
+  const kind = z.enum(['countries', 'leagues', 'clubs', 'players', 'coaches']);
   const pk = { packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) };
   const rec = z.record(z.unknown()).refine((r) => JSON.stringify(r).length < 200_000, 'registro grande demais');
   handle('editor:create', z.object({ name: z.string().trim().min(1).max(80), author: z.string().max(80).optional(), description: z.string().max(1000).optional() }), (i) => editorCreatePack(dataDir(), i));
@@ -252,6 +273,9 @@ function registerHandlers(): void {
   handle('infra:get', ref, (i) => getInfrastructure(dataDir(), i.profileId, i.careerId));
   handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
+  handle('club:info', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubInfo(dataDir(), i.profileId, i.careerId, i.clubId));
+  handle('coach:info', ref.extend({ coachId: z.string().min(1).max(80) }), (i) => aiCoachInfo(dataDir(), i.profileId, i.careerId, i.coachId));
+  handle('coach:unemployed', ref, (i) => unemployedCoaches(dataDir(), i.profileId, i.careerId));
   handle('board:job', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerJobOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
   handle('board:coachPoint', ref.extend({ key: z.enum(['tactics', 'motivation', 'youth', 'discipline', 'negotiation', 'adaptability']) }), (i) => spendCoachPointFor(dataDir(), i.profileId, i.careerId, i.key));
   handle('board:budget', ref.extend({ kind: z.enum(['transfer', 'wage']) }), (i) => askBudget(dataDir(), i.profileId, i.careerId, i.kind));

@@ -3,10 +3,12 @@ import type { CompetitionInfoDto, CompetitionTableDto } from '../../shared/api.t
 import { errMsg, TIEBREAKER_LABEL, unwrap } from '../util.ts';
 import { useImages } from '../images.ts';
 import { ClubCrest } from '../flags.tsx';
+import { ClubSheet } from '../clubSheet.tsx';
 
-interface Props { profileId: string; careerId: string; refreshKey: string }
+interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer?: (id: string) => void }
 
-export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
+export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer }: Props) {
+  const [club, setClub] = useState<string | null>(null);
   const [comps, setComps] = useState<CompetitionInfoDto[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [table, setTable] = useState<CompetitionTableDto | null>(null);
@@ -36,7 +38,7 @@ export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
   const logo = img.url('leagues', table.competition.leagueId);
 
   return (
-    <>
+    <div className="cp-root">
       <section className="card">
         <div className="cp-pick">
           {logo && <img className="cp-league-logo" src={logo} alt={`Logo: ${table.competition.name}`} />}
@@ -53,22 +55,26 @@ export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
           <p className="notice">Nenhuma partida foi disputada ainda. A ordem abaixo é provisória (apenas desempate por código do clube) e não representa uma classificação.</p>
         )}
       </section>
-      <section className="card scroll tall">
+      <section className="card cp-table-card">
+        <div className="cp-scroll">
         <table>
           <thead><tr><th>#</th><th>Clube</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th><th>Pts</th></tr></thead>
           <tbody>
             {table.rows.map((r) => (
               <tr key={r.clubId} className={`${r.zone ?? ''} ${r.isUserClub ? 'mine' : ''}`}>
-                <td>{r.position}</td><td><span className="cp-club"><ClubCrest id={r.clubId} name={r.clubName} size={18} src={img.url('clubs', r.clubId)} />{r.clubName}</span></td><td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
+                <td>{r.position}</td><td><button className="cp-club cp-club-btn" title="Ver a ficha do clube" onClick={() => setClub(r.clubId)}><ClubCrest id={r.clubId} name={r.clubName} size={18} src={img.url('clubs', r.clubId)} />{r.clubName}</button></td><td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
                 <td>{r.goalsFor}</td><td>{r.goalsAgainst}</td><td>{r.goalDiff}</td><td><strong>{r.points}</strong></td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
+        <p className="muted small">Clique em um clube para ver a ficha dele, com o técnico e o elenco.</p>
         <p className="muted small legend">
           <span className="dot promotion" /> promoção <span className="dot continental" /> vaga continental <span className="dot relegation" /> rebaixamento
         </p>
       </section>
-    </>
+      {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} />}
+    </div>
   );
 }

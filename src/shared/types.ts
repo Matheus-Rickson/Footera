@@ -124,6 +124,16 @@ export interface World {
   stadiums: Stadium[];
   clubs: Club[];
   players: Player[];
+  /** técnicos do universo (ausente em mundos antigos: a carreira gera os padrão) */
+  coaches?: WorldCoach[];
+}
+
+/** Técnico do universo (dos clubes da IA e os sem clube). Atributos 1–20; reputação 1–100. */
+export interface WorldCoach {
+  id: Id; firstName: string; lastName: string; birthDate: IsoDate; nationality: string;
+  /** null = sem clube */
+  clubId: Id | null;
+  reputation: number; methodology: Methodology; attributes: CoachAttributes;
 }
 
 export type Methodology = 'defensive' | 'possession' | 'aggressive';

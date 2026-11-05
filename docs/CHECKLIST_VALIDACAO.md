@@ -240,6 +240,25 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Lesão de jogador seu (partida ou treino): mensagem do Departamento médico com previsão de retorno e botão "Ajustar a escalação em Táticas", que abre Táticas.
 - [ ] Suspensão, proposta por jogador seu (botão para Transferências), alerta da diretoria e proposta de emprego (botão para a Diretoria).
 
+## 13m. Técnicos da IA
+- [ ] Nova carreira → painel de cada clube: "Técnico atual" (nome, estrelas, idade, país). Depois de criar, Competições → clicar em outro clube: o mesmo técnico mostrado na criação.
+- [ ] Competições → clicar no clube: ficha com reputação, torcida, estádio, técnico e elenco (sem força); clicar num jogador abre o perfil; no seu clube aparece "você".
+- [ ] Clicar no técnico: ficha com atributos 1–20, metodologia e passagens (início, fim, motivo da saída). Esc ou clique fora fecha.
+- [ ] Comissão técnica → "Técnicos sem clube": lista por reputação (inclui o técnico que você substituiu); cada nome abre a ficha.
+- [ ] A Diretoria não mostra mais o card "Técnicos".
+- [ ] Competições: passar o mouse no nome do clube só sublinha (sem fundo verde); o cartão do técnico na ficha não fica verde; a página de Competições não rola: só a tabela rola, dentro do quadro (cabeçalho e legenda ficam visíveis).
+- [ ] Editor de dados → Técnicos: lista com clube, idade e país; filtros por país e clube; editar reputação/atributos e salvar; criar um técnico num clube (o de lá vai para "Sem clube").
+- [ ] Foto do técnico no editor; com o pacote ativo, a foto aparece na nova carreira ("Técnico atual"), na ficha do clube e na ficha do técnico.
+- [ ] Pacotes de dados: o cartão do pacote mostra "N técnico(s)" quando ele mexe em técnicos.
+- [ ] Ao longo da temporada: demissão aparece na rede social com o nome do técnico e o clube fica com "vaga aberta"; depois, o perfil do clube anuncia o novo técnico.
+- [ ] Proposta de emprego cita o técnico demitido ("está sem técnico desde a demissão de …").
+
+## 13n. Planilhas (CSV) no editor
+- [ ] Editor → Jogadores (ou Clubes): barra "Planilha" com Importar, Exportar e Modelo; o (?) lista as colunas.
+- [ ] Exportar abre "Salvar como"; o arquivo abre no Excel com acentos e colunas certas.
+- [ ] Editar algumas linhas no Excel (salvar como CSV), Importar: relatório com criados/alterados/sem mudança; as mudanças aparecem na lista.
+- [ ] Planilha com erro (ex.: posição "XYZ" ou clube inexistente): relatório "Importação não realizada" com o número da linha; nada muda no pacote.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

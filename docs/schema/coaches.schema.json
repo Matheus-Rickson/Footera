@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://footera.local/schema/coaches.schema.json",
+  "title": "FOOTERA — undefined",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "$remove": {
+        "const": true
+      },
+      "firstName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "lastName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "birthDate": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+      },
+      "nationality": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "club": {
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "reputation": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "methodology": {
+        "type": "string",
+        "enum": [
+          "defensive",
+          "possession",
+          "aggressive"
+        ]
+      },
+      "attributes": {
+        "type": "object",
+        "properties": {
+          "tactics": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "motivation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "youth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "discipline": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "negotiation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "adaptability": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  }
+}

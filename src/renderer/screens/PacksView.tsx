@@ -78,8 +78,8 @@ export function PacksView({ onBack }: Props) {
                 <strong>{p.name} <span className="muted small">v{p.version}{p.author ? ` · ${p.author}` : ''}</span></strong>
                 {p.description && <span className="muted small">{p.description}</span>}
                 <div className="pk-chips">
-                  {p.counts && (['countries', 'leagues', 'clubs', 'players'] as const).filter((k) => p.counts![k] > 0).map((k) => (
-                    <span key={k} className="pk-chip">{fmtNum(p.counts![k])} {({ countries: 'país(es)', leagues: 'liga(s)', clubs: 'clube(s)', players: 'jogador(es)' })[k]}</span>
+                  {p.counts && (['countries', 'leagues', 'clubs', 'players', 'coaches'] as const).filter((k) => p.counts![k] > 0).map((k) => (
+                    <span key={k} className="pk-chip">{fmtNum(p.counts![k])} {({ countries: 'país(es)', leagues: 'liga(s)', clubs: 'clube(s)', players: 'jogador(es)', coaches: 'técnico(s)' })[k]}</span>
                   ))}
                   {p.fullBase && <span className="pk-chip warn">base completa: substitui a base do jogo</span>}
                   {p.requires.length > 0 && <span className="pk-chip">precisa de: {p.requires.join(', ')}</span>}

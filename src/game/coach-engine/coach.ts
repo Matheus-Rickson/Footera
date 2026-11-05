@@ -1,5 +1,7 @@
 import type { CoachAttributes, CoachAttrKey } from '../../shared/coachAttributes.ts';
 import { COACH_ATTR_BASE } from '../../shared/coachAttributes.ts';
+import type { Rng } from '../rng.ts';
+import type { Methodology } from '../../shared/types.ts';
 
 /**
  * Efeitos dos atributos do treinador (1–20) e evolução dele. Regras puras.
@@ -65,4 +67,45 @@ export const initialCoachReputation = (clubReputation: number): number => Math.m
  */
 export function hireConfidence(base: number, coachReputation: number, clubReputation: number, a?: Partial<CoachAttributes>): number {
   return base + Math.max(-8, Math.min(8, Math.round((coachReputation - clubReputation) / 5))) + newClubConfidenceBonus(a);
+}
+
+// ---------------------------------------------------------------- técnicos da IA
+
+export interface AiCoachDraft { firstName: string; lastName: string; birthDate: string; reputation: number; attributes: CoachAttributes; methodology: Methodology }
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/**
+ * Técnico gerado para um clube (ou para o mercado): reputação perto da do clube; atributos crescem com a reputação
+ * (média ≈ 3 + reputação/12, com variação: perto do técnico criado pelo usuário, ~7), de 1 a 20. Idade de 35 a 68 anos.
+ * A média baixa preserva a calibração do motor (efeito só acima de 5): com 5 + reputação/9 os amarelos caíam 11%.
+ */
+export function generateAiCoach(rng: Rng, names: { firstNames: readonly string[]; lastNames: readonly string[] }, clubReputation: number, today: string): AiCoachDraft {
+  const reputation = Math.round(clamp(clubReputation + rng.normal(0, 8), 5, 95));
+  const mean = 3 + reputation / 12;
+  const attr = () => Math.round(clamp(mean + rng.normal(0, 2.5), 1, 20));
+  const attributes: CoachAttributes = { tactics: attr(), motivation: attr(), youth: attr(), discipline: attr(), negotiation: attr(), adaptability: attr() };
+  const age = rng.int(35, 68);
+  const birthDate = `${Number(today.slice(0, 4)) - age}-${String(rng.int(1, 12)).padStart(2, '0')}-${String(rng.int(1, 28)).padStart(2, '0')}`;
+  return { firstName: rng.pick(names.firstNames), lastName: rng.pick(names.lastNames), birthDate, reputation, attributes, methodology: rng.pick(['defensive', 'possession', 'aggressive'] as const) };
+}
+
+/** Variação da reputação de um técnico da IA na virada: posição em relação à esperada (±6), título +5, rebaixamento −4. */
+export function aiCoachSeasonDelta(a: { expected: number; position: number; champion: boolean; relegated: boolean }): number {
+  return clamp(a.expected - a.position, -6, 6) + (a.champion ? 5 : 0) - (a.relegated ? 4 : 0);
+}
+
+/** Desempregado perde 1 ponto de reputação por temporada parado; aos 70 anos (ou mais) se aposenta. */
+export const AI_COACH_RETIRE_AGE = 70;
+
+/**
+ * Escolha do substituto para uma vaga: entre os desempregados com reputação de (clube − 25) a (clube + 15), sorteio com peso
+ * maior para quem tem reputação mais próxima da do clube. null = ninguém serve (o clube promove alguém novo).
+ */
+export function pickReplacement<T extends { reputation: number }>(rng: Rng, clubReputation: number, pool: readonly T[]): T | null {
+  const fit = pool.filter((c) => c.reputation >= clubReputation - 25 && c.reputation <= clubReputation + 15);
+  if (!fit.length) return null;
+  const w = fit.map((c) => 1 / (1 + Math.abs(c.reputation - clubReputation)));
+  let r = rng.next() * w.reduce((s, x) => s + x, 0);
+  for (let i = 0; i < fit.length; i++) { r -= w[i]!; if (r <= 0) return fit[i]!; }
+  return fit[fit.length - 1]!;
 }

@@ -138,12 +138,12 @@ export function importPackZip(dataDir: string, zip: Buffer, overwrite: boolean):
   if (id === basePack().manifest.id) throw new ValidationError('Este id é reservado para a base do jogo.');
   const dir = path.join(packsDir(dataDir), id);
   if (fs.existsSync(dir) && !overwrite) return { status: 'exists', id, name: pack.manifest.name };
-  // imagens: só images/<players|clubs|stadiums|leagues>/<id>.<png|jpg>, validadas pelo conteúdo (antes de gravar qualquer coisa)
+  // imagens: só images/<players|clubs|stadiums|leagues|coaches>/<id>.<png|jpg>, validadas pelo conteúdo (antes de gravar qualquer coisa)
   const images: Array<[string, Buffer]> = [];
   for (const [name, bytes] of entries) {
     if (!name.startsWith(`${prefix}images/`)) continue;
     const rel = name.slice(prefix.length), m = IMAGE_PATH.exec(rel);
-    if (!m) throw new ValidationError(`Imagem com nome inválido no pacote: ${rel} (use images/players|clubs|stadiums|leagues/<id>.png ou .jpg).`);
+    if (!m) throw new ValidationError(`Imagem com nome inválido no pacote: ${rel} (use images/players|clubs|stadiums|leagues|coaches/<id>.png ou .jpg).`);
     validateImage(bytes, rel);
     images.push([`images/${m[1]}/${m[2]}.${m[3] === 'jpeg' ? 'jpg' : m[3]}`, bytes]);
   }

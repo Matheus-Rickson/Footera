@@ -7,12 +7,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { compileUniverse } from '../game/data-pack/compile.ts';
 import { diffRecord } from '../game/data-pack/diff.ts';
-import { clubRec, countryRec, leagueRec, playerRec, stadiumRec } from '../game/data-pack/export.ts';
+import { csvHeader, recordToRow, rowsToRecords, toCsv, type CsvKind } from '../game/data-pack/csv.ts';
+import { clubRec, coachRec, countryRec, leagueRec, playerRec, stadiumRec } from '../game/data-pack/export.ts';
 import { fmtIssue, PACK_FORMAT, PackError, type Pack, type PackData } from '../game/data-pack/format.ts';
 import { ageOn } from '../shared/date.ts';
 import { ID_PATTERN, uniqueIds } from '../shared/slug.ts';
 import { to20 } from '../shared/scale.ts';
-import type { EditorEntityDto, EditorKind, EditorListDto, EditorListQuery, EditorOptionsDto, EditorStatus, EditorSummaryDto } from '../shared/api.ts';
+import type { CsvImportReportDto, EditorEntityDto, EditorKind, EditorListDto, EditorListQuery, EditorOptionsDto, EditorStatus, EditorSummaryDto } from '../shared/api.ts';
 import type { World } from '../shared/types.ts';
 import { ValidationError } from './careerService.ts';
 import { packsDir, setLoadOrder } from './packManager.node.ts';
@@ -20,7 +21,7 @@ import { readPackDir, writePackDir } from './packService.node.ts';
 import { basePack, baseUniverse, EMPTY_WORLD } from './universeService.node.ts';
 
 type Rec = Record<string, unknown>;
-const KINDS: EditorKind[] = ['countries', 'leagues', 'clubs', 'players'];
+const KINDS: EditorKind[] = ['countries', 'leagues', 'clubs', 'players', 'coaches'];
 
 function packDirOf(dataDir: string, packId: string): string {
   if (!ID_PATTERN.test(packId)) throw new ValidationError('Pacote inválido.');
@@ -61,7 +62,7 @@ function statusOf(pack: Pack, kind: EditorKind, id: string, baseHas: boolean): E
 }
 function baseHas(kind: EditorKind | 'stadiums', id: string): boolean {
   const w = baseUniverse().world;
-  return (w[kind] as Array<{ id: string }>).some((x) => x.id === id);
+  return ((w[kind] ?? []) as Array<{ id: string }>).some((x) => x.id === id);
 }
 
 /** registro "de formulário" de uma entidade do universo (escalas 1–20; sem valores internos do motor) */
@@ -69,6 +70,7 @@ function formRecord(w: World, kind: EditorKind, id: string): Rec | null {
   if (kind === 'countries') { const c = w.countries.find((x) => x.id === id); return c ? countryRec(c) as Rec : null; }
   if (kind === 'leagues') { const l = w.leagues.find((x) => x.id === id); return l ? leagueRec(l) as Rec : null; }
   if (kind === 'clubs') { const c = w.clubs.find((x) => x.id === id); return c ? clubRec(c) as Rec : null; }
+  if (kind === 'coaches') { const k = (w.coaches ?? []).find((x) => x.id === id); return k ? coachRec(k) as Rec : null; }
   const p = w.players.find((x) => x.id === id);
   if (!p) return null;
   const { marketValue: _m, ...rest } = playerRec(p, false);
@@ -120,10 +122,13 @@ export function editorList(dataDir: string, packId: string, q: EditorListQuery):
   if (q.kind === 'players') rows = w.players.filter((p) => (!q.clubId || p.clubId === q.clubId) && (!q.countryId || (p.clubId ? club.get(p.clubId)?.countryId === q.countryId : false)) && (!q.position || p.position === q.position))
     .sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id))
     .map((p) => ({ id: p.id, title: `${p.firstName} ${p.lastName}`, subtitle: `${p.position} · ${p.clubId ? club.get(p.clubId)?.name ?? '' : 'Sem clube'} · ${ageOn(p.birthDate, w.startDate)} anos`, status: st(p.id), extra: String(to20(p.overall)) }));
+  if (q.kind === 'coaches') rows = (w.coaches ?? []).filter((k) => (!q.clubId || k.clubId === q.clubId) && (!q.countryId || (k.clubId ? club.get(k.clubId)?.countryId === q.countryId : country.get(q.countryId)?.code === k.nationality)))
+    .sort((a, b) => b.reputation - a.reputation || a.id.localeCompare(b.id))
+    .map((k) => ({ id: k.id, title: `${k.firstName} ${k.lastName}`, subtitle: `${k.clubId ? club.get(k.clubId)?.name ?? '' : 'Sem clube'} · ${ageOn(k.birthDate, w.startDate)} anos · ${k.nationality}`, status: st(k.id), extra: null }));
   // entidades removidas pelo pacote não estão no universo: aparecem a partir da base (para poder restaurar)
   for (const r of recordsOf(pack, q.kind).filter((x) => x.$remove)) {
     const id = String(r.id);
-    const b = (base[q.kind] as Array<{ id: string; name?: string; firstName?: string; lastName?: string }>).find((x) => x.id === id);
+    const b = ((base[q.kind] ?? []) as Array<{ id: string; name?: string; firstName?: string; lastName?: string }>).find((x) => x.id === id);
     if (b) rows.unshift({ id, title: b.name ?? `${b.firstName} ${b.lastName}`, subtitle: 'excluído por este pacote', status: 'removed', extra: null });
   }
   if (s) rows = rows.filter((r) => r.title.toLowerCase().includes(s) || r.id.includes(s));
@@ -150,6 +155,10 @@ export function editorGet(dataDir: string, packId: string, kind: EditorKind, id:
   if (kind === 'players') {
     const p = (status === 'removed' ? baseUniverse().world : w).players.find((x) => x.id === id)!;
     dto.derived = { overall: to20(p.overall), marketValue: p.marketValue, age: ageOn(p.birthDate, w.startDate) };
+  }
+  if (kind === 'coaches') {
+    const k = ((status === 'removed' ? baseUniverse().world : w).coaches ?? []).find((x) => x.id === id)!;
+    dto.derived = { age: ageOn(k.birthDate, w.startDate) };
   }
   return dto;
 }
@@ -228,7 +237,7 @@ export function editorCreatePack(dataDir: string, input: { name: string; author?
   if (!name) throw new ValidationError('Dê um nome ao pacote.');
   const existing = fs.existsSync(packsDir(dataDir)) ? fs.readdirSync(packsDir(dataDir)) : [];
   const id = uniqueIds([...existing, basePack().manifest.id])(name);
-  const pack: Pack = { manifest: { format: PACK_FORMAT, id, name, version: '1.0.0', ...(input.author?.trim() ? { author: input.author.trim() } : {}), ...(input.description?.trim() ? { description: input.description.trim() } : {}) }, data: { countries: [], leagues: [], stadiums: [], clubs: [], players: [] } };
+  const pack: Pack = { manifest: { format: PACK_FORMAT, id, name, version: '1.0.0', ...(input.author?.trim() ? { author: input.author.trim() } : {}), ...(input.description?.trim() ? { description: input.description.trim() } : {}) }, data: { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] } };
   writePackDir(pack, path.join(packsDir(dataDir), id));
   let order: string[] = [];
   try { order = (JSON.parse(fs.readFileSync(path.join(packsDir(dataDir), 'load-order.json'), 'utf8')) as { enabled: string[] }).enabled; } catch { /* nenhuma */ }
@@ -245,11 +254,92 @@ export function editorUpdateManifest(dataDir: string, packId: string, m: { name:
   return editorSummary(dataDir, packId);
 }
 
-const allIds = (w: World) => [...w.countries, ...w.leagues, ...w.stadiums, ...w.clubs, ...w.players].map((x) => x.id);
+const allIds = (w: World) => [...w.countries, ...w.leagues, ...w.stadiums, ...w.clubs, ...w.players, ...(w.coaches ?? [])].map((x) => x.id);
 function newIdFor(w: World, kind: EditorKind, r: Rec): string {
   const gen = uniqueIds(allIds(w));
   if (kind === 'countries') return gen(String(r.code ?? r.name ?? 'pais').toLowerCase());
   if (kind === 'leagues') return gen(r.country && r.tier ? `${String(r.country)}-${String(r.tier)}` : String(r.name ?? 'liga'));
   if (kind === 'clubs') return gen(String(r.name ?? 'clube'));
+  if (kind === 'coaches') return gen(`tec ${String(r.firstName ?? '')} ${String(r.lastName ?? '')}`.trim());
   return gen(`${String(r.firstName ?? '')} ${String(r.lastName ?? '')} ${String(r.birthDate ?? '').slice(0, 4)}`.trim() || 'jogador');
+}
+
+// ---------------------------------------------------------------- planilhas (CSV)
+const isObj = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** junta b em a (objetos aninhados: atributos, contrato, instalações) */
+function deepMerge(a: Rec, b: Rec): Rec {
+  const out: Rec = { ...a };
+  for (const [k, v] of Object.entries(b)) out[k] = isObj(v) && isObj(out[k]) ? deepMerge(out[k] as Rec, v) : v;
+  return out;
+}
+
+/** cada campo informado em `patch` (inclusive dentro de objetos) é igual ao de `cur` */
+function sameAs(cur: Rec, patch: Rec): boolean {
+  return Object.entries(patch).every(([k, v]) => {
+    if (k === 'id') return true;
+    if (isObj(v)) return isObj(cur[k]) && sameAs(cur[k] as Rec, v);
+    return JSON.stringify(cur[k] ?? null) === JSON.stringify(v ?? null);
+  });
+}
+
+/**
+ * Importa jogadores ou clubes de um CSV para o pacote. Tudo ou nada: com qualquer erro (de formato ou de regra), nada é gravado e
+ * o relatório aponta a linha. Linha com id existente altera o registro (só as colunas preenchidas); sem id (ou com id novo), cria.
+ */
+export function editorImportCsv(dataDir: string, packId: string, kind: CsvKind, text: string): CsvImportReportDto {
+  const { records, issues } = rowsToRecords(kind, text);
+  const warnings = issues.filter((i) => i.message.startsWith('Coluna(s) não reconhecida(s)')).map((i) => `Linha ${i.line}: ${i.message}`);
+  const errors = issues.filter((i) => !i.message.startsWith('Coluna(s) não reconhecida(s)')).map((i) => `Linha ${i.line}: ${i.message}`);
+  if (!records.length && !errors.length) errors.push('Nenhuma linha de dados no arquivo.');
+  if (errors.length) return { created: 0, updated: 0, unchanged: 0, errors, warnings };
+  const pack = loadPack(dataDir, packId);
+  const w = universeOf(pack);
+  const next: Pack = { manifest: pack.manifest, data: JSON.parse(JSON.stringify(pack.data)) as PackData };
+  const arr = recordsOf(next, kind);
+  const existing = new Set((w[kind] as Array<{ id: string }>).map((x) => x.id));
+  const taken = new Set(allIds(w));
+  const lineOf = new Map<string, number>();
+  let created = 0, updated = 0, unchanged = 0;
+  const overallOf = new Map(kind === 'players' ? w.players.map((p) => [p.id, to20(p.overall)] as const) : []);
+  for (const { line, record } of records) {
+    // com atributos na linha, a força vem deles (a coluna Força é só informativa)
+    if (kind === 'players' && record.attributes && record.ability !== undefined) delete record.ability;
+    let id = typeof record.id === 'string' ? record.id : '';
+    if (id && !ID_PATTERN.test(id)) { errors.push(`Linha ${line}: id "${id}" inválido (minúsculas, números e hífen).`); continue; }
+    const isUpdate = !!id && existing.has(id);
+    if (!id) id = uniqueIds(taken)(kind === 'clubs' ? String(record.name ?? 'clube') : `${String(record.firstName ?? '')} ${String(record.lastName ?? '')} ${String(record.birthDate ?? '').slice(0, 4)}`.trim() || 'jogador');
+    else if (!isUpdate && taken.has(id)) { errors.push(`Linha ${line}: o id "${id}" já é usado por outro registro.`); continue; }
+    if (lineOf.has(id)) { errors.push(`Linha ${line}: o id "${id}" aparece de novo (linha ${lineOf.get(id)}).`); continue; }
+    taken.add(id); lineOf.set(id, line);
+    // linha igual ao que já existe (ex.: planilha exportada e reimportada sem mudanças): nada a gravar
+    if (isUpdate) {
+      const cur: Rec = { ...formRecord(w, kind, id)!, ...(kind === 'players' ? { ability: overallOf.get(id) } : {}) };
+      if (sameAs(cur, record)) { unchanged++; continue; }
+    }
+    const i = arr.findIndex((x) => x.id === id);
+    const prev = i >= 0 ? arr[i]! : null;
+    let rec = deepMerge(prev && !prev.$remove ? prev : { id }, { ...record, id });
+    // força informada sem atributos: os atributos são regerados para ela (descarta os que o pacote tinha)
+    if (kind === 'players' && record.ability !== undefined && !record.attributes) delete rec.attributes;
+    rec = clean(kind, rec, !baseHas(kind, id));
+    if (i >= 0) arr[i] = rec; else arr.push(rec);
+    if (isUpdate) updated++; else created++;
+  }
+  if (errors.length) return { created: 0, updated: 0, unchanged: 0, errors, warnings };
+  try { compileUniverse(EMPTY_WORLD, [basePack(), next]); } catch (e) {
+    if (!(e instanceof PackError)) throw e;
+    const msgs = e.issues.slice(0, 20).map((x) => (x.record && lineOf.has(x.record) ? `Linha ${lineOf.get(x.record)}: ` : '') + x.message + (x.record && !lineOf.has(x.record) ? ` (${x.record})` : ''));
+    return { created: 0, updated: 0, unchanged: 0, errors: e.issues.length > 20 ? [...msgs, `… e mais ${e.issues.length - 20} problema(s).`] : msgs, warnings };
+  }
+  writePackDir(next, packDirOf(dataDir, packId));
+  return { created, updated, unchanged, errors: [], warnings };
+}
+
+/** CSV para baixar: só o cabeçalho (modelo) ou todos os registros do universo "base + pacote" (para editar e reimportar). */
+export function editorExportCsv(dataDir: string, packId: string, kind: CsvKind, template: boolean): string {
+  if (template) return toCsv(csvHeader(kind), []);
+  const w = universeOf(loadPack(dataDir, packId));
+  const overall = new Map(w.players.map((p) => [p.id, to20(p.overall)] as const));
+  const rows = (w[kind] as Array<{ id: string }>).map((x) => recordToRow(kind, { ...formRecord(w, kind, x.id)!, ...(kind === 'players' ? { ability: overall.get(x.id) } : {}) }));
+  return toCsv(csvHeader(kind), rows);
 }

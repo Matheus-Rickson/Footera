@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, Download, Flag as FlagIcon, Pencil, Plus, RotateCcw, Save, Search, Shield, Trash2, Trophy, Users, X } from 'lucide-react';
-import type { EditorEntityDto, EditorKind, EditorListDto, EditorOptionsDto, EditorStatus, EditorSummaryDto, PacksOverviewDto } from '../../shared/api.ts';
+import { ArrowLeft, Download, FileSpreadsheet, Flag as FlagIcon, Pencil, Plus, RotateCcw, Save, Search, Shield, Trash2, Trophy, Upload, UserRound, Users, X } from 'lucide-react';
+import type { CsvImportReportDto, EditorEntityDto, EditorKind, EditorListDto, EditorOptionsDto, EditorStatus, EditorSummaryDto, PacksOverviewDto } from '../../shared/api.ts';
 import type { Attributes, Position } from '../../shared/types.ts';
 import { POS_ORDER } from '../../shared/positions.ts';
 import { overallFor } from '../../game/world/overall.ts';
 import { GK_ATTRS, gkComposite } from '../../game/world/goalkeeper.ts';
 import { to20 } from '../../shared/scale.ts';
-import { errMsg, fmtMoney, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtMoney, fmtNum, METHODOLOGY, unwrap } from '../util.ts';
 import { useImages, type ImageKind } from '../images.ts';
 import { POS_NAME, posLabel, tone } from '../playerUi.tsx';
 import { attributeHelp } from '../../game/world/attributeInfo.ts';
 import { HelpTip } from '../help.tsx';
 import { Stars } from '../stars.tsx';
+import { CSV_COLUMNS } from '../../game/data-pack/csv.ts';
+import { COACH_ATTRS } from '../../shared/coachAttributes.ts';
+import type { Methodology } from '../../shared/types.ts';
 
 type Rec = Record<string, unknown>;
 interface Props { onBack: () => void }
@@ -24,6 +27,7 @@ const KIND_META: Record<EditorKind, { label: string; one: string; icon: typeof U
   leagues: { label: 'Ligas', one: 'liga', icon: Trophy, help: 'Divisões de cada país: nome, nível (1 = primeira) e regras de acesso, rebaixamento e vagas continentais.' },
   clubs: { label: 'Clubes', one: 'clube', icon: Shield, help: 'Nome, liga, cidade, reputação, caixa, torcida, estrutura e estádio.' },
   players: { label: 'Jogadores', one: 'jogador', icon: Users, help: 'Dados pessoais, clube, posições, atributos (1 a 20), potencial e contrato. A força é calculada pelos atributos.' },
+  coaches: { label: 'Técnicos', one: 'técnico', icon: UserRound, help: 'Técnicos dos clubes e os sem clube: dados pessoais, clube, reputação, metodologia, os 6 atributos (1 a 20) e foto. Um clube tem um técnico só: pôr um técnico num clube manda o técnico de lá para o mercado.' },
 };
 
 export function EditorView({ onBack }: Props) {
@@ -45,7 +49,7 @@ function PackChooser({ onOpen, onBack }: { onOpen: (id: string) => void; onBack:
     <main className="shell nc-fit ed-choose">
       <header className="nc-top">
         <div className="nc-top-title">
-          <h1>Editor de dados <HelpTip text="Crie ou edite um pacote de dados: altere países, ligas, clubes e jogadores da base, crie novos ou exclua. O pacote guarda só as diferenças e vale para as próximas carreiras quando estiver ativo em Pacotes de dados." /></h1>
+          <h1>Editor de dados <HelpTip text="Crie ou edite um pacote de dados: altere países, ligas, clubes, jogadores e técnicos da base, crie novos ou exclua. O pacote guarda só as diferenças e vale para as próximas carreiras quando estiver ativo em Pacotes de dados." /></h1>
           <span className="muted small">Escolha um pacote para editar ou crie um novo.</span>
         </div>
         <button className="secondary" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" />Menu principal</button>
@@ -101,6 +105,7 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showManifest, setShowManifest] = useState(false);
+  const [csv, setCsv] = useState<CsvImportReportDto | null>(null);
   const img = useImages(packId);
 
   const refreshSummary = useCallback(async () => { setSummary(await unwrap(window.api.editorSummary(packId))); }, [packId]);
@@ -194,7 +199,7 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
               {(kind === 'clubs') && <select aria-label="Liga" value={filters.leagueId} onChange={(e) => set({ leagueId: e.target.value })}>
                 <option value="">Todas as ligas</option>{opts.leagues.filter((l) => !filters.countryId || l.countryId === filters.countryId).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>}
-              {kind === 'players' && <select aria-label="Clube" value={filters.clubId} onChange={(e) => set({ clubId: e.target.value })}>
+              {(kind === 'players' || kind === 'coaches') && <select aria-label="Clube" value={filters.clubId} onChange={(e) => set({ clubId: e.target.value })}>
                 <option value="">Todos os clubes</option>{opts.clubs.filter((c) => !filters.countryId || c.countryId === filters.countryId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>}
               {kind === 'players' && <select aria-label="Posição" value={filters.position} onChange={(e) => set({ position: e.target.value })}>
@@ -203,6 +208,19 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
             </div>
           )}
           <label className="mf-check ed-only"><input type="checkbox" checked={filters.onlyChanged} onChange={(e) => set({ onlyChanged: e.target.checked })} />Só o que este pacote mudou</label>
+          {(kind === 'players' || kind === 'clubs') && (
+            <div className="ed-csv">
+              <span className="ed-csv-label"><FileSpreadsheet size={14} aria-hidden="true" />Planilha<HelpTip text={`CSV com separador ; (Excel em português) ou vírgula. Linha com id existente altera o registro (só as colunas preenchidas; célula vazia não apaga nada); sem id, cria um novo. Tudo ou nada: com qualquer erro, nada é gravado e o relatório mostra a linha. Colunas: ${CSV_COLUMNS[kind].filter((c) => !c.key.startsWith('attr.')).map((c) => `${c.label}${c.help ? ` (${c.help})` : ''}`).join('; ')}${kind === 'players' ? '; e cada atributo pelo nome (Finalização, Passe, Reflexos… 1–20).' : '.'}`} /></span>
+              <button className="secondary" disabled={busy} onClick={() => void run(async () => {
+                const r = await unwrap(window.api.editorImportCsv(packId, kind));
+                if (!r) return;
+                setCsv(r);
+                if (!r.errors.length) { await refreshSummary(); await refreshOpts(); await loadList(); }
+              })}><Upload size={14} aria-hidden="true" />Importar</button>
+              <button className="nc-ghost" disabled={busy} onClick={() => void run(async () => { const p = await unwrap(window.api.editorExportCsv(packId, kind, false)); if (p) setNotice(`Planilha salva em ${p}.`); })}><Download size={14} aria-hidden="true" />Exportar</button>
+              <button className="nc-ghost" disabled={busy} onClick={() => void run(async () => { const p = await unwrap(window.api.editorExportCsv(packId, kind, true)); if (p) setNotice(`Modelo salvo em ${p}.`); })}>Modelo</button>
+            </div>
+          )}
           <div className="ed-rows" role="listbox" aria-label={KIND_META[kind].label}>
             {selected === '' && <div className="ed-row on" role="option" aria-selected="true"><span className="ed-row-main"><strong>Novo {KIND_META[kind].one}</strong><span className="muted small">ainda não salvo</span></span><span className="ed-tag ed-tag-created">novo</span></div>}
             {list?.rows.map((r) => (
@@ -251,6 +269,8 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
                       <ImageField label="Foto do estádio" help="Aparece no painel do clube, no lugar da ilustração. Ideal: horizontal (ex.: 1600×640)." kind="stadiums" id={selected ? String(stadium?.id ?? draft.stadium ?? '') || null : null} img={img} packId={packId} onError={setError} /></>} />}
                   {kind === 'players' && opts && <PlayerForm r={draft} set={setDraft} errors={errors} opts={opts} isNew={selected === ''} derived={entity?.derived ?? null}
                     photo={<ImageField label="Foto do jogador" help="Aparece na ficha do jogador. Ideal: quadrada, rosto centralizado." kind="players" id={selected || null} img={img} packId={packId} onError={setError} />} />}
+                  {kind === 'coaches' && opts && <CoachForm r={draft} set={setDraft} errors={errors} opts={opts} derived={entity?.derived ?? null}
+                    photo={<ImageField label="Foto do técnico" help="Aparece na tela de nova carreira, na ficha do clube e na ficha do técnico. Ideal: quadrada, rosto centralizado." kind="coaches" id={selected || null} img={img} packId={packId} onError={setError} />} />}
                 </div>
               )}
               <footer className="ed-form-foot">
@@ -269,6 +289,21 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
           )}
         </section>
       </div>
+      {csv && (
+        <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) setCsv(null); }}>
+          <div className="modal ed-csv-modal" role="dialog" aria-modal="true" aria-label="Resultado da importação">
+            <header className="modal-head"><FileSpreadsheet size={18} aria-hidden="true" /><h2>{csv.errors.length ? 'Importação não realizada' : 'Importação concluída'}</h2>
+              <button className="secondary icon" aria-label="Fechar" autoFocus onClick={() => setCsv(null)}><X size={16} aria-hidden="true" /></button></header>
+            <div className="modal-body">
+              {csv.errors.length ? <p className="error">Nada foi gravado. Corrija a planilha e importe de novo:</p>
+                : <p className="ok">{csv.created} registro(s) criado(s) e {csv.updated} alterado(s) no pacote.{csv.unchanged > 0 ? ` ${csv.unchanged} linha(s) sem mudança foram ignoradas.` : ''}</p>}
+              {csv.errors.length > 0 && <ul className="ed-csv-list">{csv.errors.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+              {csv.warnings.length > 0 && <><p className="muted small">Avisos:</p><ul className="ed-csv-list muted">{csv.warnings.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+            </div>
+            <footer className="modal-foot"><button onClick={() => setCsv(null)}>Fechar</button></footer>
+          </div>
+        </div>
+      )}
       {showManifest && summary && <ManifestModal summary={summary} packId={packId} onClose={() => setShowManifest(false)} onSaved={(s) => { setSummary(s); setShowManifest(false); }} />}
     </main>
   );
@@ -439,6 +474,37 @@ function PlayerForm({ r, set, errors, opts, isNew, derived, photo }: { r: Rec; s
   );
 }
 
+function CoachForm({ r, set, errors, opts, derived, photo }: { r: Rec; set: (r: Rec) => void; errors: Errors; opts: EditorOptionsDto; derived: EditorEntityDto['derived'] | null; photo: ReactNode }) {
+  return (
+    <>
+      <fieldset className="ed-section"><legend>Dados pessoais</legend>
+        <Field label="Nome" error={errors.firstName}><TextIn r={r} set={set} path="firstName" max={40} /></Field>
+        <Field label="Sobrenome" error={errors.lastName}><TextIn r={r} set={set} path="lastName" max={40} /></Field>
+        <Field label="Nascimento" help={`Idade de 25 a 85 anos no início da carreira (01/07/2026). Os técnicos da IA se aposentam aos 70.${derived?.age != null ? ` Hoje: ${derived.age} anos.` : ''}`} error={errors.birthDate}><input type="date" value={String(r.birthDate ?? '')} onChange={(e) => set({ ...r, birthDate: e.target.value })} /></Field>
+        <Field label="Nacionalidade" error={errors.nationality}>
+          <select value={String(r.nationality ?? '')} onChange={(e) => set({ ...r, nationality: e.target.value })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></Field>
+      </fieldset>
+      <fieldset className="ed-section ed-images"><legend>Foto</legend>{photo}</fieldset>
+      <fieldset className="ed-section"><legend>Clube e perfil</legend>
+        <Field label="Clube" help="Sem clube = técnico no mercado (os clubes que demitem contratam daqui). Pôr este técnico num clube manda o técnico atual de lá para o mercado." wide>
+          <select value={String(r.club ?? '')} onChange={(e) => set({ ...r, club: e.target.value || null })}><option value="">Sem clube</option>{opts.clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Reputação" help="1 a 100 (valor do motor; no jogo aparece em estrelas, de 0 a 5, de meia em meia). Clubes que demitem procuram técnicos de reputação parecida com a deles." error={errors.reputation}>
+          <span className="ed-rep"><NumIn r={r} set={set} path="reputation" min={1} max={100} />{Number.isFinite(Number(r.reputation)) && <Stars reputation={Number(r.reputation)} label="No jogo" />}</span></Field>
+        <Field label="Metodologia">
+          <select value={String(r.methodology ?? 'possession')} onChange={(e) => set({ ...r, methodology: e.target.value })}>{(Object.keys(METHODOLOGY) as Methodology[]).map((m) => <option key={m} value={m}>{METHODOLOGY[m].label}</option>)}</select></Field>
+      </fieldset>
+      <fieldset className="ed-section ed-attrs"><legend>Atributos <span className="muted small">(1 a 20 · os efeitos começam acima de 5)</span></legend>
+        <div className="ed-attr-group">
+          {COACH_ATTRS.map((a) => {
+            const v = num(getIn(r, `attributes.${a.key}`));
+            return <label key={a.key} className={`ed-attr ${errors[`attributes.${a.key}`] ? 'bad' : ''}`}><span className="ed-attr-name">{a.label}<HelpTip text={a.description} /></span><input type="number" min={1} max={20} value={Number.isFinite(v) ? v : ''} onChange={(e) => set(setIn(r, `attributes.${a.key}`, e.target.value === '' ? undefined : Number(e.target.value)))} className={tone(v * 5)} /></label>;
+          })}
+        </div>
+      </fieldset>
+    </>
+  );
+}
+
 /** Imagem do pacote para uma entidade: gravada na hora (não depende do Salvar). Entidade nova: salvar primeiro. */
 function ImageField({ label, help, kind, id, img, packId, onError }: { label: string; help: string; kind: ImageKind; id: string | null; img: ReturnType<typeof useImages>; packId: string; onError: (m: string | null) => void }) {
   const [busy, setBusy] = useState(false);
@@ -487,7 +553,7 @@ function ManifestModal({ summary, packId, onClose, onSaved }: { summary: EditorS
 
 // ---------------------------------------------------------------- regras da tela
 function titleOf(kind: EditorKind, r: Rec, isNew: boolean): string {
-  const t = kind === 'players' ? `${String(r.firstName ?? '')} ${String(r.lastName ?? '')}`.trim() : String(r.name ?? '');
+  const t = kind === 'players' || kind === 'coaches' ? `${String(r.firstName ?? '')} ${String(r.lastName ?? '')}`.trim() : String(r.name ?? '');
   return t || (isNew ? `Novo ${KIND_META[kind].one}` : '—');
 }
 /** força ao vivo pelos atributos do formulário (a mesma fórmula do jogo) */
@@ -506,6 +572,7 @@ function newRecord(kind: EditorKind, f: Filters, opts: EditorOptionsDto | null):
   if (kind === 'clubs') return { name: '', country: f.countryId, league: f.leagueId, city: '', reputation: 50 };
   const club = f.clubId ? opts?.clubs.find((c) => c.id === f.clubId) : undefined;
   const code = opts?.countries.find((c) => c.id === (club?.countryId ?? f.countryId))?.code ?? 'BRA';
+  if (kind === 'coaches') return { firstName: '', lastName: '', birthDate: '1975-01-01', nationality: code, club: club?.id ?? null, reputation: 40, methodology: 'possession', attributes: Object.fromEntries(COACH_ATTRS.map((a) => [a.key, 8])) };
   return { firstName: '', lastName: '', birthDate: '2000-01-01', nationality: code, club: club?.id ?? null, position: f.position || 'CM', foot: 'right', ability: 10 };
 }
 /** validação imediata (o jogo valida tudo de novo ao salvar) */
@@ -524,6 +591,13 @@ function validate(kind: EditorKind, r: Rec, stadium: Rec | null, isNew: boolean)
     const sn = String(r.shortName ?? ''); if (sn && (sn.length < 2 || sn.length > 5)) e.shortName = 'Sigla: 2 a 5 letras.';
     for (const k of ['training', 'youth', 'medical', 'stadium']) range(`facilities.${k}`, 'Estrutura', 1, 20);
     if (stadium) { if (!String(stadium.name ?? '').trim()) e['stadium.name'] = 'Nome do estádio: obrigatório.'; const c = Number(stadium.capacity); if (!Number.isFinite(c) || c < 500 || c > 250000) e['stadium.capacity'] = 'Capacidade: de 500 a 250.000.'; }
+  }
+  if (kind === 'coaches') {
+    req('firstName', 'Nome'); req('lastName', 'Sobrenome'); req('nationality', 'Nacionalidade'); range('reputation', 'Reputação', 1, 100, false);
+    const b = String(r.birthDate ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b)) e.birthDate = 'Nascimento: data obrigatória.';
+    else { const age = 2026 - Number(b.slice(0, 4)) - (b.slice(5) > '07-01' ? 1 : 0); if (age < 25 || age > 85) e.birthDate = 'Nascimento: idade de 25 a 85 anos em 01/07/2026.'; }
+    for (const a of COACH_ATTRS) range(`attributes.${a.key}`, a.label, 1, 20, false);
   }
   if (kind === 'players') {
     req('firstName', 'Nome'); req('lastName', 'Sobrenome'); req('nationality', 'Nacionalidade'); req('position', 'Posição');

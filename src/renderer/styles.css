@@ -1090,3 +1090,40 @@ button.cl-day { cursor: pointer; } button.cl-day:hover { border-color: var(--bor
 .ib-sign { margin-top: 18px !important; }
 .ib-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
 .ib-action button { display: inline-flex; align-items: center; gap: 8px; }
+.bd-market li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; }
+/* planilha (CSV) no editor */
+.ed-csv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 2px; border-top: 1px solid var(--border); }
+.ed-csv-label { display: inline-flex; align-items: center; gap: 5px; font-size: .8rem; font-weight: 600; color: var(--text-muted); margin-right: auto; }
+.ed-csv button { padding: 4px 10px; font-size: .8rem; display: inline-flex; align-items: center; gap: 5px; }
+.ed-csv-modal { width: min(640px, 100%); }
+.ed-csv-list { max-height: 320px; overflow: auto; margin: 6px 0; padding-left: 18px; font-size: .86rem; display: grid; gap: 4px; }
+/* ficha do clube e do técnico (Competições, Comissão técnica) */
+.cp-club-btn { border: 0; background: none; padding: 0; min-height: 0; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; text-align: left; justify-content: flex-start; }
+button.cp-club-btn:hover:not(:disabled) { background: none; color: var(--primary-text); text-decoration: underline; text-underline-offset: 3px; }
+.cs-modal { width: min(760px, 100%); }
+.cs-coach-modal { width: min(560px, 100%); }
+.cs-title { flex: 1; display: grid; gap: 2px; }
+.cs-title h2 { margin: 0; font-size: 1.15rem; }
+.cs-title .muted { display: inline-flex; align-items: center; gap: 6px; }
+.cs-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cs-facts > div { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.cs-facts span { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.cs-facts strong { display: inline-flex; align-items: center; gap: 6px; }
+.cs-facts em { font-style: normal; font-size: .78rem; color: var(--text-muted); }
+.cs-h3 { margin: 18px 0 8px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.cs-coach { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); font: inherit; text-align: left; }
+button.cs-coach { cursor: pointer; }
+button.cs-coach { min-height: 0; justify-content: flex-start; font-weight: 400; }
+button.cs-coach:hover:not(:disabled) { background: var(--surface-3); border-color: var(--primary); color: var(--text); }
+.cs-coach-name { flex: 1; display: grid; gap: 2px; }
+.cs-squad { max-height: 320px; overflow: auto; }
+.st-show { margin-bottom: 10px; }
+.nc-coach { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cs-photo { flex: none; border-radius: 50%; object-fit: cover; background: var(--surface-3); border: 1px solid var(--border); }
+.cs-photo-empty { display: inline-grid; place-items: center; color: var(--text-muted); }
+/* Competições: a página não rola; só a tabela rola, dentro do quadro (cabeçalho fixo, legenda sempre visível) */
+.cp-root { display: flex; flex-direction: column; gap: 16px; }
+.content-fit > .cp-root { flex: 1; min-height: 0; }
+.cp-table-card { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.cp-scroll { flex: 1; min-height: 0; overflow: auto; }
+.cp-table-card > p { flex: none; margin-bottom: 0; }

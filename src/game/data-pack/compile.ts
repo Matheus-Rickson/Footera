@@ -6,11 +6,12 @@ import { createRng, clamp, type Rng } from '../rng.ts';
 import { addYears, ageOn } from '../../shared/date.ts';
 import { isPlausibleSecondary } from '../../shared/positions.ts';
 import { uniqueIds } from '../../shared/slug.ts';
-import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World } from '../../shared/types.ts';
+import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World, WorldCoach } from '../../shared/types.ts';
+import { clubCoach, defaultCoaches, packCoachDefaults } from '../coach-engine/worldCoaches.ts';
 import { COUNTRY_TEMPLATES, type CountryTemplate } from '../world/names.ts';
 import { overallFor } from '../world/overall.ts';
 import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
-import { PackError, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
+import { PackError, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
@@ -78,11 +79,17 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const stadiums = new Map<string, Stadium>(fresh ? [] : base.stadiums.map((s) => [s.id, { ...s }]));
   const clubs = new Map<string, Club>(fresh ? [] : base.clubs.map((c) => [c.id, { ...c, facilities: { ...c.facilities } }]));
   const players = new Map<string, Player>(fresh ? [] : base.players.map((p) => [p.id, { ...p, attributes: withGoalkeeper(p.attributes, p.id) }]));
+  const coachClubs = (cs: Iterable<Club>) => [...cs].map((c) => ({ id: c.id, reputation: c.reputation, countryCode: [...countries.values()].find((x) => x.id === c.countryId)?.code ?? 'BRA' }));
+  const copyCoach = (k: WorldCoach): WorldCoach => ({ ...k, attributes: { ...k.attributes } });
+  /** técnicos: os do mundo base (ou os padrão dos clubes dele); numa base "none" sem técnicos, os padrão nascem depois do 1º pacote */
+  const coaches = new Map<string, WorldCoach>(fresh ? [] : (base.coaches ?? defaultCoaches(coachClubs(clubs.values()), startDate)).map((k) => [k.id, copyCoach(k)]));
+  /** técnicos cujo clube foi definido por um pacote (têm prioridade sobre o técnico padrão do clube) */
+  const assigned = new Set<string>();
   const typeOf = new Map<string, string>();
   /** clubes criados por pacote sem caixa informado: o caixa é calculado depois do elenco (startingBalance) */
   const autoBalance = new Set<string>();
   const origin = new Map<string, EntityOrigin>();
-  for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players]] as const) for (const k of m.keys()) typeOf.set(k, kind);
+  for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players], ['técnico', coaches]] as const) for (const k of m.keys()) typeOf.set(k, kind);
   const economyOf = (code: string) => [...countries.values()].find((c) => c.code === code)?.economy ?? 1;
   const tplOf = (code: string): CountryTemplate => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
 
@@ -123,6 +130,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       if (r.$remove && clubs.has(r.id)) {
         const freed = [...players.values()].filter((p) => p.clubId === r.id);
         for (const p of freed) p.clubId = null;
+        for (const k of coaches.values()) if (k.clubId === r.id) k.clubId = null;
         if (freed.length) warnings.push({ pack: P, file: 'clubs.json', record: r.id, message: `clube removido: ${freed.length} jogador(es) ficaram sem clube` });
       }
       apply('clubs.json', r, clubs, 'clube', (c: ClubRec) => {
@@ -177,6 +185,23 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       if (p.ability !== undefined) cur.attributes = mergeAttributes(attributesForAbility(rng, cur.position, p.ability), p.attributes ?? {})!;
       else if (p.attributes) cur.attributes = mergeAttributes(cur.attributes, p.attributes)!;
       finishPlayer(cur, p, false);
+    });
+
+    // técnicos padrão da base fixa (pacote "none" sem técnicos): um por clube e o mercado, pela semente fixa
+    if (idx === 0 && fresh && coaches.size === 0 && pack.data.coaches.length === 0) {
+      for (const k of defaultCoaches(coachClubs(clubs.values()), startDate)) if (!typeOf.has(k.id)) { coaches.set(k.id, k); typeOf.set(k.id, 'técnico'); }
+    }
+    for (const r of pack.data.coaches) apply('coaches.json', r, coaches, 'técnico', (k: CoachRec) => {
+      if (!need('coaches.json', k.id, k, ['firstName', 'lastName', 'birthDate', 'nationality'])) return null;
+      const d = packCoachDefaults(k.id, k.reputation ?? (k.club ? clubs.get(k.club)?.reputation : undefined) ?? 40, k.nationality!, startDate);
+      if (k.club) assigned.add(k.id);
+      return { ...d, firstName: k.firstName!, lastName: k.lastName!, birthDate: k.birthDate!, nationality: k.nationality!, clubId: k.club ?? null,
+        reputation: k.reputation ?? d.reputation, methodology: k.methodology ?? d.methodology, attributes: { ...d.attributes, ...k.attributes } };
+    }, (cur, k) => {
+      if (k.firstName) cur.firstName = k.firstName; if (k.lastName) cur.lastName = k.lastName; if (k.birthDate) cur.birthDate = k.birthDate;
+      if (k.nationality) cur.nationality = k.nationality; if (k.reputation !== undefined) cur.reputation = k.reputation; if (k.methodology) cur.methodology = k.methodology;
+      if (k.attributes) cur.attributes = { ...cur.attributes, ...k.attributes };
+      if (k.club !== undefined) { cur.clubId = k.club; assigned.add(cur.id); }
     });
 
     /** cria, altera ou remove um registro (remoção de quem não existe é só aviso) */
@@ -240,6 +265,21 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     const odd = p.secondaryPositions.filter((s) => !isPlausibleSecondary(p.position, s));
     if (odd.length) warnings.push({ pack: 'universo', file: 'players.json', record: p.id, message: `posição secundária pouco comum para ${p.position}: ${odd.join(', ')}` });
   }
+  // técnicos: clube existente, idade plausível e um por clube (o definido por pacote fica; o padrão vai para o mercado)
+  const coachesAt = new Map<string, WorldCoach[]>();
+  for (const k of coaches.values()) {
+    if (k.clubId !== null && !clubs.has(k.clubId)) final('coaches.json', k.id, `clube "${k.clubId}" não existe`);
+    const age = ageOn(k.birthDate, startDate);
+    if (age < 25 || age > 85) final('coaches.json', k.id, `idade ${age} na data de início (${startDate}): use 25 a 85 anos`);
+    if (k.clubId !== null) coachesAt.set(k.clubId, [...(coachesAt.get(k.clubId) ?? []), k]);
+  }
+  for (const [cid, ks] of coachesAt) {
+    if (ks.length < 2) continue;
+    const chosen = ks.filter((k) => assigned.has(k.id));
+    if (chosen.length > 1) { final('coaches.json', chosen[1]!.id, `o clube "${cid}" já tem o técnico "${chosen[0]!.id}" (um técnico por clube)`); continue; }
+    const keep = chosen[0] ?? ks[0]!;
+    for (const k of ks) if (k !== keep) { k.clubId = null; warnings.push({ pack: 'universo', file: 'coaches.json', record: k.id, message: `saiu do clube "${cid}" (o pacote pôs "${keep.id}" no lugar) e fica sem clube` }); }
+  }
   const byCountry = new Map<string, League[]>();
   for (const l of leagues.values()) byCountry.set(l.countryId, [...(byCountry.get(l.countryId) ?? []), l]);
   for (const [cid, ls] of byCountry) {
@@ -280,12 +320,21 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     if (l.teamCount < 2) issues.push({ pack: 'universo', file: 'leagues.json', record: l.id, message: `liga com ${l.teamCount} clube(s): são necessários pelo menos 2` });
   }
   if (clubs.size === 0) issues.push({ pack: 'universo', file: 'clubs.json', message: 'o universo não tem nenhum clube' });
+  // clube sem técnico (o dele foi removido ou foi para outro clube): ganha um técnico gerado
+  const withCoach = new Set([...coaches.values()].map((k) => k.clubId));
+  for (const c of clubs.values()) {
+    if (withCoach.has(c.id)) continue;
+    const k = clubCoach(coachClubs([c])[0]!, startDate, '-novo');
+    k.id = newId(k.id);
+    coaches.set(k.id, k);
+    warnings.push({ pack: 'universo', file: 'coaches.json', record: c.id, message: `clube sem técnico: "${k.firstName} ${k.lastName}" (${k.id}) foi gerado para ele` });
+  }
   if (issues.length) throw new PackError(issues);
 
   // estádios órfãos (de clubes removidos) saem do universo sem erro
   const usedStadiums = new Set([...clubs.values()].map((c) => c.stadiumId));
   return {
-    world: { seed, startDate, countries: [...countries.values()], leagues: [...leagues.values()], stadiums: [...stadiums.values()].filter((s) => usedStadiums.has(s.id)), clubs: [...clubs.values()], players: [...players.values()] },
+    world: { seed, startDate, countries: [...countries.values()], leagues: [...leagues.values()], stadiums: [...stadiums.values()].filter((s) => usedStadiums.has(s.id)), clubs: [...clubs.values()], players: [...players.values()], coaches: [...coaches.values()] },
     warnings,
     applied: packs.map((p) => `${p.manifest.id}@${p.manifest.version}`),
     origin,

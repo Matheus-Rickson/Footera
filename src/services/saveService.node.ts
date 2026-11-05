@@ -1,3 +1,4 @@
+import { ensureAiCoaches, getAiCoachDetail, getClubInfo, listUnemployedCoaches } from '../database/repositories/aiCoachRepository.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -36,7 +37,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology, World } from '../shared/types.ts';
 import type {
-  BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
+  AiCoachDetailDto, AiCoachDto, ClubInfoDto, BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, SocialFeedDto, SocialFilter, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPageDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, LiveOptionsInput, LiveMatchDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionTableDto,
@@ -239,6 +240,7 @@ async function withPreparedCareer<T>(base: string, profileId: string, careerId: 
     ensureFinance(db);
     ensureYouthAcademies(db);
     ensureBoard(db);
+    ensureAiCoaches(db);
     return fn(db);
   });
 }
@@ -322,6 +324,9 @@ export const getInfrastructure = (b: string, p: string, c: string): Promise<Infr
 export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind): Promise<true> => withClubCareer(b, p, c, (db) => { startUpgrade(db, k); return true as const; });
 
 export const getBoard = (b: string, p: string, c: string): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => getBoardOverview(db));
+export const clubInfo = (b: string, p: string, c: string, clubId: string): Promise<ClubInfoDto> => withPreparedCareer(b, p, c, (db) => getClubInfo(db, clubId));
+export const aiCoachInfo = (b: string, p: string, c: string, coachId: string): Promise<AiCoachDetailDto> => withPreparedCareer(b, p, c, (db) => getAiCoachDetail(db, coachId));
+export const unemployedCoaches = (b: string, p: string, c: string): Promise<AiCoachDto[]> => withPreparedCareer(b, p, c, (db) => listUnemployedCoaches(db));
 export const spendCoachPointFor = (b: string, p: string, c: string, key: CoachAttrKey): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => { spendCoachPoint(db, key); return getBoardOverview(db); });
 export const answerJobOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { respondJobOffer(db, id, accept); return true as const; });
 export const askBudget = (b: string, p: string, c: string, kind: 'transfer' | 'wage'): Promise<{ approved: boolean; message: string }> => withClubCareer(b, p, c, (db) => withTransaction(db, () => requestBudget(db, kind)));

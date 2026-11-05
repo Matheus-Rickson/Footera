@@ -11,6 +11,7 @@ import type { CSSProperties } from 'react';
 import { useImages } from '../images.ts';
 import { HelpTip } from '../help.tsx';
 import { Stars } from '../stars.tsx';
+import { CoachPhoto } from '../clubSheet.tsx';
 
 interface Props { profileId: string; onBack: () => void; onCreated: (careerId: string) => void }
 
@@ -237,7 +238,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
               </div>
               <p className="muted small nc-count">{visible.length} clube(s) <HelpTip up text="Só aparecem clubes de divisões com simulação completa: é onde você pode treinar e ser contratado. Para ver outros, volte e marque mais países ou divisões." /></p>
             </section>
-            {chosen ? <ClubPanel c={chosen} code={countries.find((x) => x.id === chosen.countryId)?.code ?? ''} crest={img.url('clubs', chosen.id)} photo={img.url('stadiums', chosen.stadiumId)} leagueLogo={img.url('leagues', chosen.leagueId)} /> : <section className="card"><p className="muted">Escolha um clube na lista.</p></section>}
+            {chosen ? <ClubPanel c={chosen} code={countries.find((x) => x.id === chosen.countryId)?.code ?? ''} crest={img.url('clubs', chosen.id)} photo={img.url('stadiums', chosen.stadiumId)} leagueLogo={img.url('leagues', chosen.leagueId)} coachPhoto={chosen.coach ? img.url('coaches', chosen.coach.id) : null} /> : <section className="card"><p className="muted">Escolha um clube na lista.</p></section>}
           </div>
           <div className="row end">
             <button className="secondary" onClick={() => setStep(1)}><ArrowLeft size={16} aria-hidden="true" />Países</button>
@@ -381,7 +382,7 @@ function DivisionsMenu({ country, leagues, isFull, onToggle, logo }: {
 }
 
 /** Painel do clube destacado: só dados reais da base (escudo gerado até a etapa de fotos e escudos). */
-function ClubPanel({ c, code, crest, photo, leagueLogo }: { c: ClubOption; code: string; crest: string | null; photo: string | null; leagueLogo: string | null }) {
+function ClubPanel({ c, code, crest, photo, leagueLogo, coachPhoto }: { c: ClubOption; code: string; crest: string | null; photo: string | null; leagueLogo: string | null; coachPhoto: string | null }) {
   const fac: Array<[string, number]> = [['Centro de treinamento', c.facilities.training], ['Categorias de base', c.facilities.youth], ['Departamento médico', c.facilities.medical], ['Estádio', c.facilities.stadium]];
   return (
     <section className="card nc-panel" aria-label={`Clube ${c.name}`}>
@@ -415,6 +416,11 @@ function ClubPanel({ c, code, crest, photo, leagueLogo }: { c: ClubOption; code:
             <div><span>Reputação</span><strong><Stars reputation={c.reputation} size={17} label="Reputação do clube" /></strong></div>
             <div><span>Torcida</span><strong><Users size={14} aria-hidden="true" /> {fmtNum(c.fans)}</strong></div>
             <div><span>Caixa inicial</span><strong><Coins size={14} aria-hidden="true" /> {fmtMoney(c.balance)}</strong></div>
+            {c.coach && (
+              <div className="nc-fact-wide"><span>Técnico atual</span>
+                <strong className="nc-coach"><CoachPhoto id={c.coach.id} name={c.coach.name} size={30} src={coachPhoto} /> {c.coach.name} <Stars reputation={c.coach.reputation} size={14} label="Reputação do técnico" /></strong>
+                <em>{c.coach.age} anos · {c.coach.nationality} · se você escolher este clube, assume o lugar dele</em></div>
+            )}
           </div>
           <div>
             <h3 className="nc-h3">Destaques do elenco</h3>

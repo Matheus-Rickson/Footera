@@ -12,14 +12,8 @@ import { useImages } from '../images.ts';
 import { attributeHelp } from '../../game/world/attributeInfo.ts';
 import { HelpTip } from '../help.tsx';
 import { Stars } from '../stars.tsx';
+import { ATTR_LABEL } from '../../shared/attributeLabels.ts';
 
-const ATTR_LABEL: Record<string, string> = {
-  finishing: 'Finalização', passing: 'Passe', dribbling: 'Drible', tackling: 'Desarme', marking: 'Marcação', firstTouch: 'Primeiro toque', crossing: 'Cruzamento',
-  heading: 'Cabeceio', longShots: 'Chute de longe', goalkeeping: 'Goleiro (geral)', vision: 'Visão de jogo', composure: 'Compostura', decisions: 'Decisões',
-  positioning: 'Posicionamento', workRate: 'Empenho', leadership: 'Liderança', aggression: 'Agressividade', pace: 'Velocidade', stamina: 'Resistência',
-  strength: 'Força física', agility: 'Agilidade', jumping: 'Impulsão', naturalFitness: 'Preparo natural',
-  reflexes: 'Reflexos', oneOnOne: 'Um contra um', handling: 'Manejo', aerial: 'Jogo aéreo', rushingOut: 'Saídas do gol', kicking: 'Reposição',
-};
 const GROUP_LABEL = { goalkeeper: 'Goleiro', technical: 'Técnicos', mental: 'Mentais', physical: 'Físicos' } as const;
 /** grupos exibidos: o de goleiro só para goleiros (nos demais ele existe, mas não interessa) */
 const groupsFor = (pos: Position) => (Object.keys(GROUP_LABEL) as Array<keyof typeof GROUP_LABEL>).filter((g) => g !== 'goalkeeper' || pos === 'GK');

@@ -20,6 +20,7 @@ import { hireConfidence, seasonPoints, spendError } from '../../game/coach-engin
 import { baseCoachAttributes, COACH_ATTRS, type CoachAttrKey } from '../../shared/coachAttributes.ts';
 import { boardBrief } from './newsRepository.ts';
 import { toStars } from '../../shared/scale.ts';
+import { dismissAiCoach, hireAiCoach } from './aiCoachRepository.ts';
 
 export class BoardError extends UserError {}
 
@@ -208,6 +209,7 @@ function takeJob(db: SqlDb, clubId: string, date: string): void {
   const from = st.clubId ? clubName(db, st.clubId) : null;
   if (st.clubId) leaveClub(db, date, 'left');
   db.prepare('UPDATE career SET club_id = ? WHERE id = 1').run(clubId);
+  dismissAiCoach(db, clubId, date, 'replaced'); // se o clube ainda tinha técnico (clube que chamou o desempregado), ele sai
   db.prepare('DELETE FROM job_vacancies WHERE club_id = ?').run(clubId);
   db.prepare('INSERT INTO coach_spells (club_id, start_date) VALUES (?, ?)').run(clubId, date);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending'").run();
@@ -262,10 +264,18 @@ export function processBoardDay(db: SqlDb, date: string): void {
       const id = S(c.id);
       if (id === now.clubId || db.prepare('SELECT 1 AS x FROM job_vacancies WHERE club_id = ?').get(id)) { rng.next(); continue; }
       const sit = leagueSituation(db, id, now.season);
-      if (rng.next() < (sit ? aiSackChance(sit.position, sit.expected, sit.teams, sit.played) : 0)) db.prepare('INSERT INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
+      if (rng.next() < (sit ? aiSackChance(sit.position, sit.expected, sit.teams, sit.played) : 0)) {
+        db.prepare('INSERT INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
+        dismissAiCoach(db, id, date, 'sacked'); // o técnico da IA sai: o clube fica com a vaga aberta
+      }
     }
   }
-  db.prepare('DELETE FROM job_vacancies WHERE opened_on <= ? AND club_id NOT IN (SELECT club_id FROM job_offers WHERE status = \'pending\')').run(addDays(date, -VACANCY_FILL_DAYS));
+  // vagas sem proposta pendente há 30 dias: o clube contrata um técnico da IA (um desempregado compatível, ou alguém novo)
+  const filled = db.prepare("SELECT club_id FROM job_vacancies WHERE opened_on <= ? AND club_id NOT IN (SELECT club_id FROM job_offers WHERE status = 'pending') ORDER BY club_id").all(addDays(date, -VACANCY_FILL_DAYS)).map((r) => S(r.club_id));
+  for (const id of filled) {
+    if (id !== getCareerState(db).clubId) hireAiCoach(db, id, date);
+    db.prepare('DELETE FROM job_vacancies WHERE club_id = ?').run(id);
+  }
 
   // propostas ao treinador
   const coachRep = coachOf(db).reputation;
@@ -304,7 +314,8 @@ function offerJob(db: SqlDb, clubId: string, date: string): void {
   db.prepare('INSERT INTO job_offers (club_id, date, expires) VALUES (?,?,?)').run(clubId, date, addDays(date, OFFER_DAYS));
   const c = db.prepare('SELECT c.name, c.reputation, l.name AS league, l.tier, co.name AS country FROM clubs c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = c.country_id WHERE c.id = ?').get(clubId)!;
   const employed = !!getCareerState(db).clubId;
-  addNews(db, date, 'offer', `Proposta de emprego: ${S(c.name)} quer contratar o treinador`, `O ${S(c.name)} (${S(c.league)}, ${N(c.tier)}ª divisão, ${S(c.country)}) está sem técnico e quer você no comando. Reputação do clube: ${String(toStars(N(c.reputation))).replace('.', ',')} de 5 estrelas.\n\n${employed ? 'Aceitar significa deixar o clube atual na hora: comissão técnica, olheiros e rotina de treino ficam para trás.' : 'Aceitar encerra o período sem clube e você assume na hora.'} A diretoria define os objetivos e os orçamentos assim que você chegar.\n\nA proposta vale até ${br(addDays(date, OFFER_DAYS))}. Aceite ou recuse na Diretoria.`, { actionLabel: 'Responder na Diretoria' });
+  const gone = db.prepare("SELECT a.first_name, a.last_name FROM ai_coach_spells s JOIN ai_coaches a ON a.id = s.coach_id WHERE s.club_id = ? AND s.end_reason = 'sacked' ORDER BY s.id DESC LIMIT 1").get(clubId);
+  addNews(db, date, 'offer', `Proposta de emprego: ${S(c.name)} quer contratar o treinador`, `O ${S(c.name)} (${S(c.league)}, ${N(c.tier)}ª divisão, ${S(c.country)}) está sem técnico${gone ? ` desde a demissão de ${S(gone.first_name)} ${S(gone.last_name)}` : ''} e quer você no comando. Reputação do clube: ${String(toStars(N(c.reputation))).replace('.', ',')} de 5 estrelas.\n\n${employed ? 'Aceitar significa deixar o clube atual na hora: comissão técnica, olheiros e rotina de treino ficam para trás.' : 'Aceitar encerra o período sem clube e você assume na hora.'} A diretoria define os objetivos e os orçamentos assim que você chegar.\n\nA proposta vale até ${br(addDays(date, OFFER_DAYS))}. Aceite ou recuse na Diretoria.`, { actionLabel: 'Responder na Diretoria' });
 }
 
 // ---------------------------------------------------------------- virada de temporada
@@ -316,7 +327,11 @@ export function reviewSeason(db: SqlDb, date: string, a: { position: number; cha
   const st = getCareerState(db);
   const rng = createRng(`ai-sack-turnover:${seedOf(db)}:${date}`);
   const full = new Set(db.prepare(FULL_CLUBS.slice(1, -1)).all().map((r) => S(r.id)));
-  for (const id of relegatedClubs) if (id !== st.clubId && full.has(id) && rng.chance(0.5)) db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
+  for (const id of relegatedClubs) {
+    if (id === st.clubId || !full.has(id) || !rng.chance(0.5)) continue;
+    db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
+    dismissAiCoach(db, id, date, 'sacked');
+  }
   const b = board(db);
   if (!st.clubId || !b || !a) return null;
   const verdict = evaluateSeason({ objective: S(b.objective) as Objective, target: N(b.target_position), ...a, balance: balanceOf(db, st.clubId), youthTarget: N(b.youth_target), youthPromoted: N(b.youth_promoted) });

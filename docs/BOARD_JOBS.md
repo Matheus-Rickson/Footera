@@ -59,11 +59,33 @@ momento com troca imediata; orçamentos de transferência e de folha **e autonom
   na aba Diretoria (cada atributo até 20). Pontos ficam em `coach_json.attributePoints`.
 - **Fora do escopo:** salário do treinador (não existe no jogo; criar mexeria nas finanças) e reputação dos treinadores da IA.
 
+## Técnicos da IA (Fase 9, migração 017)
+- **Quem são:** um técnico por clube e um mercado de desempregados (15% do número de clubes). Fazem parte do **universo**, como os jogadores
+  (`World.coaches`): os padrão saem de `game/coach-engine/worldCoaches.ts` com semente fixa (não a da carreira) e os pacotes de dados os
+  alteram, criam ou removem (`coaches.json`, editor de dados → Técnicos, com foto em `images/coaches/<id>`; ver `docs/DATABASE.md`). A mesma
+  base com os mesmos pacotes dá os mesmos técnicos em toda carreira, e a tela de nova carreira mostra o técnico de cada clube. Ao criar a carreira (`ensureAiCoaches`; saves antigos ganham técnicos
+  ao abrir), o técnico do clube escolhido é substituído pelo usuário e começa sem clube. Nome do país do clube, 35–68 anos, reputação perto da do clube (±8) e
+  atributos 1–20 com média ≈ 3 + reputação/12 (perto do técnico criado pelo usuário).
+- **Demissão:** a demissão mensal da IA (e a de clubes rebaixados na virada) tira o técnico do clube (−4 de reputação) e abre a vaga. Se em 30 dias não
+  houver proposta pendente ao usuário, o clube contrata um desempregado com reputação de (clube − 25) a (clube + 15), com peso para a mais próxima;
+  quem deixou o clube nos últimos 2 anos não volta. Sem ninguém na faixa, o clube promove um técnico novo.
+- **Usuário:** assumir um clube que ainda tinha técnico (proposta de clube pequeno ao desempregado) o substitui (`replaced`); o clube que o usuário deixa
+  fica com a vaga e contrata um técnico da IA depois.
+- **Virada:** reputação dos empregados = posição esperada (pela reputação) − posição final (±6), +5 título, −4 rebaixamento; desempregados −1; aos 70 anos
+  se aposentam (o clube contrata outro).
+- **Na partida:** conhecimento tático e disciplina dos técnicos da IA valem como os do usuário (efeito zero na base 5). Impacto medido (4 sementes, 1.440
+  jogos): gols por jogo 3,09 → 3,13 (+1,5%), amarelos 3,07 → 2,87 (−6,7%), vitória do mandante igual (47,6%). Com a média de atributos 5 + reputação/9
+  os amarelos caíam 11%; por isso a média menor.
+- **Telas:** nova carreira → painel do clube: "Técnico atual". Competições → clique no clube: ficha do clube (reputação, torcida, estádio, técnico,
+  elenco sem força) → clique no técnico: ficha com atributos 1–20, metodologia e passagens. Comissão técnica → filtro "Técnicos sem clube" (por
+  reputação, cada um abre a ficha). A Diretoria não lista mais os técnicos dos outros clubes.
+  Rede social: demissão com o nome do técnico e anúncio do novo técnico no perfil oficial do clube. A proposta de emprego cita o técnico demitido.
+
 ## Verificações feitas
 - Soak de 4 temporadas: confiança 100 → 80 → 45; o treinador passivo foi demitido na virada de 2029 depois de falhar no "top 4" e seguiu desempregado; contabilidade íntegra.
 - Cópia do save do usuário: migração 10, diretoria criada, demissão simulada, abertura sem clube, telas de clube bloqueadas pela camada de serviços, tabela e avanço funcionando.
 
 ## Limitações conhecidas
-- Treinadores da IA não são entidades (as vagas são abstratas); o usuário não pode pedir demissão nem procurar emprego ativamente.
+- O usuário não pode pedir demissão nem procurar emprego ativamente.
 - Reputação do treinador começa baixa (15–35), então no começo só clubes modestos fazem propostas.
 - Objetivos não incluem copas nem competições continentais (Fase 9).

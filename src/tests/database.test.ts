@@ -40,7 +40,10 @@ test('Carreira: universo gravado e relido é idêntico ao original', async () =>
   const youth = new Set(db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL').all().map((r) => String(r.id)));
   assert.ok(youth.size >= world.clubs.length * 6);
   const loaded = loadWorld(db);
-  assert.deepEqual({ ...loaded, players: loaded.players.filter((p) => !youth.has(p.id)) }, world);
+  // os técnicos viram estado da carreira (tabela ai_coaches, com o do clube do usuário sem clube): conferidos à parte
+  const { coaches, ...rest } = world;
+  assert.deepEqual({ ...loaded, players: loaded.players.filter((p) => !youth.has(p.id)) }, rest);
+  assert.deepEqual(db.prepare('SELECT id FROM ai_coaches ORDER BY rowid').all().map((r) => String(r.id)), coaches!.map((k) => k.id));
   const row = db.prepare('SELECT * FROM career').get()!;
   assert.equal(row.club_id, world.clubs[0]!.id);
   assert.equal(row.game_date, world.startDate);

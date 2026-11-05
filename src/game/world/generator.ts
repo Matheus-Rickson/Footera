@@ -8,6 +8,7 @@ import type {
   Attributes, Club, Country, Foot, League, Player, Position, Stadium, World, IsoDate,
 } from '../../shared/types.ts';
 import { deriveGoalkeeper } from './goalkeeper.ts';
+import { defaultCoaches } from '../coach-engine/worldCoaches.ts';
 
 export interface WorldOptions {
   seed: string;
@@ -253,5 +254,7 @@ export function generateWorld(opts: WorldOptions): World {
     }
   }
 
-  return { seed: opts.seed, startDate, countries, leagues, stadiums, clubs, players };
+  const code = new Map(countries.map((c) => [c.id, c.code]));
+  const coaches = defaultCoaches(clubs.map((c) => ({ id: c.id, reputation: c.reputation, countryCode: code.get(c.countryId) ?? 'BRA' })), startDate);
+  return { seed: opts.seed, startDate, countries, leagues, stadiums, clubs, players, coaches };
 }

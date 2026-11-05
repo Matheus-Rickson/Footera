@@ -24,6 +24,8 @@ export interface ClubOption {
   origin: { created: string | null; edited: string[] };
   /** história resumida de EXEMPLO (gerada; provisória até a base ter histórias próprias) */
   story: { founded: number; nickname: string; colors: string; text: string[] };
+  /** técnico no início do universo (o mesmo do jogo; se o usuário escolher o clube, ele o substitui) */
+  coach: { id: string; name: string; nationality: string; age: number; reputation: number } | null;
 }
 /** Base de dados fixa, para a tela de nova carreira: países (com divisões e clubes) e clubes escolhíveis. */
 export interface ClubList {
@@ -36,7 +38,7 @@ export interface ClubList {
 export interface PackInfoDto {
   id: string; folder: string; name: string; version: string; author: string | null; description: string | null;
   enabled: boolean; order: number | null; requires: string[]; fullBase: boolean;
-  counts: { countries: number; leagues: number; stadiums: number; clubs: number; players: number } | null;
+  counts: { countries: number; leagues: number; stadiums: number; clubs: number; players: number; coaches: number } | null;
   issues: string[];
 }
 /** Tela de pacotes: base fixa, pacotes encontrados e o universo resultante da ordem de carga atual. */
@@ -45,7 +47,9 @@ export interface PacksOverviewDto {
   universe: { ok: boolean; errors: string[]; warnings: string[]; countries: number; leagues: number; clubs: number; players: number };
 }
 // ---------------------------------------------------------------- editor de dados (pacote do usuário em cima da base)
-export type EditorKind = 'countries' | 'leagues' | 'clubs' | 'players';
+export type EditorKind = 'countries' | 'leagues' | 'clubs' | 'players' | 'coaches';
+/** Resultado da importação de CSV no editor (tudo ou nada: com erros, nada foi gravado). */
+export interface CsvImportReportDto { created: number; updated: number; /** linhas iguais ao que já existe (nada gravado) */ unchanged: number; errors: string[]; warnings: string[] }
 /** base = como na base; edited = alterado por este pacote; created = criado por ele; removed = excluído por ele */
 export type EditorStatus = 'base' | 'edited' | 'created' | 'removed';
 export interface EditorListQuery {
@@ -398,6 +402,20 @@ export interface InfrastructureOverviewDto {
 
 // ---------------------------------------------------------------- diretoria e empregos (Fase 8D)
 export type BoardStatus = 'pending' | 'on_track' | 'close' | 'off_track';
+/** Técnico da IA (Fase 9). */
+export interface AiCoachDto { id: string; name: string; nationality: string; age: number; reputation: number; clubId: string | null; clubName: string | null; since: string | null }
+/** Ficha de um técnico da IA: atributos 1–20, metodologia e passagens (fim: demitido, substituído ou aposentado). */
+export interface AiCoachDetailDto extends AiCoachDto {
+  retired: boolean; methodology: Methodology; attributes: CoachAttributes;
+  spells: Array<{ clubId: string; clubName: string; start: string; end: string | null; reason: 'sacked' | 'replaced' | 'retired' | null }>;
+}
+/** Ficha de um clube no jogo: técnico (null = vaga aberta; `userCoach` = nome do usuário, no clube dele) e elenco sem força. */
+export interface ClubInfoDto {
+  id: string; name: string; city: string; country: string; countryCode: string; leagueId: string; league: string;
+  reputation: number; fans: number; stadium: string; capacity: number; isUserClub: boolean;
+  coach: AiCoachDto | null; userCoach: string | null;
+  squad: Array<{ id: string; name: string; position: Position; age: number; nationality: string }>; avgAge: number;
+}
 export interface BoardOverviewDto {
   employed: boolean; coachReputation: number;
   /** atributos do treinador (1–20) e pontos ainda não distribuídos */ coachAttributes: CoachAttributes; coachPoints: number;
@@ -428,8 +446,12 @@ export interface GameApi {
   /** imagens disponíveis nos pacotes ativos ("players/<id>", "clubs/<id>", "stadiums/<id>", "leagues/<id>") e a versão do índice */
   imageKeys(): Promise<IpcResult<{ version: number; keys: string[] }>>;
   /** escolhe uma imagem (diálogo) e grava no pacote para a entidade; devolve as chaves atualizadas (ou null se cancelou) */
-  editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
-  editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
+  /** importa jogadores/clubes de uma planilha CSV escolhida pelo usuário (null = cancelou) */
+  editorImportCsv(packId: string, kind: 'players' | 'clubs'): Promise<IpcResult<CsvImportReportDto | null>>;
+  /** salva o modelo (só cabeçalho) ou a exportação completa em CSV (null = cancelou; senão o caminho) */
+  editorExportCsv(packId: string, kind: 'players' | 'clubs', template: boolean): Promise<IpcResult<string | null>>;
+  editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
+  editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
   /** imagens deste pacote (mesmo inativo), para o editor */
   editorImageKeys(packId: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
   editorCreatePack(input: { name: string; author?: string; description?: string }): Promise<IpcResult<EditorSummaryDto>>;
@@ -501,6 +523,9 @@ export interface GameApi {
   getInfrastructure(profileId: string, careerId: string): Promise<IpcResult<InfrastructureOverviewDto>>;
   startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
   getBoard(profileId: string, careerId: string): Promise<IpcResult<BoardOverviewDto>>;
+  getClubInfo(profileId: string, careerId: string, clubId: string): Promise<IpcResult<ClubInfoDto>>;
+  getAiCoach(profileId: string, careerId: string, coachId: string): Promise<IpcResult<AiCoachDetailDto>>;
+  listUnemployedCoaches(profileId: string, careerId: string): Promise<IpcResult<AiCoachDto[]>>;
   respondJobOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;
   /** distribui um ponto de atributo do treinador */
   spendCoachPoint(profileId: string, careerId: string, key: CoachAttrKey): Promise<IpcResult<BoardOverviewDto>>;

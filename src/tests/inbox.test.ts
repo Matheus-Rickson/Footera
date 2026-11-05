@@ -40,11 +40,19 @@ test('Caixa de entrada: remetente e ação padrão por tipo, ação explícita (
 });
 
 test('Caixa de entrada na carreira: toda lesão e suspensão de jogador seu e toda proposta recebida chegam com ação para resolver', async () => {
-  const db = await career('ib-e');
+  // amostra: a primeira semente (de uma lista fixa) em que houve lesão de jogador seu nas partidas
+  const userInjuries = (db: Awaited<ReturnType<typeof career>>, club: string) => db.prepare('SELECT report_json FROM matches').all()
+    .flatMap((m) => { const r = JSON.parse(String(m.report_json)) as { home: { clubId: string }; away: { clubId: string }; players: Array<{ team: 0 | 1; injuredDays?: number }> }; return r.players.filter((p) => (p.team === 0 ? r.home : r.away).clubId === club && (p.injuredDays ?? 0) > 0); }).length;
+  let db = await career('ib-e');
+  for (const seed of ['ib-e', 'ib-c', 'ib-d', 'ib-f', 'ib-g', 'ib-h']) {
+    db = await career(seed);
+    const club = getCareerState(db).clubId;
+    // jogadores transferíveis atraem propostas da IA
+    for (const r of db.prepare('SELECT id FROM players WHERE club_id = ? ORDER BY market_value DESC LIMIT 6').all(club)) setListed(db, String(r.id), true);
+    for (let i = 0; i < 14; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); }
+    if (userInjuries(db, club) > 0) break;
+  }
   const st = getCareerState(db);
-  // jogadores transferíveis atraem propostas da IA
-  for (const r of db.prepare('SELECT id FROM players WHERE club_id = ? ORDER BY market_value DESC LIMIT 6').all(st.clubId)) setListed(db, String(r.id), true);
-  for (let i = 0; i < 14; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); }
   const inbox = getNews(db);
   // lesões e suspensões nas partidas (relatórios das partidas do usuário)
   let injuries = 0, suspensions = 0;

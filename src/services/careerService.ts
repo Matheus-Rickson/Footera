@@ -11,6 +11,7 @@ import { ageOn, isValidIso } from '../shared/date.ts';
 import type { Coach, World } from '../shared/types.ts';
 import { setFullLeagues } from '../database/repositories/simLevelRepository.ts';
 import { startingAttributesError } from '../shared/coachAttributes.ts';
+import { ensureAiCoaches } from '../database/repositories/aiCoachRepository.ts';
 
 export class ValidationError extends Error {}
 
@@ -55,4 +56,5 @@ export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: stri
   ensureFinance(db);
   ensureYouthAcademies(db);
   ensureBoard(db);
+  ensureAiCoaches(db, world.coaches);
 }

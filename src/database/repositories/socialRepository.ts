@@ -184,9 +184,16 @@ export function processSocialDay(db: SqlDb, date: string): number {
   }
 
   // ---- técnicos demitidos ontem (IA) e troca de clube do usuário
-  for (const v of db.prepare(`SELECT club_id FROM job_vacancies WHERE opened_on = ? AND club_id IN ${FULL_CLUBS} ORDER BY club_id`).all(yesterday).slice(0, 2)) {
+  for (const v of db.prepare(`SELECT s.club_id, a.first_name, a.last_name FROM ai_coach_spells s JOIN ai_coaches a ON a.id = s.coach_id
+    WHERE s.end_date = ? AND s.end_reason = 'sacked' AND s.club_id IN ${FULL_CLUBS} ORDER BY s.club_id`).all(yesterday).slice(0, 2)) {
     const c = clubRef(db, S(v.club_id));
-    drafts.push({ kind: 'sacking', author: 'out-jornaldabola', text: sackingText(rng, { club: c.name }), clubs: [c], mood: { [c.id]: -1 }, priority: 45 + c.rep / 5 });
+    drafts.push({ kind: 'sacking', author: 'out-jornaldabola', text: sackingText(rng, { club: c.name, coach: `${S(v.first_name)} ${S(v.last_name)}` }), clubs: [c], mood: { [c.id]: -1 }, priority: 45 + c.rep / 5 });
+  }
+  // técnicos da IA contratados ontem: anúncio no perfil oficial do clube
+  for (const h of db.prepare(`SELECT s.club_id, a.first_name, a.last_name FROM ai_coach_spells s JOIN ai_coaches a ON a.id = s.coach_id
+    WHERE s.start_date = ? AND s.club_id IN ${FULL_CLUBS} ORDER BY s.club_id`).all(yesterday).slice(0, 2)) {
+    const c = clubRef(db, S(h.club_id));
+    drafts.push({ kind: 'coach', author: clubAccount(db, c.id), text: coachText(rng, { coach: `${S(h.first_name)} ${S(h.last_name)}`, club: c.name, sacked: false }), clubs: [c], mood: { [c.id]: 1 }, priority: 40 + c.rep / 5 });
   }
   const coach = JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as { firstName: string; lastName: string };
   const coachName = `${coach.firstName} ${coach.lastName}`;

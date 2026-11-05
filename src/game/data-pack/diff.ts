@@ -14,7 +14,7 @@ export function diffRecord(base: Rec, edited: Rec): Rec | null {
     if (k === 'id' || v === undefined) continue;
     const b = base[k];
     if (same(b, v)) continue;
-    if (k === 'attributes' && v && b && typeof v === 'object' && typeof b === 'object') {
+    if (k === 'attributes' && v && b && typeof v === 'object' && typeof b === 'object' && Object.values(v as Rec).every((x) => typeof x === 'object')) {
       const groups: Rec = {};
       for (const [g, attrs] of Object.entries(v as Rec)) {
         const bg = ((b as Rec)[g] ?? {}) as Rec;
@@ -24,7 +24,8 @@ export function diffRecord(base: Rec, edited: Rec): Rec | null {
       if (Object.keys(groups).length) { out.attributes = groups; changed = true; }
       continue;
     }
-    if (PARTIAL.has(k) && v && b && typeof v === 'object' && typeof b === 'object' && !Array.isArray(v)) {
+    // atributos do técnico: um nível só (tactics, motivation…)
+    if ((PARTIAL.has(k) || k === 'attributes') && v && b && typeof v === 'object' && typeof b === 'object' && !Array.isArray(v)) {
       const d = Object.fromEntries(Object.entries(v as Rec).filter(([sk, sv]) => !same((b as Rec)[sk], sv)));
       if (Object.keys(d).length) { out[k] = d; changed = true; }
       continue;

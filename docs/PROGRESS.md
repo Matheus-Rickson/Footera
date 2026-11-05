@@ -897,3 +897,30 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   só clubes de reputação igual ou maior que a do atual e o mesmo clube só volta em 90 dias (`OFFER_PACE`, `worthLeaving`). Desempregado sem mudança.
   Teste com todas as vagas abertas o tempo todo (pior caso): 2 a 9 propostas em 240 dias, espaçamento e seletividade conferidos; mutação 4/4.
   Observação: o teste de desempenho da rodada (limite de 2 s) passou de 4 s uma vez com a suíte inteira em paralelo; isolado roda em 1,2 s (oscilação de carga).
+- **Técnicos da IA como pessoas (Fase 9, migração 017):** um técnico por clube e um mercado de desempregados; demissão abre vaga e a vaga é preenchida
+  por um desempregado de reputação compatível (sem recontratar quem saiu do clube em 2 anos); o usuário substitui o técnico do clube que assume;
+  reputação na virada pela campanha; aposentadoria aos 70. Tática e disciplina deles valem nas partidas (calibração medida: gols +1,5%, amarelos −6,7%;
+  ver `docs/BOARD_JOBS.md`). Diretoria → "Técnicos" (liga e mercado), posts com nomes, proposta de emprego cita o técnico demitido. Testes: 4
+  (`ai-coaches.test.ts`: regras, invariantes depois de uma temporada e da virada, determinismo, substituição pelo usuário, efeito na partida); teste da caixa
+  de entrada passou a escolher a amostra entre sementes fixas (as partidas mudaram). Mutação 8/8. 235 testes. Tela verificada pelo usuário.
+- **Planilhas (CSV) no editor (Fase 9):** importar/exportar jogadores e clubes (`game/data-pack/csv.ts`, `editorImportCsv`/`editorExportCsv`, canais
+  `editor:importCsv`/`editor:exportCsv` com diálogos do sistema). Cabeçalhos em português, Excel brasileiro (`;`, Windows-1252), posições pela sigla,
+  datas dd/mm/aaaa, valores com pontos de milhar; altera só o preenchido, cria sem id, ignora linhas sem mudança, tudo ou nada com a linha do erro.
+  Nomes dos atributos passaram para `shared/attributeLabels.ts` (ficha do jogador e CSV). Testes: 3 (`csv.test.ts`); mutação 9/9. Telas verificadas pelo usuário.
+  Não feito: CSV de países/ligas e na ferramenta de linha de comando (`npm run pack`).
+- **Técnicos no universo e fichas (ajuste pedido pelo usuário):** os técnicos passaram a ser gerados com semente fixa a partir do universo
+  (`worldCoaches.ts`), iguais em toda carreira; a tela de nova carreira mostra o "Técnico atual" de cada clube (o do clube escolhido fica sem clube ao
+  começar). O card "Técnicos" saiu da Diretoria. Competições: clicar no clube abre a ficha do clube (`club:info`) com o técnico e o elenco (sem força:
+  de outros clubes só há estimativas no perfil; o jogador abre o perfil); clicar no técnico abre a ficha dele (`coach:info`: atributos, metodologia,
+  passagens). Comissão técnica: filtro "Técnicos sem clube" (`coach:unemployed`). Corrigido também o typecheck do motor (`TextDecoder` no csv.ts sem a
+  lib DOM). Testes: 1 novo e 1 ampliado em `ai-coaches.test.ts`; mutação 9/9. 239 testes. Fichas, filtro e nova carreira verificados pelo usuário.
+- **Técnicos editáveis nos pacotes de dados, com foto (pedido do usuário):** `World.coaches` + arquivo `coaches.json` no formato (criar/alterar/
+  remover; técnicos padrão `tec-<clube>`/`tec-livre-N` gerados por semente fixa; um técnico por clube, o padrão vai para o mercado; clube sem
+  técnico ganha um gerado), `docs/schema/coaches.schema.json`, exportação da base com técnicos, editor de dados → Técnicos (dados, clube,
+  reputação, metodologia, 6 atributos, foto `images/coaches/<id>`), foto na nova carreira, na ficha do clube e na do técnico. A carreira grava os
+  técnicos do universo montado (`ensureAiCoaches(db, world.coaches)`); contratações durante o jogo geram ids `tec-novo-N`. Correções visuais:
+  hover verde no nome do clube e no cartão do técnico; rolagem interna da tabela de Competições removida. Saves já criados mantêm os técnicos
+  que tinham. Testes: `world-coaches.test.ts` (3) e ajuste em `database.test.ts`; mutação 14/14. Telas verificadas pelo usuário.
+  Correção: o canal do editor no processo principal recusava o tipo `coaches` ("Dados inválidos"); teste de guarda novo compara as listas de
+  tipos do processo principal (editor e imagens) com as do motor (mutação 2/2). 243 testes.
+  Não feito: técnicos na planilha CSV.

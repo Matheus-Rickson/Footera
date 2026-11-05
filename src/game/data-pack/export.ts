@@ -3,8 +3,8 @@
  * montar o universo a partir do pacote reproduza exatamente o original. Serve de ponto de partida para quem cria patches.
  * As funções por entidade também alimentam o editor de dados (registro completo de uma entidade, no formato do pacote).
  */
-import type { Club, Country, League, Player, Stadium, World } from '../../shared/types.ts';
-import { PACK_FORMAT, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackManifest, type PlayerRec, type StadiumRec } from './format.ts';
+import type { Club, Country, League, Player, Stadium, World, WorldCoach } from '../../shared/types.ts';
+import { PACK_FORMAT, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackManifest, type PlayerRec, type StadiumRec } from './format.ts';
 
 export const countryRec = (c: Country): CountryRec => ({ id: c.id, code: c.code, name: c.name, economy: c.economy });
 export function leagueRec(l: League): LeagueRec {
@@ -27,6 +27,11 @@ export function playerRec(p: Player, internal = true): PlayerRec {
   };
 }
 
+export const coachRec = (k: WorldCoach): CoachRec => ({
+  id: k.id, firstName: k.firstName, lastName: k.lastName, birthDate: k.birthDate, nationality: k.nationality, club: k.clubId,
+  reputation: k.reputation, methodology: k.methodology, attributes: { ...k.attributes },
+});
+
 export function exportUniverse(world: World, manifest: Partial<PackManifest> = {}): Pack {
   return {
     manifest: { format: PACK_FORMAT, id: manifest.id ?? 'base', name: manifest.name ?? `Base gerada (semente ${world.seed})`, version: manifest.version ?? '1.0.0', ...manifest, base: 'none' },
@@ -36,6 +41,7 @@ export function exportUniverse(world: World, manifest: Partial<PackManifest> = {
       stadiums: world.stadiums.map(stadiumRec),
       clubs: world.clubs.map(clubRec),
       players: world.players.map((p) => playerRec(p)),
+      coaches: (world.coaches ?? []).map(coachRec),
     },
   };
 }

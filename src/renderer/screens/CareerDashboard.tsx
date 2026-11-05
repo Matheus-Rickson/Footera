@@ -132,7 +132,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         </div>
       </nav>}
 
-      <main className={!match && !player && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox') ? 'content content-fit' : 'content'}>
+      <main className={!match && !player && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions') ? 'content content-fit' : 'content'}>
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>
@@ -249,7 +249,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
         {!match && !player && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} club={club} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
-        {!match && !player && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
 
         {!match && !player && view === 'squad' && <SquadView squad={squad} onOpenPlayer={setPlayer} />}
       </main>

@@ -3,12 +3,16 @@ import type { World } from '../shared/types.ts';
 import { ageOn } from '../shared/date.ts';
 import { expectedPosition, OBJECTIVE_LABEL, objectiveFor } from '../game/board-engine/board.ts';
 import { clubStory } from '../game/world/clubStory.ts';
+import { clubCoach } from '../game/coach-engine/worldCoaches.ts';
+import type { WorldCoach } from '../shared/types.ts';
 
 /** Clubes e países do universo (a base fixa, na tela de nova carreira), com o resumo do painel do clube. */
 export function listClubs(w: World, origin?: ReadonlyMap<string, { created: string | null; edited: string[] }>): ClubList {
   const league = new Map(w.leagues.map((l) => [l.id, l]));
   const country = new Map(w.countries.map((c) => [c.id, c.name]));
   const stadium = new Map(w.stadiums.map((s) => [s.id, s]));
+  const code = new Map(w.countries.map((c) => [c.id, c.code]));
+  const coachOf = new Map<string, WorldCoach>((w.coaches ?? []).filter((k) => k.clubId).map((k) => [k.clubId!, k]));
   const squads = new Map<string, World['players']>();
   for (const p of w.players) if (p.clubId) squads.set(p.clubId, [...(squads.get(p.clubId) ?? []), p]);
   const repsByLeague = new Map<string, number[]>();
@@ -37,6 +41,7 @@ export function listClubs(w: World, origin?: ReadonlyMap<string, { created: stri
         squadSize: squad.length, avgAge: Math.round((squad.reduce((s, p) => s + ageOn(p.birthDate, w.startDate), 0) / Math.max(1, squad.length)) * 10) / 10,
         stars: [...squad].sort((a, b) => b.overall - a.overall).slice(0, 3).map((p) => ({ name: `${p.firstName} ${p.lastName}`, position: p.position, overall: p.overall })),
         origin: { created: origin?.get(c.id)?.created ?? null, edited: [...(origin?.get(c.id)?.edited ?? [])] },
+        coach: (() => { const k = coachOf.get(c.id) ?? clubCoach({ id: c.id, reputation: c.reputation, countryCode: code.get(c.countryId) ?? 'BRA' }, w.startDate); return { id: k.id, name: `${k.firstName} ${k.lastName}`, nationality: k.nationality, age: ageOn(k.birthDate, w.startDate), reputation: k.reputation }; })(),
         story: clubStory({ id: c.id, name: c.name, city: c.city, country: country.get(c.countryId) ?? '', league: l.name, tier: l.tier, stadium: st.name, capacity: st.capacity, fans: c.fans, reputation: c.reputation, rival: rivalOf(c)?.name ?? null }),
       };
     }),

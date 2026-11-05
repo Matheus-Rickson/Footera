@@ -36,9 +36,9 @@ Todo registro tem um `id` único no universo inteiro: minúsculas, números, `-`
 ```
 meu-patch/
   manifest.json     obrigatório
-  countries.json  leagues.json  stadiums.json  clubs.json  players.json   (todos opcionais)
+  countries.json  leagues.json  stadiums.json  clubs.json  players.json  coaches.json   (todos opcionais)
 ```
-Cada arquivo é uma lista (`[ … ]`). Os arquivos são aplicados nessa ordem (países → ligas → estádios → clubes → jogadores).
+Cada arquivo é uma lista (`[ … ]`). Os arquivos são aplicados nessa ordem (países → ligas → estádios → clubes → jogadores → técnicos).
 Arquivos `.json` com outros nomes são erro (evita um `jogadores.json` ignorado em silêncio). UTF-8 com ou sem BOM.
 
 ### manifest.json
@@ -86,6 +86,16 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
 - **Goleiro:** `attributes.goalkeeper` com `reflexes`, `oneOnOne`, `handling`, `aerial`, `rushingOut`, `kicking` (1–20). O
   `technical.goalkeeping` passa a ser calculado deles (média ponderada 3/2/2/1,5/1/0,5); informar só o `goalkeeping` deriva o grupo.
 
+**coaches** (técnicos): `firstName`, `lastName`, `birthDate` (25 a 85 anos na data de início) e `nationality` obrigatórios para criar;
+`club` (id ou `null` = sem clube), `reputation` (1–100), `methodology` (`defensive`/`possession`/`aggressive`) e `attributes` (`tactics`,
+`motivation`, `youth`, `discipline`, `negotiation`, `adaptability`, 1–20; ao alterar, pode mandar só alguns). O que faltar o jogo gera.
+- **Técnicos padrão:** a base não tem `coaches.json`; o jogo gera, por semente fixa, um técnico por clube (`tec-<id do clube>`) e um mercado
+  de desempregados (`tec-livre-1`, `tec-livre-2`… 15% do número de clubes). Patches se referem a eles por esses ids.
+- **Um técnico por clube:** pôr um técnico num clube (criando ou mudando `club`) manda o técnico padrão de lá para o mercado (aviso); dois
+  técnicos de pacote no mesmo clube é erro. Clube que fica sem técnico (o dele foi removido ou foi para outro clube) ganha um gerado (aviso).
+  Clube removido: o técnico dele fica sem clube.
+- Na carreira, o técnico do clube escolhido pelo usuário começa sem clube (o usuário assume a vaga).
+
 ## Ferramentas
 - `npm run pack -- validate <pasta> [<pasta> …] [--seed <semente>]` — valida na ordem de carga e mostra erros e avisos com pacote › arquivo › registro.
 - `npm run pack -- export <pasta> [--seed <semente>]` — exporta a base gerada como pacote completo (ponto de partida para editar).
@@ -112,7 +122,7 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
    pacotes ativos e grava a lista em `meta.data_packs`. `npm run pack -- zip <pasta> <arquivo.zip>` gera o .zip;
    exemplo pronto: `docs/exemplos/pacote-exemplo.zip`.
 3. **Fotos e escudos** — feito (sem commit). No pacote: `images/players/<id>.png|jpg` (foto do jogador), `images/clubs/<id>` (escudo) e
-   `images/stadiums/<id>` (foto do estádio) e `images/leagues/<id>` (logo da liga); PNG ou JPEG validados pelo conteúdo, até 5 MB, de 64 a 4096 px. Vêm dos pacotes ATIVOS (o último
+   `images/stadiums/<id>` (foto do estádio), `images/leagues/<id>` (logo da liga) e `images/coaches/<id>` (foto do técnico); PNG ou JPEG validados pelo conteúdo, até 5 MB, de 64 a 4096 px. Vêm dos pacotes ATIVOS (o último
    da ordem vence), inclusive em carreiras já criadas; desativar o pacote tira as imagens. O jogo serve só o que está no índice
    (`footera-img://img/<tipo>/<id>`), sem caminho vindo da tela. Importar/exportar .zip leva as imagens; imagem inválida recusa o pacote.
    No editor: campo de imagem na liga (logo), no clube (escudo e foto do estádio) e no jogador (gravado na hora). O logo da liga aparece
@@ -121,5 +131,17 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
    aparece é "base + este pacote"): países, ligas, clubes (com estádio) e jogadores; criar (jogador pela força, clube com estádio),
    alterar (o pacote guarda só a diferença; voltar ao original tira o registro), excluir (da base vira `$remove`, restaurável), restaurar,
    detalhes do pacote (nome, versão, autor, descrição) e exportar .zip. Cada gravação valida o universo inteiro antes de escrever.
-   Pacote novo já entra ativo no fim da ordem de carga. CSV fica para depois.
-5. Técnicos dos clubes da IA como entidade (nome, nacionalidade, foto, reputação, metodologia → tática da IA).
+   Pacote novo já entra ativo no fim da ordem de carga.
+5. **Técnicos da IA** — feito (sem commit): pessoas com nome, nacionalidade, idade, reputação e atributos, gerados pela semente na carreira
+   (migração 017); não fazem parte dos pacotes por enquanto. Detalhes em `docs/BOARD_JOBS.md`.
+6. **Planilhas (CSV)** — feito (sem commit), no editor (jogadores e clubes): **Importar**, **Exportar** (universo base + pacote) e **Modelo** (só o cabeçalho).
+   - Separador `;` (Excel em português) ou `,`; aspas duplas; UTF-8 (com ou sem BOM) ou Windows-1252. A exportação sai com `;` e BOM.
+   - Cabeçalhos em português, sem diferença de maiúsculas/acentos (`Posição` = `posicao`), ou as chaves do JSON. Colunas desconhecidas viram aviso.
+   - Jogadores: id, Nome, Sobrenome, Nascimento (dd/mm/aaaa ou aaaa-mm-dd), Nacionalidade (3 letras), Clube (id; `livre` = sem clube),
+     Posição (GOL, ZAG, LE, LD, AE, AD, VOL, MC, ME, MD, MEI, PE, PD, SA, CA), Secundárias (separadas por `/`), Pé (direito/esquerdo/ambos),
+     Altura, Peso, Força (1–20), Potencial (1–20), Salário, Fim do contrato e cada atributo pelo nome (Finalização, Passe, Reflexos… 1–20).
+     Com atributos na linha, a coluna Força é ignorada (a força sai deles).
+   - Clubes: id, Nome, Sigla, País (id), Liga (id), Cidade, Reputação (1–100), Caixa, Torcida e as instalações (1–20).
+   - Linha com `id` existente altera o registro (só as colunas preenchidas; célula vazia não apaga); sem `id` (ou com `id` novo), cria.
+     Linhas iguais ao que já existe são ignoradas (exportar e reimportar sem mexer não grava nada).
+   - Tudo ou nada: qualquer erro de formato ou de regra (ex.: clube inexistente) e nada é gravado; o relatório aponta a linha do arquivo.

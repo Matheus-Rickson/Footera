@@ -20,7 +20,7 @@ import type { Coach } from '../shared/types.ts';
 
 const base = generateWorld({ seed: 'pack-test', teamsPerLeagueOverride: 6 });
 const coach: Coach = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession', reputation: 20, photoPath: null };
-const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [] };
+const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] };
 /** pacote a partir de objetos (passa pela mesma validação de estrutura que um pacote lido do disco) */
 const pack = (id: string, data: Partial<Record<keyof PackData, unknown[]>>, extra: Record<string, unknown> = {}): Pack =>
   parsePack({ manifest: { format: PACK_FORMAT, id, name: id, version: '1.0', ...extra }, files: data }, id);

@@ -28,6 +28,7 @@ import { boardVeto, coachOf, reviewSeason, startBoardSeason } from './boardRepos
 import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { boardBrief, squadSize } from './newsRepository.ts';
+import { reviewAiCoaches } from './aiCoachRepository.ts';
 
 export class SeasonError extends UserError {}
 
@@ -298,6 +299,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     const review = reviewSeason(db, date, userRow ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : null,
       [...direction].filter(([, d]) => d === 'relegated').map(([id]) => id));
     if (review) report.board = { met: review.verdict.met, lines: review.verdict.lines, sacked: review.sacked };
+    reviewAiCoaches(db, st.season, date, new Set([...direction].filter(([, d]) => d === 'relegated').map(([id]) => id))); // técnicos da IA: reputação e aposentadoria
 
     // 9. temporada nova, calendário, e o dia 1º/jul (mercado de verão abre; cobrança de julho)
     db.prepare('UPDATE career SET season = ?, updated_at = ? WHERE id = 1').run(newSeason, now.toISOString());
