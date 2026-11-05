@@ -7,6 +7,8 @@ import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.t
 import { initials, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
 import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
+import { ClubCrest } from '../flags.tsx';
+import { useImages } from '../images.ts';
 
 interface Props {
   profileId: string; careerId: string; fixtureId?: string; autoplay: boolean; onBack: () => void;
@@ -175,6 +177,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const [speed, setSpeed] = useState<Speed>(1);
   const [minor, setMinor] = useState(false);
   const [busy, setBusy] = useState(false);
+  const img = useImages();
   const [dialog, setDialog] = useState<null | { kind: 'talk' } | { kind: 'subs'; reason: string | null } | { kind: 'assistant'; items: LiveMatchDto['suggestions'] }>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [talkDone, setTalkDone] = useState(false);
@@ -266,12 +269,14 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
     <div className="mc">
       <section className="card mc-head">
         <div className="mc-board">
-          <div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{st.teams[0].formation}</small></div>
+          <div className="mc-side"><div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{st.teams[0].formation}</small></div>
+            <ClubCrest id={r.home.clubId} name={r.home.name} size={36} src={img.url('clubs', r.home.clubId)} /></div>
           <div className="mc-score"><b>{st.score[0]}</b>
             <div className="mc-clock"><span className={`mc-status ${status === 'Ao vivo' ? 'on' : ''}`}>{status}</span><strong>{finished ? 'Fim' : st.minuteLabel}</strong>
               {st.shootout && <span className="small muted">pên. {st.shootout[0]} x {st.shootout[1]}</span>}</div>
             <b>{st.score[1]}</b></div>
-          <div className="mc-team mc-team-away"><span className="mc-team-name">{r.away.name}</span><small className="muted">{st.teams[1].formation}</small></div>
+          <div className="mc-side mc-side-away"><ClubCrest id={r.away.clubId} name={r.away.name} size={36} src={img.url('clubs', r.away.clubId)} />
+            <div className="mc-team mc-team-away"><span className="mc-team-name">{r.away.name}</span><small className="muted">{st.teams[1].formation}</small></div></div>
         </div>
         <div className="mc-actions">
           {!finished && <button className="secondary" disabled={busy} onClick={() => setPlaying((p) => !p)}>{playing ? <><Pause size={15} aria-hidden="true" />Pausar</> : <><Play size={15} aria-hidden="true" />{st.started ? 'Continuar' : 'Iniciar'}</>}</button>}

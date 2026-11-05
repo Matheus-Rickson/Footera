@@ -16,6 +16,10 @@ import { rowToPlayer } from './worldRepository.ts';
 import { addFamiliarity, familiarityOf, ROLE_TRAIN_GAIN, roleFocusMap } from './roleRepository.ts';
 import { roleById } from '../../game/match-engine/playerRoles.ts';
 import { FULL_CLUBS, FULL_PLAYERS, lightClubIds } from './simLevelRepository.ts';
+import { youthGrowthMultiplier } from '../../game/coach-engine/coach.ts';
+import { coachOf } from './boardRepository.ts';
+import { POS_NAME } from '../../shared/positions.ts';
+import type { Position } from '../../shared/types.ts';
 
 export class TrainingError extends UserError {}
 
@@ -95,7 +99,7 @@ export function processTrainingDay(db: SqlDb, date: string): void {
   const fitness = new Map<string, number>(), medical = new Map<string, number>();
   const upStatus = db.prepare(`INSERT INTO player_status (player_id, injury_until, injury_note) VALUES (?,?,?)
     ON CONFLICT(player_id) DO UPDATE SET injury_until = excluded.injury_until, injury_note = excluded.injury_note`);
-  for (const r of db.prepare(`SELECT id, club_id, first_name, last_name, condition_pct FROM players WHERE club_id IN ${FULL_CLUBS} ORDER BY id`).all()) {
+  for (const r of db.prepare(`SELECT id, club_id, first_name, last_name, position, condition_pct FROM players WHERE club_id IN ${FULL_CLUBS} ORDER BY id`).all()) {
     const clubId = S(r.club_id), id = S(r.id);
     const roll = rng.next();
     if (injured.has(id)) continue;
@@ -104,7 +108,12 @@ export function processTrainingDay(db: SqlDb, date: string): void {
     const days = Math.max(2, Math.round(createRng(`training-injury-days:${seedOf(db)}:${date}:${id}`).int(3, 21) * medical.get(clubId)!));
     upStatus.run(id, addDays(date, days), `Lesão no treino (${days} dias)`);
     db.prepare('UPDATE players SET condition_pct = MIN(condition_pct, ?) WHERE id = ?').run(INJURED_CONDITION_CAP, id);
-    if (clubId === st.clubId) addNews(db, date, 'staff', `Departamento médico: ${S(r.first_name)} ${S(r.last_name)} se lesionou no treino`, `Previsão de retorno em ${days} dias.`);
+    if (clubId === st.clubId) {
+      const name = `${S(r.first_name)} ${S(r.last_name)}`, back = addDays(date, days);
+      addNews(db, date, 'medical', `Lesão no treino: ${name} fora por ${days} dias`,
+        `${name} (${POS_NAME[S(r.position) as Position].toLowerCase()}) se machucou durante o treino de hoje. Pela avaliação do departamento médico, a previsão de retorno é ${back.split('-').reverse().join('/')} (${days} dias).\n\nEle não pode ser escalado até lá. Se estiver entre os titulares do esquema ativo, o auxiliar escolhe um substituto na hora do jogo, mas vale revisar a escalação e a função da vaga em Táticas.`,
+        { actionLabel: 'Ajustar a escalação em Táticas' });
+    }
   }
 }
 
@@ -118,6 +127,7 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
   const seed = seedOf(db);
   const settings = trainingSettings(db);
   const focus = focusMap(db);
+  const coachAttrs = st.clubId ? coachOf(db).attributes : undefined;
   const economy = new Map(db.prepare('SELECT code, economy FROM countries').all().map((r) => [S(r.code), N(r.economy)]));
   // fração de minutos na temporada até aqui
   const minutes = new Map(db.prepare('SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE c.season = ? GROUP BY pss.player_id')
@@ -150,7 +160,8 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
     if (clubId) {
       const c = ctxOf(clubId);
       const user = clubId === st.clubId, academy = youthClub !== null;
-      const base = qualityFactor(academy ? c.youthFacility : c.facility) * (user && !academy ? INTENSITY[settings.intensity].growth : 1);
+      const base = qualityFactor(academy ? c.youthFacility : c.facility) * (user && !academy ? INTENSITY[settings.intensity].growth : 1)
+        * (user ? youthGrowthMultiplier(coachAttrs, age) : 1); // desenvolvimento de jovens do treinador (elenco e base do seu clube)
       const techQ = p.position === 'GK' ? c.gk : c.tech;
       growth = { technical: base * qualityFactor(techQ), mental: base * qualityFactor(techQ), physical: base * qualityFactor(c.phys) };
       physicalDecline = 1.1 - (0.2 * c.phys) / 20;

@@ -1,7 +1,7 @@
 /**
  * Atributos do treinador (escala 1–20, a mesma dos jogadores). Na criação, todos partem de COACH_ATTR_BASE e o usuário distribui
- * COACH_ATTR_POINTS pontos (no máximo COACH_ATTR_MAX_START em cada um). Gravados com o treinador no save; serão a base dos sistemas de
- * reputação e evolução do técnico (próxima fase) — por enquanto ainda não alteram a simulação.
+ * COACH_ATTR_POINTS pontos (no máximo COACH_ATTR_MAX_START em cada um). Gravados com o treinador no save. Efeitos no jogo e evolução
+ * (pontos ganhos a cada temporada): `game/coach-engine/coach.ts`.
  */
 export interface CoachAttributes { tactics: number; motivation: number; youth: number; discipline: number; negotiation: number; adaptability: number }
 export type CoachAttrKey = keyof CoachAttributes;

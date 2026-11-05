@@ -11,6 +11,7 @@ import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, POS_NAME, PosP
 import { useImages } from '../images.ts';
 import { attributeHelp } from '../../game/world/attributeInfo.ts';
 import { HelpTip } from '../help.tsx';
+import { Stars } from '../stars.tsx';
 
 const ATTR_LABEL: Record<string, string> = {
   finishing: 'Finalização', passing: 'Passe', dribbling: 'Drible', tackling: 'Desarme', marking: 'Marcação', firstTouch: 'Primeiro toque', crossing: 'Cruzamento',
@@ -86,7 +87,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
               <h2>{p.name}{p.market && <PlayerFlags p={p.market} />}</h2>
               <div className="row pf-meta">
                 <span>{p.nationalityName}</span><span className="pf-sep" />
-                <span>{p.own ? (p.youth ? 'Suas categorias de base' : 'Seu elenco') : p.clubName ?? 'Sem clube'}</span>
+                <span>{p.own ? (p.youth ? 'Suas categorias de base' : 'Seu elenco') : p.clubName ?? 'Sem clube'}</span><span className="pf-sep" />
+                <Stars reputation={p.reputation} label="Reputação" />
               </div>
               <div className="row pf-meta">
                 <PosPill pos={p.position} />
@@ -315,7 +317,7 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
               <div className="pq-id">
                 <h2>{p.name}</h2>
                 <div className="row pf-meta"><PosPill pos={p.position} />{p.secondaryPositions.map((s) => <PosPill key={s} pos={s} minor />)}
-                  <span>{p.age} anos</span><span>{FOOT_LABEL[p.foot] ?? p.foot}</span><span>{p.heightCm} cm</span><span className="muted">{p.nationalityName}</span></div>
+                  <span>{p.age} anos</span><span>{FOOT_LABEL[p.foot] ?? p.foot}</span><span>{p.heightCm} cm</span><span className="muted">{p.nationalityName}</span><Stars reputation={p.reputation} label="Reputação" /></div>
               </div>
               <div className="pq-level"><strong className={tone(p.estOverall.low)}>{p.own ? to20(p.estOverall.low) : fmtRange20(p.estOverall)}</strong><span>força</span></div>
               <div className="pq-level"><strong>{p.condition}%</strong><span>condição</span></div>

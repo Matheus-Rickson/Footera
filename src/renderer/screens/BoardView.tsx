@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BoardOverviewDto, BoardStatus } from '../../shared/api.ts';
+import { Plus } from 'lucide-react';
 import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
+import { Stars } from '../stars.tsx';
+import { HelpTip } from '../help.tsx';
+import { COACH_ATTRS, type CoachAttrKey } from '../../shared/coachAttributes.ts';
+import { COACH_ATTR_CAP, COACH_EFFECT } from '../../game/coach-engine/coach.ts';
+
+/** O que cada atributo do treinador faz no jogo (efeito máximo, com o atributo em 20; na base 5 não há efeito). */
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+const COACH_EFFECT_TEXT: Record<CoachAttrKey, string> = {
+  tactics: `Força do time em campo: até +${String(COACH_EFFECT.tactics * 100).replace('.', ',')}% (soma ao entrosamento).`,
+  motivation: `Conversa no vestiário: efeito bom até ${pct(COACH_EFFECT.talkBoost)} maior; efeito ruim até ${pct(COACH_EFFECT.talkSoften)} menor.`,
+  youth: `Evolução mensal dos jogadores de até 21 anos do seu clube (elenco e base): até +${pct(COACH_EFFECT.youth)}.`,
+  discipline: `Chance de cartão (amarelo e vermelho) dos seus jogadores: até −${pct(COACH_EFFECT.cards)}.`,
+  negotiation: `Taxa pedida pelos clubes e salário pedido pelos jogadores (contratação e renovação): até −${pct(COACH_EFFECT.negotiation)}.`,
+  adaptability: `Quem entra ou muda de posição por decisão sua rende até +${pct(COACH_EFFECT.inGame)}; ao assumir um clube novo, até +${COACH_EFFECT.newClub} de confiança da diretoria.`,
+};
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
 const STATUS: Record<BoardStatus, { label: string; cls: string }> = {
@@ -27,7 +43,7 @@ export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props)
     <div className="grid1">
       {notice && <p className="ok" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {!ov.employed && <p className="notice">Você está <strong>sem clube</strong>. O calendário continua; clubes com vaga fazem propostas conforme a sua reputação ({ov.coachReputation}). Aceite uma para voltar a trabalhar.</p>}
+      {!ov.employed && <p className="notice">Você está <strong>sem clube</strong>. O calendário continua; clubes com vaga fazem propostas conforme a sua reputação (<Stars reputation={ov.coachReputation} />). Aceite uma para voltar a trabalhar.</p>}
 
       {c && (
         <div className="grid2">
@@ -64,7 +80,7 @@ export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props)
         {ov.offers.length === 0 ? <p className="muted">Nenhuma proposta no momento. Clubes que demitem o técnico procuram treinadores com reputação compatível.</p> : (
           <table><thead><tr><th>Clube</th><th>Liga</th><th>Reputação</th><th>Recebida</th><th>Responder até</th><th /></tr></thead>
             <tbody>{ov.offers.map((o) => (
-              <tr key={o.id}><td><strong>{o.clubName}</strong></td><td>{o.league}</td><td>{o.reputation}</td><td>{fmtDate(o.date)}</td><td>{fmtDate(o.expires)}</td>
+              <tr key={o.id}><td><strong>{o.clubName}</strong></td><td>{o.league}</td><td><Stars reputation={o.reputation} /></td><td>{fmtDate(o.date)}</td><td>{fmtDate(o.expires)}</td>
                 <td className="row">{confirmJob === o.id
                   ? <><button disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.respondJobOffer(profileId, careerId, o.id, true)); return `Você é o novo treinador do ${o.clubName}.`; }, true)}>Confirmar troca</button>
                     <button className="secondary" onClick={() => setConfirmJob(null)}>Cancelar</button></>
@@ -76,7 +92,25 @@ export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props)
 
       <section className="card">
         <h2>Carreira do treinador</h2>
-        <p>Reputação: <strong>{ov.coachReputation}</strong>/100 <span className="muted small">(sobe com objetivos cumpridos, títulos e acessos; cai com fracassos, rebaixamentos e demissões)</span></p>
+        <p className="row">Reputação: <Stars reputation={ov.coachReputation} size={18} label="Reputação do treinador" />
+          <HelpTip text="Sobe com objetivos cumpridos (mais ainda quando a campanha supera a meta com folga), títulos e acessos; cai com objetivos não cumpridos, rebaixamentos e demissões. Define quais clubes fazem propostas (clubes grandes só chamam treinadores com reputação alta) e dá crédito com a diretoria ao assumir um clube de reputação menor." /></p>
+        <h3 className="row">Atributos {ov.coachPoints > 0 && <span className="bd-points">{ov.coachPoints} ponto(s) para distribuir</span>}
+          <HelpTip text="Escala 1–20. Na avaliação de cada temporada no cargo o treinador ganha 1 ponto, +1 se cumprir o objetivo, +1 por título e +1 por acesso. Cada atributo vai até 20. Os efeitos começam acima de 5 (a base da criação) e são pequenos de propósito." /></h3>
+        <div className="bd-attrs">
+          {COACH_ATTRS.map((a) => {
+            const v = ov.coachAttributes[a.key];
+            return (
+              <div key={a.key} className="bd-attr">
+                <span className="bd-attr-name">{a.label}<HelpTip text={`${a.description} ${COACH_EFFECT_TEXT[a.key]}`} /></span>
+                <div className="meter bd-attr-bar"><i style={{ width: `${(v / COACH_ATTR_CAP) * 100}%` }} /></div>
+                <strong className="bd-attr-val">{v}</strong>
+                {ov.coachPoints > 0 && <button className="nc-ghost bd-attr-plus" disabled={busy || v >= COACH_ATTR_CAP} aria-label={`Adicionar ponto em ${a.label}`}
+                  onClick={() => void run(async () => { setOv(await unwrap(window.api.spendCoachPoint(profileId, careerId, a.key))); return null; })}><Plus size={14} aria-hidden="true" /></button>}
+              </div>
+            );
+          })}
+        </div>
+        <h3>Clubes</h3>
         <table><thead><tr><th>Clube</th><th>Início</th><th>Fim</th><th>Saída</th></tr></thead>
           <tbody>{ov.spells.map((s, i) => <tr key={i} className={s.end ? '' : 'mine'}><td>{s.clubName}</td><td>{fmtDate(s.start)}</td><td>{s.end ? fmtDate(s.end) : 'atual'}</td><td>{s.reason === 'sacked' ? 'demitido' : s.reason === 'left' ? 'saiu para outro clube' : '—'}</td></tr>)}</tbody></table>
       </section>

@@ -24,8 +24,10 @@ import { processScoutingDay } from './scoutRepository.ts';
 import { processTrainingDay, processTrainingMonth, developLightPlayers } from './trainingRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
-import { boardVeto, reviewSeason, startBoardSeason } from './boardRepository.ts';
+import { boardVeto, coachOf, reviewSeason, startBoardSeason } from './boardRepository.ts';
+import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { fmtMoney } from '../../shared/money.ts';
+import { boardBrief, squadSize } from './newsRepository.ts';
 
 export class SeasonError extends UserError {}
 
@@ -104,7 +106,7 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
   const p = rowToPlayer(row);
   if (monthsLeft(st.gameDate, p.contractEnd) > RENEW_WINDOW_MONTHS) throw new SeasonError(`O contrato de ${nameOf(p)} ainda é longo: a renovação só é possível com até ${RENEW_WINDOW_MONTHS} meses restantes.`);
   const age = ageOn(p.birthDate, st.gameDate);
-  const demand = renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty });
+  const demand = Math.round(renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }) * negotiationMultiplier(coachOf(db).attributes));
   const d = renewalDecision(input.wage, input.years, demand, age);
   if (d.kind === 'too_long') return { outcome: 'rejected', message: `Aos ${age} anos, ${nameOf(p)} aceita assinar por no máximo ${d.maxYears} temporada(s).` };
   if (d.kind === 'reject') return { outcome: 'rejected', message: `${nameOf(p)} recusou: o salário oferecido está muito abaixo do que ele espera.` };
@@ -114,7 +116,7 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
   const end = `${contractBaseYear(p.contractEnd) + input.years}-06-30`;
   withTransaction(db, () => {
     db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(input.wage, end, p.id);
-    addNews(db, st.gameDate, 'contract', `Renovação: ${nameOf(p)} assina até ${br(end)}`, `Novo salário: ${fmt(input.wage)} por mês.`);
+    addNews(db, st.gameDate, 'contract', `Renovação: ${nameOf(p)} assina até ${br(end)}`, `${nameOf(p)} (${age} anos) renovou o contrato por ${input.years} temporada(s), até ${br(end)}.\n\nSalário: de ${fmt(p.salary)} para ${fmt(input.wage)} por mês (${input.wage >= p.salary ? '+' : '−'}${fmt(Math.abs(input.wage - p.salary))}). A nova folha já vale a partir deste mês.`);
   });
   return { outcome: 'accepted', contractEnd: end, message: `${nameOf(p)} renovou até ${br(end)} com salário de ${fmt(input.wage)} por mês.` };
 }
@@ -196,7 +198,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
       if (champ) {
         db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(st.season, champ.clubId, c.id, champ.clubId === st.clubId ? 1 : 0);
         report.champions.push({ competitionName: c.name, country: c.country, clubName: champ.clubName });
-        if (champ.clubId === st.clubId) addNews(db, date, 'trophy', `CAMPEÃO! ${champ.clubName} conquista a ${c.name}`, 'O troféu já está na sala de troféus.');
+        if (champ.clubId === st.clubId) addNews(db, date, 'trophy', `CAMPEÃO! ${champ.clubName} conquista a ${c.name}`, `Parabéns, professor! O ${champ.clubName} é campeão da ${c.name}. Uma conquista histórica para o clube e para a sua carreira.\n\nO troféu já está na Sala de troféus. Títulos aumentam a reputação do clube e a sua, e contam na avaliação da diretoria.`);
       }
     }
     for (const m of moves) {
@@ -207,7 +209,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     if (prev) {
       const o = direction.get(st.clubId);
       addNews(db, date, 'season', `Fim da temporada ${seasonLabel(st.season)}: ${prev.position}º lugar na ${prev.competitionName}`,
-        `Premiação de ${fmt(prev.prize)}.${o === 'promoted' ? ' O clube conquistou o ACESSO à divisão superior!' : o === 'relegated' ? ' O clube foi REBAIXADO.' : ''}`);
+        `A temporada ${seasonLabel(st.season)} terminou: ${prev.position}º lugar na ${prev.competitionName}.${o === 'promoted' ? ' O clube conquistou o ACESSO à divisão superior!' : o === 'relegated' ? ' O clube foi REBAIXADO.' : ''}\n\nA premiação pela campanha foi de ${fmt(prev.prize)}, já creditada no caixa. A avaliação da diretoria chega em seguida.`);
     }
 
     // 3. aposentadorias (inclui jogadores livres)
@@ -218,7 +220,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
       report.retiredTotal++;
       if (p.clubId === st.clubId) report.retiredUser.push(nameOf(p));
     }
-    if (report.retiredUser.length) addNews(db, date, 'retirement', `Aposentadoria: ${report.retiredUser.join(', ')}`, 'Encerraram a carreira e deixaram o elenco.');
+    if (report.retiredUser.length) addNews(db, date, 'retirement', `Aposentadoria: ${report.retiredUser.join(', ')}`, `${report.retiredUser.join(', ')} ${report.retiredUser.length > 1 ? 'encerraram' : 'encerrou'} a carreira e ${report.retiredUser.length > 1 ? 'deixaram' : 'deixou'} o elenco.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Confira se algum setor ficou desfalcado e reforce no mercado ou na base.`);
 
     // 4. contratos que vencem: a IA renova a maioria; o usuário perde quem não renovou
     const expiring = db.prepare('SELECT * FROM players WHERE club_id IS NOT NULL AND contract_end <= ? ORDER BY id').all(date).map(rowToPlayer);
@@ -234,7 +236,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
         report.aiRenewed++;
       } else { releasePlayer(db, p.id, date, false); report.aiReleased++; }
     }
-    if (report.releasedUser.length) addNews(db, date, 'contract', `Fim de contrato: ${report.releasedUser.join(', ')}`, 'Saíram de graça porque o contrato não foi renovado.');
+    if (report.releasedUser.length) addNews(db, date, 'contract', `Fim de contrato: ${report.releasedUser.join(', ')}`, `${report.releasedUser.join(', ')} ${report.releasedUser.length > 1 ? 'saíram' : 'saiu'} de graça porque o contrato terminou sem renovação.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Para não perder jogadores assim, renove na aba Contratos quando faltarem até 12 meses.`, { action: 'squad', actionLabel: 'Ver o elenco' });
 
     // 5. balanço da temporada (a evolução agora é mensal, pelo treino) e revisão anual do potencial estimado visível
     const minutes = new Map(db.prepare('SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE c.season = ? GROUP BY pss.player_id')
@@ -306,7 +308,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     settleFinances(db, date);
     const coachClub = getCareerState(db).clubId; // vazio se o treinador foi demitido na avaliação
     report.newLeague = coachClub ? S(db.prepare('SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(newSeason, coachClub)?.name ?? '') : '';
-    addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, coachClub ? `${clubName(coachClub)} disputa a ${report.newLeague}. A janela de transferências de verão está aberta.` : 'O treinador está sem clube: aguarde propostas de emprego.');
+    addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, coachClub ? `Começa a temporada ${seasonLabel(newSeason)}: o ${clubName(coachClub)} disputa a ${report.newLeague}.\n\n${boardBrief(db)}\n\nA janela de transferências de verão está aberta até 31/08. Bom momento para ajustar o elenco, renovar contratos e definir os esquemas táticos.` : 'O treinador está sem clube: aguarde propostas de emprego na Diretoria.');
     return report;
   });
 }

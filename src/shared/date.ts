@@ -49,3 +49,16 @@ export function daysBetween(a: IsoDate, b: IsoDate): number {
   const pa = parseIso(a), pb = parseIso(b);
   return Math.round((Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86_400_000);
 }
+
+/**
+ * Grade de um mês para o calendário: semanas completas de domingo a sábado (5 ou 6), incluindo os dias do mês anterior e do
+ * seguinte que completam a primeira e a última semana.
+ */
+export function monthGrid(year: number, month: number): IsoDate[] {
+  const first = `${year}-${String(month).padStart(2, '0')}-01`;
+  const start = addDays(first, -weekday(first));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const last = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const days = Math.ceil((daysBetween(start, last) + 1) / 7) * 7;
+  return Array.from({ length: days }, (_, i) => addDays(start, i));
+}

@@ -20,6 +20,7 @@ import { fmtMoney } from '../../shared/money.ts';
 
 export class ScoutError extends UserError {}
 
+import { playerReputation } from '../../shared/scale.ts';
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
@@ -42,6 +43,7 @@ export function toScoutedDto(db: SqlDb, r: Record<string, unknown>, date: string
     id: p.id, name: `${p.firstName} ${p.lastName}`, age: ageOn(p.birthDate, date), nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions, foot: p.foot,
     clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd,
     estOverall: est.overall, estPotential: est.potential, knowledge: Math.floor(knowledge), shortlisted,
+    reputation: playerReputation(p.marketValue, r.club_reputation == null ? null : N(r.club_reputation)),
     nationalityName: countryName(db, p.nationality), heightCm: p.heightCm, weightKg: p.weightKg, status: publicStatus(db, p.id, date),
     estSummary: summarizeRanges(estimateAttributes(p.attributes, seedOf(db), p.id, knowledge)),
   };
@@ -68,7 +70,7 @@ export function getScoutingOverview(db: SqlDb): ScoutingOverviewDto {
     .map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, nationality: c.nationality, ability: c.ability, salary: c.salary }));
   const know = knowledgeMap(db);
   const shortlistIds = new Set(db.prepare('SELECT player_id FROM scout_shortlist').all().map((r) => S(r.player_id)));
-  const sel = 'SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id';
+  const sel = 'SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id';
   const visible = (r: Record<string, unknown>) => N(r.retired) === 0 && r.youth_club_id == null && S(r.club_id) !== st.clubId;
   const shortlist = db.prepare(`${sel} JOIN scout_shortlist s ON s.player_id = p.id ORDER BY s.added_on, p.id`).all().filter(visible)
     .map((r) => toScoutedDto(db, r, st.gameDate, know.get(S(r.id)) ?? 0, true));
@@ -90,7 +92,7 @@ export function hireScout(db: SqlDb, candidateId: string): void {
   withTransaction(db, () => {
     db.prepare('INSERT INTO scouts (id, first_name, last_name, nationality, ability, salary, hired_on, contract_end) VALUES (?,?,?,?,?,?,?,?)')
       .run(c.id, c.firstName, c.lastName, c.nationality, c.ability, c.salary, st.gameDate, addYears(st.gameDate, SCOUT_CONTRACT_YEARS));
-    addNews(db, st.gameDate, 'staff', `Olheiro contratado: ${c.firstName} ${c.lastName}`, `Qualidade ${c.ability}/20, salário de ${fmt(c.salary)} por mês, contrato de ${SCOUT_CONTRACT_YEARS} anos.`);
+    addNews(db, st.gameDate, 'staff', `Olheiro contratado: ${c.firstName} ${c.lastName}`, `${c.firstName} ${c.lastName} assinou contrato de ${SCOUT_CONTRACT_YEARS} anos como olheiro. Qualidade ${c.ability}/20; salário de ${fmt(c.salary)} por mês.\n\nQuanto melhor o olheiro, mais rápido o conhecimento sobre os jogadores observados cresce e mais estreitas ficam as faixas de estimativa. Defina a região (país) ou a lista de observação dele na aba Olheiros.`, { sender: 'Departamento de scouting', action: 'scouting', actionLabel: 'Ir para Olheiros' });
   });
 }
 
@@ -135,7 +137,7 @@ export function processScoutingDay(db: SqlDb, date: string): void {
   const st = getCareerState(db);
   for (const r of db.prepare('SELECT id, first_name, last_name FROM scouts WHERE contract_end < ?').all(date)) {
     db.prepare('DELETE FROM scouts WHERE id = ?').run(S(r.id));
-    addNews(db, date, 'staff', `Fim de contrato: o olheiro ${S(r.first_name)} ${S(r.last_name)} deixou o clube`, 'Contrate outro na aba Olheiros.');
+    addNews(db, date, 'staff', `Fim de contrato: o olheiro ${S(r.first_name)} ${S(r.last_name)} deixou o clube`, 'O olheiro não renovou e a região dele fica sem cobertura. Contrate outro na aba Olheiros.', { sender: 'Departamento de scouting', action: 'scouting', actionLabel: 'Ir para Olheiros' });
   }
   const scouts = db.prepare('SELECT * FROM scouts ORDER BY id').all();
   if (!scouts.length) return;
@@ -165,7 +167,7 @@ export function processScoutingDay(db: SqlDb, date: string): void {
 /** Ficha de um jogador: dados públicos, estatísticas da temporada, estimativas (outros clubes) ou valores reais (próprio clube) e parecer do olheiro. */
 export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto {
   const st = getCareerState(db);
-  const r = db.prepare('SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?').get(playerId);
+  const r = db.prepare('SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?').get(playerId);
   if (!r || N(r.retired) === 1) throw new ScoutError('Jogador não encontrado ou aposentado.');
   const p = rowToPlayer(r);
   const youthOf = r.youth_club_id == null ? null : S(r.youth_club_id);
@@ -201,6 +203,7 @@ export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto 
     id: p.id, name: `${p.firstName} ${p.lastName}`, age: ageOn(p.birthDate, st.gameDate), nationality: p.nationality, position: p.position, secondaryPositions: p.secondaryPositions,
     foot: p.foot, heightCm: p.heightCm, weightKg: p.weightKg, clubId: p.clubId, clubName: r.club_name == null ? null : S(r.club_name), own, youth: youthOf !== null,
     marketValue: p.marketValue, salary: p.salary, contractEnd: p.contractEnd, stats, roles: null as PlayerProfileDto['roles'],
+    reputation: playerReputation(p.marketValue, r.club_reputation == null ? null : N(r.club_reputation)),
   };
   if (own) {
     withFamiliarity(db, [p]);

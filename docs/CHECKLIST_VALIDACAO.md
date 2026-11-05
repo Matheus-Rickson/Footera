@@ -207,8 +207,38 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Nova carreira com o pacote ativo: escudo na lista e no painel; foto do estádio no lugar da ilustração (sem a etiqueta "Imagem ilustrativa").
 - [ ] Editor → liga: "Logo da liga". Com o pacote ativo, o logo aparece no menu de divisões e na etiqueta da liga do painel (nova carreira) e em Competições.
 - [ ] Balão de ajuda (?) no editor fica dentro do quadro do formulário (não invade a lista).
+- [ ] Dentro do jogo, com o pacote ativo: escudo do clube na barra lateral, no card "Clube" da Visão geral, no placar da partida (ao vivo e relatório) e na tabela de Competições.
 - [ ] Ficha do jogador com foto (no jogo); desativar o pacote em Pacotes de dados: as imagens somem (voltam o escudo gerado e as iniciais).
 - [ ] Exportar .zip de um pacote com imagens e importar em outra instalação (ou depois de remover): as imagens voltam.
+
+## 13h. Reputação e treinador
+- [ ] Reputação em estrelas (0–5, com meia estrela) em: nova carreira (painel do clube), Visão geral (treinador e clube), Diretoria (treinador e propostas), ficha e janela do jogador, Transferências (coluna Reputação). Nenhum número 0–100 aparece fora do editor.
+- [ ] Editor → clube: o campo Reputação mostra a prévia em estrelas ao lado do número.
+- [ ] Nova carreira num clube grande: reputação inicial do treinador maior que num clube pequeno (até 3,5 estrelas no máximo).
+- [ ] Diretoria → Carreira do treinador: 6 atributos com barra e (?) explicando o efeito; sem pontos, sem botão "+".
+- [ ] Depois de uma virada no cargo: notícia da avaliação cita os pontos ganhos; na Diretoria aparece "N ponto(s) para distribuir" e o "+" em cada atributo; o "+" some quando acabam os pontos e fica desativado no 20.
+
+## 13i. Campinho das funções
+- [ ] Táticas → clicar num jogador → janela da função: campinho à direita animado; passar o mouse em cada função troca a animação; sem mouse, mostra a escolhida (ou a automática).
+- [ ] Lateral Ofensivo vai à linha de fundo e cruza (zona vermelha atrás); Lateral Defensivo fica perto da defesa (zona azul); Falso 9 recua; Goleiro Líbero sai da área. Lado direito espelhado.
+
+## 13j. Calendário
+- [ ] Calendário abre no mês atual, em grade (dom–sáb), sem rolagem; abas de julho a junho e setas trocam o mês; meses sem jogo ficam apagados.
+- [ ] Dia de jogo: escudo do adversário, Casa/Fora; jogo disputado com V (verde), E (amarelo) ou D (vermelho) e o placar do seu ponto de vista, com o dia tingido; clicar abre o relatório.
+- [ ] Painel: data, escudo do clube, campanha V-E-D, próximo jogo com dias restantes e janela de transferências (aberta/fechada e dias até fechar/abrir).
+
+## 13k. Notícias (rede social)
+- [ ] Notícias → aba Rede: feed com perfis (avatar, nome, @), selo azul em imprensa, jornalistas, ligas e clubes; torcedores sem selo; data relativa (hoje, ontem, há N dias).
+- [ ] Depois de um jogo: post da imprensa com cartão do placar (escudos) e post do perfil oficial do seu clube; comentários de torcedores (2 primeiros e "Ver todos").
+- [ ] Prévia do seu jogo no dia; se líder e vice (até 3 pontos de diferença) se enfrentarem, post do perfil oficial da liga com a tabela e matéria da imprensa.
+- [ ] Mercado (julho/agosto): transferências relevantes com cartão (de → para, valor em €). Lesões longas, hat-tricks, zebras, goleadas, fim de rodada.
+- [ ] Filtros funcionam; "Em alta" lista clubes mais citados.
+
+## 13l. Caixa de entrada
+- [ ] Menu Clube → "Caixa de entrada" com contador de não lidas; abrir uma mensagem marca como lida e o contador cai; "Marcar todas como lidas" zera.
+- [ ] Mensagem em estilo e-mail (remetente, para, data, saudação, parágrafos, assinatura); filtros Todas / Não lidas / Pedem ação.
+- [ ] Lesão de jogador seu (partida ou treino): mensagem do Departamento médico com previsão de retorno e botão "Ajustar a escalação em Táticas", que abre Táticas.
+- [ ] Suspensão, proposta por jogador seu (botão para Transferências), alerta da diretoria e proposta de emprego (botão para a Diretoria).
 
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.

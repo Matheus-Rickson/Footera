@@ -9,6 +9,7 @@ import { roleFactorFrom } from '../../game/match-engine/playerRoles.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
 import { initials, POS_NAME, posLabel, PosPill, to20, tone } from '../playerUi.tsx';
 import { PlayerQuickView } from './PlayerProfile.tsx';
+import { RoleField } from '../roleField.tsx';
 
 interface Props { profileId: string; careerId: string; /** abre a ficha completa do jogador */ onOpenPlayer?: (id: string) => void }
 /**
@@ -52,6 +53,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
   const [styleOpen, setStyleOpen] = useState(false);
   /** jogador do campo cujo painel de funções está aberto */
   const [roleFor, setRoleFor] = useState<string | null>(null);
+  const [rolePreview, setRolePreview] = useState<string | null>(null); // função sob o mouse (campinho animado)
   /** jogador do elenco cuja janela de informações está aberta */
   const [infoFor, setInfoFor] = useState<string | null>(null);
   const closeInfo = useCallback(() => setInfoFor(null), []);
@@ -179,16 +181,19 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
       <div className="modal tc-roles-modal" role="dialog" aria-modal="true" aria-label={`Função de ${p.name}`} onKeyDown={(e) => { if (e.key === 'Escape') setRoleFor(null); }}>
         <header className="modal-head"><UserCog size={18} aria-hidden="true" />
           <div className="tc-roles-head"><h2>Função de {shortName(p.name)} · {POS_NAME[pos]}</h2><span className="muted small">A função fica com a vaga: quem jogar aqui joga assim.</span></div>
-          <button className="secondary icon" aria-label="Fechar" autoFocus onClick={() => setRoleFor(null)}><X size={16} aria-hidden="true" /></button></header>
+          <button className="secondary icon" aria-label="Fechar" autoFocus onClick={() => { setRoleFor(null); setRolePreview(null); }}><X size={16} aria-hidden="true" /></button></header>
         <div className="modal-body tc-roles">
-        <div className="tc-roles-list">
-          <button className={`tc-role ${chosen === null ? 'on' : ''}`} disabled={saving} onClick={() => setRole(i, null)}>
+        <div className="tc-roles-main">
+        <div className="tc-roles-list" onMouseLeave={() => setRolePreview(null)}>
+          <button className={`tc-role ${chosen === null ? 'on' : ''}`} disabled={saving} onClick={() => setRole(i, null)}
+            onMouseEnter={() => setRolePreview(autoRole(p, pos).id)} onFocus={() => setRolePreview(autoRole(p, pos).id)}>
             <span className="tc-role-name">Automática</span><span className="tc-role-desc muted small">A que mais rende para quem estiver na vaga. Hoje: {autoRole(p, pos).label}.</span>
           </button>
           {options.map((r) => {
             const f = fitOf(p, r.id);
             return (
-              <button key={r.id} className={`tc-role ${chosen === r.id ? 'on' : ''}`} disabled={saving} onClick={() => setRole(i, r.id)}>
+              <button key={r.id} className={`tc-role ${chosen === r.id ? 'on' : ''}`} disabled={saving} onClick={() => setRole(i, r.id)}
+                onMouseEnter={() => setRolePreview(r.id)} onFocus={() => setRolePreview(r.id)}>
                 <span className="tc-role-name">{r.label}</span>
                 <span className="tc-role-desc muted small">{r.description}</span>
                 <span className="tc-role-meter" title="Quanto os atributos dele combinam com a função"><span>Compatibilidade</span><i><b className={tone(f.suitability)} style={{ width: `${f.suitability}%` }} /></i><em>{to20(f.suitability)}</em></span>
@@ -206,6 +211,9 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
             </select></label>
           <span className="muted">O domínio também cresce jogando na função. Com o foco de atributos em Equilibrado (Treinamento), a evolução mensal privilegia os atributos da função treinada e a compatibilidade sobe aos poucos (até o potencial).</span>
         </div>
+        </div>
+        <RoleField roleId={rolePreview ?? chosen ?? autoRole(p, pos).id} pos={pos}
+          title={rolePreview ? catalog.get(rolePreview)?.label : chosen ? catalog.get(chosen)?.label : `Automática: ${autoRole(p, pos).label}`} />
         </div>
         <footer className="modal-foot"><button className="secondary" onClick={() => startMove(p.id)}><ArrowLeftRight size={14} aria-hidden="true" />Trocar de lugar</button>
           <span className="muted small">{saving ? 'Salvando…' : 'Salvo automaticamente'}</span><button onClick={() => setRoleFor(null)}>Concluir</button></footer>

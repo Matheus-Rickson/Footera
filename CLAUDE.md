@@ -51,6 +51,6 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   domínio que se aprende jogando/treinando); motor rebalanceado (`ZONE_EXP` 0,35, `K.chance` 0,070). Ver PROGRESS.md.
 - v0.8.7 commitada (aguardando validação completa pelo checklist 13c). **Fase 9 em andamento** (branch `fase-9-base-de-dados`): etapa 1 da base
   editável commitada (`0304652`); base fixa + simulação por divisão + nova carreira commitadas (`8cca05e`); etapa 2 (tela de pacotes, .zip), editor de dados,
-  atributos de goleiro, imagens (fotos, escudos, estádios, logos de liga; etapa 3) e informativos dos atributos commitados; próximo: reputação do treinador; CSV, técnicos da IA e continentais depois.
+  atributos de goleiro, imagens (fotos, escudos, estádios, logos de liga; etapa 3) e informativos dos atributos commitados; reputação em estrelas, atributos do treinador com efeito, escudos no jogo, campinho das funções, calendário em grade, rede social (Notícias, migração 015), Caixa de entrada (migração 016) e propostas de emprego mais raras commitados; CSV, técnicos da IA e continentais depois.
   Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

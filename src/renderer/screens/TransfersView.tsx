@@ -7,6 +7,7 @@ import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, PosPill, tone 
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { NegotiationModal } from './NegotiationModal.tsx';
 import type { SummaryKey } from '../../shared/attributeSummary.ts';
+import { Stars } from '../stars.tsx';
 
 type Tab = 'market' | 'incoming' | 'mine' | 'history';
 /** Atributos resumidos na lista do mercado (estimativas). Finalização só para jogadores de linha; Goleiro só para goleiros. */
@@ -122,7 +123,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                 <thead>
                   <tr><th>Jogador</th><th>Clube</th><th>Nacionalidade</th><th>Posição</th><th>Secundárias</th><th className="right">Idade</th><th>Nível (est.)</th><th>Potencial (est.)</th>
                     {SUMMARY_COLS.map(([k, short, label]) => <th key={k} className={`center ${k === 'fin' ? 'tr-attr-first' : ''}`} title={`${label} (estimativa dos olheiros, 1–20)`}>{short}</th>)}
-                    <th>Pé</th><th className="right">Altura</th><th className="right">Peso</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Olheiros</th><th /></tr>
+                    <th>Pé</th><th className="right">Altura</th><th className="right">Peso</th><th>Reputação</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato</th><th>Olheiros</th><th /></tr>
                 </thead>
                 <tbody>{results.map((p) => {
                   const mid = (p.estOverall.low + p.estOverall.high) / 2;
@@ -146,6 +147,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                       <td>{FOOT_LABEL[p.foot] ?? p.foot}</td>
                       <td className="right nowrap">{p.heightCm} cm</td>
                       <td className="right nowrap">{p.weightKg} kg</td>
+                      <td className="nowrap"><Stars reputation={p.reputation} size={12} /></td>
                       <td className="right">{fmtMoney(p.marketValue)}</td>
                       <td className="right">{fmtMoney(p.salary)}</td>
                       <td className="nowrap">{p.clubId ? fmtDate(p.contractEnd) : <span className="muted">—</span>}</td>

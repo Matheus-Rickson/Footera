@@ -1,5 +1,6 @@
 import type { Attributes, Position } from '../../shared/types.ts';
 import type { TalkTone } from './teamTalk.ts';
+import type { CoachAttributes } from '../../shared/coachAttributes.ts';
 
 export interface MatchPlayer {
   id: string; name: string; position: Position; secondaryPositions: Position[];
@@ -25,6 +26,8 @@ export interface TeamSheet {
   tactics: TeamTactics;
   /** 0.95..1.03 — entrosamento (estabilidade da escalação). */
   cohesion: number;
+  /** atributos do treinador (só o time do usuário; ausente = sem efeito, como a IA) */
+  coach?: Partial<CoachAttributes>;
 }
 
 export interface MatchConditions { weather: 'clear' | 'rain' | 'heat' | 'cold'; pitch: 'good' | 'poor' }

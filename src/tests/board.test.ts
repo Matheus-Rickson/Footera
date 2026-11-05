@@ -167,7 +167,11 @@ test('Demissão e recolocação: demitido fica sem clube (comissão e listas zer
   respondJobOffer(db, Number(pending!.id), true);
   assert.equal(getCareerState(db).clubId, String(pending!.club_id));
   const b = getBoardOverview(db);
-  assert.equal(b.club!.confidence, 65);
+  // confiança inicial: 65 ± crédito pela reputação do treinador em relação à do clube (−8..+8) + adaptabilidade
+  const { hireConfidence } = await import('../game/coach-engine/coach.ts');
+  const clubRep = Number(db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(String(pending!.club_id))!.reputation);
+  assert.equal(b.club!.confidence, hireConfidence(65, b.coachReputation, clubRep, b.coachAttributes));
+  assert.ok(b.club!.confidence >= 57 && b.club!.confidence <= 81);
   assert.equal(b.spells.filter((s) => s.end === null).length, 1);
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM job_vacancies WHERE club_id = ?', String(pending!.club_id)), 0);
 });
@@ -183,9 +187,11 @@ test('Virada sem clube funciona; com clube, a avaliação mexe na reputação e 
   playAll(b.db); advanceTime(b.db, 'nextMatchday');
   db_setGoal(b.db, 1); // meta impossível de cumprir (a não ser que seja campeão)
   b.db.prepare('UPDATE board_state SET confidence = 20').run();
-  const rep0 = coachOf(b.db).reputation;
+  const rep0 = coachOf(b.db).reputation, pts0 = coachOf(b.db).attributePoints ?? 0;
   const r2 = startNextSeason(b.db);
   assert.ok(r2.board);
+  // a avaliação dá pontos de atributo ao treinador: 1 pela temporada (+1 objetivo, +1 título, +1 acesso)
+  assert.ok((coachOf(b.db).attributePoints ?? 0) >= pts0 + 1, 'pontos de atributo na avaliação');
   if (!r2.board!.met) { assert.equal(r2.board!.sacked, true); assert.equal(isEmployed(b.db), false); assert.ok(coachOf(b.db).reputation < rep0); }
   assertBooksBalance(b.db, b.initial);
 });
@@ -200,4 +206,32 @@ test('Determinismo: diretoria, vagas e propostas idênticas com a mesma semente'
     return JSON.stringify([db.prepare('SELECT * FROM job_offers ORDER BY id').all(), db.prepare('SELECT * FROM job_vacancies ORDER BY club_id').all(), db.prepare('SELECT * FROM coach_spells ORDER BY id').all(), db.prepare('SELECT coach_json FROM career').get()]);
   };
   assert.equal(await dump(), await dump());
+});
+
+test('Propostas com o treinador empregado: raras e seletivas (clube maior ou igual, 30 dias entre propostas, mesmo clube só depois de 90 dias)', async () => {
+  const world = generateWorld({ seed: 'bd-pace', teamsPerLeagueOverride: 6 });
+  const db = await openDatabase(':memory:');
+  const small = [...world.clubs].sort((a, b) => a.reputation - b.reputation || a.id.localeCompare(b.id))[Math.floor(world.clubs.length / 4)]!;
+  createCareer(db, world, { ...coach, reputation: 60 }, small.id);
+  const { addDays: plus } = await import('../shared/date.ts');
+  let d = getCareerState(db).gameDate;
+  // todo clube completo com vaga aberta o tempo todo (pior caso para o excesso de propostas)
+  for (let i = 0; i < 24; i++) {
+    db.prepare(`INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) SELECT id, ? FROM clubs WHERE id <> ?`).run(d, small.id);
+    db.prepare('UPDATE board_state SET confidence = 80').run();
+    const to = plus(d, 10);
+    if (to >= '2027-06-30') break;
+    clockTo(db, to); d = to;
+    // responde nada: as propostas expiram sozinhas
+  }
+  assert.equal(getCareerState(db).clubId, small.id, 'continuou empregado');
+  const offers = db.prepare('SELECT o.club_id, o.date, c.reputation FROM job_offers o JOIN clubs c ON c.id = o.club_id ORDER BY o.date, o.id').all()
+    .map((r) => ({ club: String(r.club_id), date: String(r.date), rep: Number(r.reputation) }));
+  assert.ok(offers.length >= 2, `amostra com propostas: ${offers.length}`);
+  assert.ok(offers.length <= 9, `raras: ${offers.length} em 240 dias`);
+  const myRep = Number(db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(small.id)!.reputation);
+  assert.ok(offers.every((o) => o.rep >= myRep), 'só clubes do mesmo tamanho ou maiores');
+  const { daysBetween } = await import('../shared/date.ts');
+  for (let i = 1; i < offers.length; i++) assert.ok(daysBetween(offers[i - 1]!.date, offers[i]!.date) >= 30, `espaço entre propostas: ${offers[i - 1]!.date} → ${offers[i]!.date}`);
+  for (let i = 0; i < offers.length; i++) for (let j = i + 1; j < offers.length; j++) if (offers[i]!.club === offers[j]!.club) assert.ok(daysBetween(offers[i]!.date, offers[j]!.date) >= 90, `mesmo clube cedo demais: ${offers[i]!.club}`);
 });

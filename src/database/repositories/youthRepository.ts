@@ -17,6 +17,7 @@ import { playerInserter, rowToPlayer } from './worldRepository.ts';
 import { resetToFreeAgentWage } from './transferRepository.ts';
 import { recordYouthPromotionForBoard } from './boardRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
+import { to20 } from '../../shared/scale.ts';
 
 export class YouthError extends UserError {}
 
@@ -105,7 +106,7 @@ export function youthIntake(db: SqlDb, date: string): number {
   }
   setMeta(db, `youth_intake_${season}`, JSON.stringify({ date, ids: mine.map((p) => p.id) }));
   addNews(db, date, 'youth', mine.length ? `Peneira: ${mine.length} jovem(ns) chega(m) às categorias de base` : 'Peneira: a base está lotada e não recebeu jovens',
-    mine.length ? mine.map((p) => `${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, date)} anos, pot. est. ${p.potentialEstimated})`).join(', ') : `Limite de ${YOUTH_CAP.user} jogadores na base.`);
+    mine.length ? `A peneira anual trouxe ${mine.length} jovem(ns) para as categorias de base:\n\n${mine.map((p) => `• ${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, date)} anos), potencial estimado ${to20(p.potentialEstimated)}/20`).join('\n')}\n\nEles evoluem na base conforme o nível das instalações. Promova ao elenco principal quem estiver pronto (antes dos 19 anos, ou ele sai de graça).` : `A base atingiu o limite de ${YOUTH_CAP.user} jogadores e não recebeu ninguém nesta peneira. Promova ou dispense jovens para abrir espaço.`);
   return total;
 }
 
@@ -124,7 +125,7 @@ export function promoteYouth(db: SqlDb, playerId: string): void {
   withTransaction(db, () => {
     promoteFromYouth(db, p, st.clubId, st.gameDate);
     recordYouthPromotionForBoard(db);
-    addNews(db, st.gameDate, 'youth', `Promovido: ${nameOf(p)} sobe ao elenco principal`, `Contrato profissional até ${br(contractEndFor(st.gameDate, 3))}.`);
+    addNews(db, st.gameDate, 'youth', `Promovido: ${nameOf(p)} sobe ao elenco principal`, `${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, st.gameDate)} anos) assinou o primeiro contrato profissional, até ${br(contractEndFor(st.gameDate, 3))}.\n\nMinutos em campo aceleram a evolução dele. Promover jovens também conta para a meta da diretoria, quando houver.`, { action: 'tactics', actionLabel: 'Escalar em Táticas' });
   });
 }
 

@@ -21,6 +21,13 @@ const N = (v: unknown) => Number(v);
 const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const br = (d: string) => d.split('-').reverse().join('/');
 export const FACILITY_LABEL: Record<FacilityKind, string> = { training: 'Centro de treinamento', youth: 'Categorias de base', medical: 'Departamento médico', stadium: 'Estádio' };
+/** O que cada instalação melhora no jogo (texto das mensagens). */
+export const FACILITY_EFFECT: Record<FacilityKind, string> = {
+  training: 'O centro de treinamento acelera a evolução mensal dos jogadores do elenco e o aprendizado das funções táticas.',
+  youth: 'As categorias de base melhores trazem safras maiores e mais talentosas na peneira e aceleram a evolução dos jovens.',
+  medical: 'O departamento médico encurta o tempo de recuperação das lesões.',
+  stadium: 'O estádio maior aumenta a capacidade e a renda de bilheteria nos jogos em casa.',
+};
 
 /** Custo mensal fixo que muda quando o nível sobe (comissão/base e manutenção usam os níveis). */
 function monthlyCostAt(econ: ClubEcon, kind: FacilityKind, level: number): number {
@@ -77,7 +84,7 @@ export function startUpgrade(db: SqlDb, kind: FacilityKind): void {
   withTransaction(db, () => {
     makePoster(db, st.clubId)(st.clubId, st.gameDate, 'infrastructure', -cost, `Obra: ${FACILITY_LABEL[kind]} (nível ${level} → ${level + 1})`);
     db.prepare('INSERT INTO construction_projects (club_id, kind, from_level, cost, start_date, end_date) VALUES (?,?,?,?,?,?)').run(st.clubId, kind, level, cost, st.gameDate, end);
-    addNews(db, st.gameDate, 'staff', `Obra iniciada: ${FACILITY_LABEL[kind]}`, `Investimento de ${fmt(cost)}; conclusão prevista para ${br(end)}.`);
+    addNews(db, st.gameDate, 'staff', `Obra iniciada: ${FACILITY_LABEL[kind]} (nível ${level} → ${level + 1})`, `As obras de ${FACILITY_LABEL[kind].toLowerCase()} começaram. Investimento de ${fmt(cost)}, já descontado do caixa; conclusão prevista para ${br(end)}.\n\n${FACILITY_EFFECT[kind]} O novo nível só vale quando a obra terminar; depois disso a manutenção mensal sobe.`, { sender: 'Departamento de infraestrutura', action: 'infrastructure', actionLabel: 'Ver infraestrutura' });
   });
 }
 
@@ -96,6 +103,6 @@ export function processConstructionDay(db: SqlDb, date: string): void {
       extra = ` Capacidade: ${(N(st.capacity) + seats).toLocaleString('pt-BR')} lugares (+${seats.toLocaleString('pt-BR')}).`;
     }
     db.prepare("UPDATE construction_projects SET status = 'done' WHERE id = ?").run(N(p.id));
-    addNews(db, date, 'staff', `Obra concluída: ${FACILITY_LABEL[kind]} agora no nível ${f[kind]}`, `A manutenção mensal aumentou.${extra}`);
+    addNews(db, date, 'staff', `Obra concluída: ${FACILITY_LABEL[kind]} agora no nível ${f[kind]}`, `A obra de ${FACILITY_LABEL[kind].toLowerCase()} foi entregue: a instalação está no nível ${f[kind]}.${extra}\n\n${FACILITY_EFFECT[kind]} A manutenção mensal aumentou e já aparece nas Finanças.`, { sender: 'Departamento de infraestrutura', action: 'infrastructure', actionLabel: 'Ver infraestrutura' });
   }
 }

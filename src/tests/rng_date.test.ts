@@ -37,3 +37,18 @@ test('Datas: idade, validação e aritmética', () => {
   assert.equal(addDays('2026-12-31', 1), '2027-01-01');
   assert.equal(addYears('2024-02-29', 1), '2025-02-28');
 });
+
+test('Calendário: grade do mês em semanas completas de domingo a sábado, com o mês inteiro dentro', async () => {
+  const { monthGrid, weekday } = await import('../shared/date.ts');
+  // agosto/2026 começa num sábado e tem 31 dias: 6 semanas (de 26/jul a 05/set)
+  const ago = monthGrid(2026, 8);
+  assert.deepEqual([ago.length, ago[0], ago.at(-1)], [42, '2026-07-26', '2026-09-05']);
+  // fevereiro/2026 começa num domingo e tem 28 dias: exatamente 4 semanas
+  assert.deepEqual([monthGrid(2026, 2).length, monthGrid(2026, 2)[0], monthGrid(2026, 2).at(-1)], [28, '2026-02-01', '2026-02-28']);
+  for (const [y, m] of [[2026, 7], [2026, 12], [2027, 1], [2028, 2], [2027, 6]] as const) {
+    const g = monthGrid(y, m), key = `${y}-${String(m).padStart(2, '0')}`;
+    assert.equal(g.length % 7, 0); assert.equal(weekday(g[0]!), 0, 'começa no domingo'); assert.equal(weekday(g.at(-1)!), 6, 'termina no sábado');
+    assert.equal(g.filter((d) => d.startsWith(key)).length, new Date(Date.UTC(y, m, 0)).getUTCDate(), `${key}: todos os dias do mês`);
+    assert.ok(g.every((d, i) => i === 0 || d > g[i - 1]!), 'dias em ordem, sem repetir');
+  }
+});

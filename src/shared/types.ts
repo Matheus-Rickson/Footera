@@ -139,4 +139,6 @@ export interface Coach {
   photoPath: string | null;
   /** atributos do treinador (1–20); ausente em carreiras criadas antes da v0.9 */
   attributes?: CoachAttributes;
+  /** pontos de atributo ganhos nas avaliações de temporada e ainda não distribuídos (ausente = 0) */
+  attributePoints?: number;
 }

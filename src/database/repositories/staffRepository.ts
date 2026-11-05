@@ -24,6 +24,13 @@ export const facilitiesOf = (db: SqlDb, clubId: string) =>
   JSON.parse(S(db.prepare('SELECT facilities_json FROM clubs WHERE id = ?').get(clubId)!.facilities_json)) as { training: number; youth: number; medical: number; stadium: number };
 
 export const ROLE_LABEL: Record<StaffRole, string> = { assistant: 'Auxiliar técnico', fitness: 'Preparador físico', goalkeeping: 'Treinador de goleiros', doctor: 'Médico' };
+/** O que cada função da comissão faz no jogo (texto das mensagens). */
+export const ROLE_EFFECT: Record<StaffRole, string> = {
+  assistant: 'O auxiliar técnico acelera a evolução técnica e mental dos jogadores de linha e o aprendizado das funções táticas.',
+  fitness: 'O preparador físico acelera a evolução física, freia o declínio dos veteranos, reduz lesões no treino e pode assumir a rotina de treino (delegar).',
+  goalkeeping: 'O treinador de goleiros acelera a evolução dos goleiros.',
+  doctor: 'O médico encurta o tempo de recuperação das lesões.',
+};
 
 /**
  * Qualidade efetiva (1..20) de uma função no clube. Usuário: o profissional contratado (ou 5, sem ninguém).
@@ -74,7 +81,7 @@ export function hireStaff(db: SqlDb, candidateId: string): void {
   withTransaction(db, () => {
     db.prepare('INSERT INTO staff (id, role, first_name, last_name, nationality, ability, salary, hired_on, contract_end) VALUES (?,?,?,?,?,?,?,?,?)')
       .run(c.id, c.role, c.firstName, c.lastName, c.nationality, c.ability, c.salary, st.gameDate, addYears(st.gameDate, STAFF_CONTRACT_YEARS));
-    addNews(db, st.gameDate, 'staff', `${ROLE_LABEL[c.role]} contratado: ${c.firstName} ${c.lastName}`, `Qualidade ${c.ability}/20, salário de ${fmt(c.salary)} por mês, contrato de ${STAFF_CONTRACT_YEARS} anos.`);
+    addNews(db, st.gameDate, 'staff', `${ROLE_LABEL[c.role]} contratado: ${c.firstName} ${c.lastName}`, `${c.firstName} ${c.lastName} assinou contrato de ${STAFF_CONTRACT_YEARS} anos como ${ROLE_LABEL[c.role].toLowerCase()}. Qualidade ${c.ability}/20; salário de ${fmt(c.salary)} por mês.\n\n${ROLE_EFFECT[c.role]} Quanto maior a qualidade, maior o efeito.`);
   });
 }
 
@@ -98,6 +105,6 @@ export function processStaffDay(db: SqlDb, date: string): void {
     db.prepare('DELETE FROM staff WHERE id = ?').run(S(r.id));
     if (S(r.role) === 'fitness') db.prepare('UPDATE training_settings SET delegated = 0 WHERE id = 1').run();
     addNews(db, date, 'staff', `Fim de contrato: ${ROLE_LABEL[S(r.role) as StaffRole]} ${S(r.first_name)} ${S(r.last_name)} deixou o clube`,
-      S(r.role) === 'fitness' ? 'O treino deixou de ser delegado: defina a rotina na aba Treinamento ou contrate outro preparador.' : 'Contrate outro na aba Comissão técnica.');
+      `O contrato de ${S(r.first_name)} ${S(r.last_name)} terminou e ele deixou o clube. Sem ninguém na função, o clube trabalha no nível básico (qualidade 5).\n\n${ROLE_EFFECT[S(r.role) as StaffRole]}${S(r.role) === 'fitness' ? ' O treino deixou de ser delegado: defina a rotina na aba Treinamento.' : ''} Contrate um substituto em Comissão técnica.`, { actionLabel: 'Contratar substituto' });
   }
 }

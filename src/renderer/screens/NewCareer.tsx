@@ -10,6 +10,7 @@ import { baseCoachAttributes, COACH_ATTR_BASE, COACH_ATTR_MAX_START, COACH_ATTR_
 import type { CSSProperties } from 'react';
 import { useImages } from '../images.ts';
 import { HelpTip } from '../help.tsx';
+import { Stars } from '../stars.tsx';
 
 interface Props { profileId: string; onBack: () => void; onCreated: (careerId: string) => void }
 
@@ -411,7 +412,7 @@ function ClubPanel({ c, code, crest, photo, leagueLogo }: { c: ClubOption; code:
           <div className="nc-facts">
             <div className="nc-fact-wide"><span>Objetivo da diretoria</span><strong><Target size={14} aria-hidden="true" /> {c.objective}</strong><em>posição esperada: {c.expectedPosition}º de {c.teamCount}</em></div>
             <div><span>Força média do elenco</span><strong className={tone(c.avgOverall)}>{to20(c.avgOverall)}</strong><em>{c.squadSize} jogadores · idade média {String(c.avgAge).replace('.', ',')}</em></div>
-            <div><span>Reputação</span><strong>{c.reputation}<small>/100</small></strong></div>
+            <div><span>Reputação</span><strong><Stars reputation={c.reputation} size={17} label="Reputação do clube" /></strong></div>
             <div><span>Torcida</span><strong><Users size={14} aria-hidden="true" /> {fmtNum(c.fans)}</strong></div>
             <div><span>Caixa inicial</span><strong><Coins size={14} aria-hidden="true" /> {fmtMoney(c.balance)}</strong></div>
           </div>

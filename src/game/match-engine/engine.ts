@@ -9,6 +9,7 @@ import type {
 import { TICK_STATS } from './types.ts';
 import type { Intervention } from './types.ts';
 import { talkDelta } from './teamTalk.ts';
+import { cardMultiplier, inGameMultiplier, tacticsMultiplier, talkWithMotivation } from '../coach-engine/coach.ts';
 import type { SubSuggestion } from './types.ts';
 import { POS_NAME } from '../../shared/positions.ts';
 import { bestRole, roleById, roleFactor, type RoleDef } from './playerRoles.ts';
@@ -200,10 +201,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const late = clock.minute >= 70 ? (clock.minute - 60) / 30 : 0; // urgência cresce no fim
     const urgency = lead < 0 ? 1 + 0.05 * late * Math.min(-lead, 2) : lead > 0 ? 1 - 0.04 * late : 1;
     const ment = tac.mentality === 'attacking' ? { a: 1.06, d: 0.965 } : tac.mentality === 'defensive' ? { a: 0.94, d: 1.05 } : { a: 1, d: 1 };
+    const coh = t.sheet.cohesion * tacticsMultiplier(t.sheet.coach); // conhecimento tático do treinador soma ao entrosamento
     t.r = {
-      att: zone('att') * ment.a * urgency * t.sheet.cohesion * dayForm[t.idx] * (t.idx === 0 ? Math.pow(K.homeAttack, hAdv) : 1),
-      mid: zone('mid') * t.sheet.cohesion * dayForm[t.idx] * (1 + 0.012 * (tac.defensiveLine - 3)),
-      def: zone('def') * ment.d / Math.sqrt(urgency) * t.sheet.cohesion * dayForm[t.idx],
+      att: zone('att') * ment.a * urgency * coh * dayForm[t.idx] * (t.idx === 0 ? Math.pow(K.homeAttack, hAdv) : 1),
+      mid: zone('mid') * coh * dayForm[t.idx] * (1 + 0.012 * (tac.defensiveLine - 3)),
+      def: zone('def') * ment.d / Math.sqrt(urgency) * coh * dayForm[t.idx],
       gk, pass: passN ? pass / passN : 40, aggression: t.active.length ? aggr / t.active.length : 0.5,
     };
   };
@@ -377,8 +379,9 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     emit('foul', def.idx, { player: fouler.p.id, player2: victim?.p.id });
     const inBox = rng.chance(0.014 * clamp(att.r.att / Math.max(def.r.def, 1), 0.6, 1.6));
     const aggr = a20(fouler.p.attributes.mental.aggression);
-    const pYellow = clamp(0.065 + 0.125 * aggr + (inBox ? 0.12 : 0), 0.03, 0.5);
-    const pRed = 0.0012 + 0.0026 * aggr;
+    const disc = cardMultiplier(def.sheet.coach); // disciplina do treinador
+    const pYellow = clamp(0.065 + 0.125 * aggr + (inBox ? 0.12 : 0), 0.03, 0.5) * disc;
+    const pRed = (0.0012 + 0.0026 * aggr) * disc;
     const canRed = def.active.length > 8;
     const rc = rng.next();
     if (canRed && rc < pRed) giveCard(def, fouler, 'red');
@@ -637,7 +640,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const t = T[iv.team], o = T[1 - iv.team as Side];
     if (iv.kind === 'talk') {
       for (const p of [...t.active.map((l) => l.p), ...t.bench]) {
-        const d = talkDelta(iv.tone, t.goals - o.goals, p.attributes.mental.composure);
+        const d = talkWithMotivation(talkDelta(iv.tone, t.goals - o.goals, p.attributes.mental.composure), t.sheet.coach);
         p.morale = clamp(p.morale + d, 10, 100);
         moraleDelta[p.id] = (moraleDelta[p.id] ?? 0) + d;
       }
@@ -651,13 +654,16 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     if (t.subsUsed >= 5) throw new MatchInterventionError('O time já fez as 5 substituições permitidas.');
     doSub(t, out, inP, iv.slot ?? out.slot, 'coach', iv.role);
     if (iv.reshape) reorganize(t, inP.id);
+    // adaptabilidade do treinador: quem entra rende um pouco mais na função nova (quem mudou de posição: em reorganize)
+    const entered = t.active.find((l) => l.p.id === inP.id);
+    if (entered) entered.roleK *= inGameMultiplier(t.sheet.coach);
   }
   /** Aplica a formação escolhida por `planReshape`: muda a função (e o lugar) de cada jogador em campo. */
   function reorganize(t: TeamState, keepFirst: string): void {
     const plan = planReshape(t.active.map((l) => ({ id: l.p.id, p: l.p, slot: l.slot, x: l.x })), t.formation, keepFirst);
     if (!plan) return;
     const from = t.formation;
-    for (const l of t.active) { const a = plan.assign.get(l.p.id); if (a) { const moved = l.slot !== a.slot; l.slot = a.slot; l.x = a.x; l.y = a.y; l.rep.slot = a.slot; if (moved) setRole(l); } }
+    for (const l of t.active) { const a = plan.assign.get(l.p.id); if (a) { const moved = l.slot !== a.slot; l.slot = a.slot; l.x = a.x; l.y = a.y; l.rep.slot = a.slot; if (moved) { setRole(l); if (l.p.id !== keepFirst) l.roleK *= inGameMultiplier(t.sheet.coach); } } }
     t.formation = plan.id;
     emit('formation_change', t.idx, { detail: `${from}>${plan.id}`, moves: t.active.map((l) => ({ id: l.p.id, slot: l.slot, x: l.x, y: l.y })) });
   }

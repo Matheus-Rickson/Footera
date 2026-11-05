@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CompetitionInfoDto, CompetitionTableDto } from '../../shared/api.ts';
 import { errMsg, TIEBREAKER_LABEL, unwrap } from '../util.ts';
 import { useImages } from '../images.ts';
+import { ClubCrest } from '../flags.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string }
 
@@ -58,7 +59,7 @@ export function CompetitionsView({ profileId, careerId, refreshKey }: Props) {
           <tbody>
             {table.rows.map((r) => (
               <tr key={r.clubId} className={`${r.zone ?? ''} ${r.isUserClub ? 'mine' : ''}`}>
-                <td>{r.position}</td><td>{r.clubName}</td><td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
+                <td>{r.position}</td><td><span className="cp-club"><ClubCrest id={r.clubId} name={r.clubName} size={18} src={img.url('clubs', r.clubId)} />{r.clubName}</span></td><td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
                 <td>{r.goalsFor}</td><td>{r.goalsAgainst}</td><td>{r.goalDiff}</td><td><strong>{r.points}</strong></td>
               </tr>
             ))}

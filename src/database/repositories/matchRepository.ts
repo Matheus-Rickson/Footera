@@ -19,8 +19,10 @@ import { loadSquad, type Squad, type Status } from './squadRepository.ts';
 import { addFamiliarity, ROLE_MATCH_GAIN } from './roleRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
 import { applyMatchesToBoard } from './boardRepository.ts';
+import { processSocialMatchday } from './socialRepository.ts';
 import { quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
 import { lightClubIds } from './simLevelRepository.ts';
+import { addNews } from './newsRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -79,7 +81,7 @@ function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
       const why = s0?.injuryUntil && s0.injuryUntil > f.date ? 'lesionado' : (s0?.suspension ?? 0) > 0 ? 'suspenso' : 'indisponível';
       ctx.notes.push(`Escalação ajustada: ${wanted ? `${wanted.firstName} ${wanted.lastName}` : 'jogador escolhido'} (${why}) foi substituído por ${x.chosen.name} como ${POS_NAME[r.sheet.lineup[x.slotIndex]!.slot].toLowerCase()}.`);
     }
-    return r.sheet;
+    return id === ctx.userClub && ctx.coach.attributes ? { ...r.sheet, coach: ctx.coach.attributes } : r.sheet;
   };
   let hSheet = mk(home, f.homeId, f.homeName, hs), aSheet = mk(away, f.awayId, f.awayName, as);
   const rep = (id: string) => db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(id)!.reputation as number;
@@ -156,6 +158,15 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
     if (y !== st.yellows || susp !== st.suspension || injuryUntil !== st.injuryUntil) {
       upStatus.run(p.id, injuryUntil, injuredDays > 0 ? `Lesão (${injuredDays} dias)` : null, susp, y);
     }
+    if (clubId === ctx.userClub) {
+      const name = `${p.firstName} ${p.lastName}`, opp = clubId === f.homeId ? f.awayName : f.homeName;
+      if (injuredDays > 0) addNews(db, f.date, 'medical', `Lesão: ${name} fora por ${injuredDays} dias`,
+        `${name} (${POS_NAME[p.position].toLowerCase()}) se lesionou na partida contra o ${opp}. Previsão de retorno: ${injuryUntil!.split('-').reverse().join('/')} (${injuredDays} dias), já considerando o trabalho do departamento médico.\n\nAté lá ele fica fora das partidas. Revise a escalação e a função da vaga dele em Táticas.`,
+        { actionLabel: 'Ajustar a escalação em Táticas' });
+      if (susp > st.suspension && sq.suspendedOut.indexOf(p.id) < 0) addNews(db, f.date, 'squad', `Suspensão: ${name} cumpre ${susp} jogo(s)`,
+        `${name} ${r.red > 0 ? 'foi expulso' : 'recebeu o quinto cartão amarelo'} na partida contra o ${opp} e está suspenso por ${susp} jogo(s).\n\nEle não pode ser escalado na(s) próxima(s) partida(s). Defina o substituto em Táticas.`,
+        { actionLabel: 'Ajustar a escalação em Táticas' });
+    }
   }
   // a conversa no vestiário vale só durante esta partida (out.moraleDelta não é gravado)
   for (const [sq, id] of [[home, f.homeId], [away, f.awayId]] as const) {
@@ -212,6 +223,7 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
     const post = makePoster(db, st.clubId);
     const out = rows.map((f) => (light.has(f.homeId) && light.has(f.awayId) ? simulateLight(db, f, ctx, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
+    processSocialMatchday(db, st.gameDate, out.map((r) => r.fixtureId)); // rede social: resultados, zebras, hat-tricks, lesões, rodada
     return out;
   });
   return { date: st.gameDate, simulated: results.length, userMatch: results.find((r) => r.involvesUser) ?? null, results, notes };

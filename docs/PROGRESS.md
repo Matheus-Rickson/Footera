@@ -858,3 +858,42 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   regra própria). JSON Schema regenerado.
 - **Informativo dos atributos (pedido do usuário):** `game/world/attributeInfo.ts` descreve cada atributo e o efeito real no motor (conferido no código: finalização 60% da qualidade do chute; passe/visão/primeiro toque na precisão de passe e em quem dá a assistência; cabeceio/impulsão no cabeceio; agressividade em faltas e cartões; resistência e preparo natural no cansaço e lesões; compostura em finalização, pênaltis e vestiário; etc.). "Pesa na força de…" é calculado da tabela de pesos. **Liderança ainda não tem efeito na partida** e o texto diz isso. (?) em cada atributo no editor, na ficha e na janela do jogador. No editor, "Potencial" saiu da grade de atributos (estava esticado). Teste de guarda: todo atributo tem texto e quem diz "não influencia" não pode aparecer no motor (o teste só passou a valer depois de corrigir um `` mal escapado — detectado pela mutação). 217 testes.
 - **Correção (balões de ajuda cortados no editor):** o (?) passou a ser um componente único (`renderer/help.tsx`) com o balão posicionado pela janela (abre embaixo ou em cima e respeita as bordas), então não é mais cortado por áreas com rolagem. Vale para editor, nova carreira, pacotes, ficha e janela do jogador. Tela NÃO verificada no Electron.
+- **Reputação e atributos do treinador (Fase 9):** reputação exibida em estrelas (0–5, meia estrela) para treinador, clubes e jogadores (`toStars`, `renderer/stars.tsx`);
+  jogadores ganham reputação derivada de dados públicos (valor de mercado + clube). Os 6 atributos do treinador passam a valer (`game/coach-engine/coach.ts`):
+  tática (força), motivação (vestiário), jovens (evolução até 21 anos), disciplina (cartões), negociação (taxas e salários, inclusive renovação) e
+  adaptabilidade (trocas no jogo e confiança em clube novo); efeito zero na base 5 e pequeno no 20. Pontos por temporada (1 + objetivo + título + acesso),
+  distribuídos na Diretoria (`board:coachPoint`). Reputação inicial 15–35 conforme o clube; superar a meta com folga dá até +4; confiança ao assumir clube
+  novo depende da reputação. Detalhes em `docs/BOARD_JOBS.md`. Testes: 5 novos (`coach.test.ts`: estrelas, regras, neutralidade na base com a mesma semente,
+  disciplina/tática/motivação/adaptabilidade na partida, pontos, negociação, jovens) + asserções em board/saves; teste de confiança ao contratar ajustado (65 fixo → fórmula).
+  Mutação 14/14. 222 testes. **Não feito:** salário do treinador (não existe; mexeria nas finanças). Estrelas verificadas pelo usuário (nova carreira, visão geral, ficha); painel de atributos/pontos ainda não verificado (precisa de uma virada).
+- **Escudos dentro do jogo (correção):** o escudo do pacote (ou o gerado, sem imagem) aparece na barra lateral, no card do clube da Visão geral, no placar da partida e na tabela de Competições — antes só na nova carreira. Barra lateral e calendário verificados pelo usuário.
+- **Campinho animado das funções (Táticas):** na janela da função, um campinho horizontal mostra a função sob o mouse (ou a escolhida/automática) com o trajeto do jogador, a bola no lance característico e a zona que ele deixa ou protege nas costas, com etiquetas em texto. Gerado de `RoleDef.fx` (`game/match-engine/roleMotion.ts`), declarado na tela como ilustração das tendências, não lance real. Testes: 2 (`role-motion.test.ts`); mutação 6/6. 224 testes. Tela NÃO verificada.
+- **Calendário em grade mensal (pedido do usuário):** abas de julho a junho, semanas de domingo a sábado (`monthGrid` em `shared/date.ts`), escudo do adversário em cada dia de jogo, resultado do ponto de vista do usuário (V verde / E amarelo / D vermelho + placar nossos:deles, com o dia tingido), casa/fora; jogo disputado com relatório abre o relatório. Painel à esquerda: data, escudo do clube, campanha V-E-D, próximo jogo (dias que faltam) e janela de transferências (dias até fechar/abrir, de `windowStatus`). Tela cabe na janela (sem rolagem). Teste da grade; mutação 3/3. 225 testes. Tela verificada pelo usuário.
+- **Notícias como rede social (pedido do usuário):** migração 015 (`social_accounts`, `social_posts`, `social_comments`). Perfis: 6 veículos e 5 jornalistas
+  FICTÍCIOS (selo azul), perfil oficial de cada liga e de cada clube (selo azul) e torcedores gerados por clube (sem selo). Posts gerados no
+  processamento do dia (`processSocialDay`, em `moveClock`: prévia do confronto direto entre líder e vice com até 3 pontos de diferença — no perfil da
+  liga e na imprensa —, o jogo do usuário no dia, transferências de ontem ≥ €1 mi ou do usuário, técnicos demitidos ontem, troca de clube do usuário) e da
+  rodada (`processSocialMatchday`, em `simulateMatchday`, na mesma transação: jogo do usuário pela imprensa e pelo perfil oficial do clube, zebras e
+  goleadas, hat-tricks, lesões de 3+ semanas de jogadores relevantes, fim de rodada da liga do usuário e campeão). 2–5 comentários por post, com tom pelo
+  resultado de cada clube; curtidas/compartilhamentos pela reputação. Até 12 posts por dia. Tela `SocialView`: abas Rede / Comunicados do clube (as
+  notícias internas de antes), filtros (tudo, meu clube, jogos, mercado, lesões, técnicos, ligas), cartões de placar, transferência, lesão e tabela com
+  escudos, "Em alta" (clubes mais citados em 14 dias) e lista da imprensa. Testes: 3 (`social.test.ts`); mutação 6/6 (o teto diário não é exercitado:
+  nenhum dia real chega a 12 rascunhos). Carreiras antigas começam com o feed vazio (posts a partir do próximo dia). 229 testes. Tela verificada pelo usuário.
+- **Caixa de entrada (pedido do usuário):** os comunicados internos saíram da aba Notícias e viraram a "Caixa de entrada" (área Clube), em estilo e-mail:
+  lista à esquerda (remetente, assunto, prévia, data relativa, ponto de não lida; filtros Todas / Não lidas / Pedem ação; marcar todas como lidas) e
+  leitura à direita (tipo, assunto, remetente, para o treinador, saudação, corpo em parágrafos, assinatura) com o botão da ação sugerida, que abre a
+  tela certa (lesão/suspensão → Táticas, proposta por jogador → Transferências, diretoria → Diretoria, obra → Infraestrutura, olheiro → Olheiros, etc.).
+  Contador de não lidas no menu. Migração 016 (tipos médico/mercado/diretoria/elenco, remetente, ação, lida; as antigas entram como lidas).
+  Mensagens novas e mais detalhadas: lesão em partida e no treino (posição, previsão de retorno), suspensão (expulsão/5º amarelo), proposta recebida por
+  jogador seu (valor, valor de mercado, prazo), alerta da diretoria (limiar de demissão). Testes: 2 (`inbox.test.ts`); mutação 6/6. 231 testes. Tela verificada pelo usuário.
+- **Caixa de entrada mais detalhada (pedido do usuário):** todas as mensagens ganharam corpo em parágrafos com os dados do jogo: contratação (posição,
+  idade, contrato, elenco e orçamento restante; botão Escalar em Táticas), venda (destino, metade da taxa ao orçamento), renovação (salário antes/depois),
+  proposta de emprego (liga, divisão, reputação do clube, o que acontece ao aceitar), demissão (reputação, o que fica no clube), novo clube e início de
+  temporada (objetivo, orçamentos, confiança: `boardBrief`), avaliação da temporada (com a confiança final), obras (nível, efeito da instalação), comissão
+  técnica e olheiros (o que a função faz), base (lista com potencial estimado na escala 1–20 — antes saía em 0–100), aposentadorias e fins de contrato
+  (tamanho do elenco). Mensagens antigas são reclassificadas pelo assunto (lesão → Departamento médico/Táticas; alertas → Diretoria). Teste: toda
+  mensagem gerada em 14 rodadas tem mais de um parágrafo; reclassificação. Mutação 5/5. Menu lateral compactado (o item novo fazia aparecer rolagem).
+- **Propostas de emprego mais raras com o treinador empregado (pedido do usuário):** 1,2%/dia por vaga, 1 pendente no máximo, 30 dias entre propostas,
+  só clubes de reputação igual ou maior que a do atual e o mesmo clube só volta em 90 dias (`OFFER_PACE`, `worthLeaving`). Desempregado sem mudança.
+  Teste com todas as vagas abertas o tempo todo (pior caso): 2 a 9 propostas em 240 dias, espaçamento e seletividade conferidos; mutação 4/4.
+  Observação: o teste de desempenho da rodada (limite de 2 s) passou de 4 s uma vez com a suíte inteira em paralelo; isolado roda em 1,2 s (oscilação de carga).

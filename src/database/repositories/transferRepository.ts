@@ -13,12 +13,15 @@ import type {
 import { getCareerState } from './careerRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
-import { boardVeto, getBoardOverview, recordTransferForBoard } from './boardRepository.ts';
+import { boardVeto, coachOf, getBoardOverview, recordTransferForBoard } from './boardRepository.ts';
+import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
+import { boardBrief, squadSize } from './newsRepository.ts';
+import { POS_NAME } from '../../shared/positions.ts';
 
 export class TransferError extends UserError {}
 
@@ -57,8 +60,8 @@ export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; to
   if (from) post(from, a.date, 'transfer_in', a.fee, `Venda de ${name}`);
   const until = `Contrato até ${end.split('-').reverse().join('/')}, salário de ${fmt(a.wage)} por mês.`;
   if (a.kind === 'purchase' || a.kind === 'sale') recordTransferForBoard(db, a.kind, a.fee);
-  if (a.kind === 'purchase') addNews(db, a.date, 'transfer', from ? `Reforço: ${name} contratado por ${fmt(a.fee)}` : `Reforço: ${name} chega sem custo de transferência`, until);
-  if (a.kind === 'sale') addNews(db, a.date, 'transfer', `Venda: ${name} deixa o clube por ${fmt(a.fee)}`, `Destino: ${S(clubRow(db, a.toClubId).name)}.`);
+  if (a.kind === 'purchase') addNews(db, a.date, 'transfer', from ? `Reforço: ${name} contratado por ${fmt(a.fee)}` : `Reforço: ${name} chega sem custo de transferência`, `${name} (${POS_NAME[a.player.position].toLowerCase()}, ${ageOn(a.player.birthDate, a.date)} anos) é o novo reforço${from ? `, vindo do ${S(clubRow(db, from).name)} por ${fmt(a.fee)}` : ', sem custo de transferência'}. ${until}\n\nO elenco principal agora tem ${squadSize(db, a.toClubId)} jogadores. ${boardBrief(db)}\n\nEscale o reforço e escolha a função dele em Táticas.`, { action: 'tactics', actionLabel: 'Escalar em Táticas' });
+  if (a.kind === 'sale') addNews(db, a.date, 'transfer', `Venda: ${name} deixa o clube por ${fmt(a.fee)}`, `${name} foi vendido ao ${S(clubRow(db, a.toClubId).name)} por ${fmt(a.fee)}, já creditados no caixa. Metade da taxa volta ao orçamento de transferências.\n\nO elenco principal agora tem ${from ? squadSize(db, from) : 0} jogadores. ${boardBrief(db)}\n\nSe ele era titular, revise a escalação em Táticas.`, { action: 'tactics', actionLabel: 'Revisar a escalação' });
   return id;
 }
 
@@ -102,7 +105,7 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   if (f.nationalities?.length) { where.push(`p.nationality IN (${f.nationalities.map(() => '?').join(',')})`); args.push(...f.nationalities); }
   if (f.foot) { where.push('p.foot = ?'); args.push(f.foot); }
   if (f.contractEndsBy) { where.push('(p.club_id IS NULL OR p.contract_end <= ?)'); args.push(`${st.season + (f.contractEndsBy === 'season' ? 1 : 2)}-06-30`); }
-  const rows = db.prepare(`SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
+  const rows = db.prepare(`SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
   const wanted = f.positions?.length ? new Set(f.positions) : null;
   const matches: Array<{ r: Record<string, unknown>; id: string }> = [];
   for (const r of rows) {
@@ -139,7 +142,7 @@ function clubTerms(db: SqlDb, date: string, p: Player, fee: number, me: Record<s
   if (!win.open) throw new TransferError(`A janela de transferências está fechada. Ela abre em ${win.opensOn!.split('-').reverse().join('/')}.`);
   const seller = clubRow(db, p.clubId!);
   if (fee > N(me.balance)) throw new TransferError(`Caixa insuficiente: você tem ${fmt(N(me.balance))} e a proposta é de ${fmt(fee)}.`);
-  const ask = priceOf(db, p, date);
+  const ask = Math.round(priceOf(db, p, date) * negotiationMultiplier(coachOf(db).attributes)); // negociação do treinador
   if (!squadStaysValid(squadOf(db, p.clubId!), p.id, 20)) return { outcome: 'club_rejected', message: `${S(seller.name)} precisa do jogador para manter o elenco completo e recusou negociar.` };
   const cd = clubDecision(fee, ask);
   if (cd.kind === 'reject') return { outcome: 'club_rejected', message: `${S(seller.name)} recusou: a proposta está muito abaixo do que valorizam o jogador.` };
@@ -157,7 +160,7 @@ export function proposeFee(db: SqlDb, playerId: string, fee: number): FeeResultD
 
 export function getNegotiation(db: SqlDb, playerId: string): NegotiationDto {
   const { st, p, me } = offerTarget(db, playerId);
-  const row = db.prepare('SELECT p.*, c.name AS club_name FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?').get(playerId)!;
+  const row = db.prepare('SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?').get(playerId)!;
   const shortlisted = !!db.prepare('SELECT 1 AS x FROM scout_shortlist WHERE player_id = ?').get(playerId);
   const win = windowStatus(st.gameDate);
   const seller = p.clubId ? clubRow(db, p.clubId) : null;
@@ -181,7 +184,7 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
   const seller = clubRow(db, p.clubId);
 
   const ambition = p.personality.ambition;
-  const demand = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition }, N(seller.reputation), N(me.reputation));
+  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition }, N(seller.reputation), N(me.reputation)) * negotiationMultiplier(coachOf(db).attributes));
   const pd = playerDecision(input.wage, demand);
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
@@ -196,7 +199,7 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
 /** Jogador livre: sem clube vendedor nem taxa, e pode ser contratado fora das janelas. Só o salário é negociado. */
 function signFreeAgent(db: SqlDb, st: { clubId: string; gameDate: string }, p: Player, input: OfferInput, me: Record<string, unknown>): OfferResultDto {
   if (input.fee !== 0) throw new TransferError('Jogador sem clube: não há taxa de transferência (use 0).');
-  const demand = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(me.reputation), N(me.reputation));
+  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(me.reputation), N(me.reputation)) * negotiationMultiplier(coachOf(db).attributes));
   const pd = playerDecision(input.wage, demand);
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
@@ -253,6 +256,10 @@ function offersToUser(db: SqlDb, rng: Rng, date: string, userClub: string): void
     const buyer = buyers.find((c) => N(db.prepare('SELECT COUNT(*) AS n FROM players WHERE club_id = ?').get(S(c.id))!.n) < SQUAD_MAX);
     if (!buyer || fee <= 0) continue;
     db.prepare('INSERT INTO transfer_offers (date, expires, player_id, buyer_club_id, seller_club_id, fee) VALUES (?,?,?,?,?,?)').run(date, addDays(date, OFFER_VALID_DAYS), p.id, S(buyer.id), userClub, fee);
+    const buyerName = S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(S(buyer.id))!.name);
+    addNews(db, date, 'market', `Proposta: ${buyerName} oferece ${fmt(fee)} por ${p.firstName} ${p.lastName}`,
+      `O ${buyerName} enviou uma proposta oficial de ${fmt(fee)} por ${p.firstName} ${p.lastName}. O valor de mercado dele hoje é ${fmt(p.marketValue)}${listed.has(p.id) ? ' e ele está na lista de transferíveis' : ''}.\n\nA proposta vale até ${addDays(date, OFFER_VALID_DAYS).split('-').reverse().join('/')}. Aceite ou recuse em Transferências (propostas recebidas); sem resposta, ela expira.`,
+      { actionLabel: 'Responder em Transferências' });
     return; // no máximo uma proposta nova por dia
   }
 }

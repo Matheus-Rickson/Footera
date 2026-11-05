@@ -1,6 +1,6 @@
 /** Contrato da API exposta pelo preload ao renderer. */
 import type { AttrSummary } from './attributeSummary.ts';
-import type { CoachAttributes } from './coachAttributes.ts';
+import type { CoachAttributes, CoachAttrKey } from './coachAttributes.ts';
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
 import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
@@ -144,6 +144,7 @@ export interface MarketPlayerDto {
   id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string;
   /** null = jogador livre (sem clube): contratação sem taxa, fora das janelas inclusive. */
   clubId: string | null; clubName: string | null; marketValue: number; salary: number; contractEnd: string;
+  /** reputação (0–100, exibida em estrelas): derivada do valor de mercado e da reputação do clube — dados públicos */ reputation: number;
   /** Estimativas com margem de erro (os atributos reais só aparecem depois de contratado). */
   estOverall: Range; estPotential: Range;
   /** Conhecimento da rede de olheiros (0..100): quanto maior, mais estreitas as faixas. */
@@ -263,6 +264,7 @@ export interface CareerOverviewDto {
   pendingMatches: number;
   leaguePosition: { competitionId: string; position: number; total: number; points: number; played: number } | null;
   warnings: string[];
+  /** mensagens não lidas na caixa de entrada */ unreadInbox: number;
   /** false = treinador sem clube (demitido): `club` é null e o elenco vem vazio. */
   employed: boolean;
   /** Virada de temporada: `canStart` = todas as partidas disputadas e a data chegou a 1º/jul. */
@@ -275,7 +277,29 @@ export interface CareerOverviewDto {
 }
 
 // ---------------------------------------------------------------- ciclo de carreira (Fase 8A)
-export interface NewsDto { id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer' | 'staff'; title: string; body: string }
+/** Tela do jogo para onde uma mensagem da caixa de entrada leva (ação sugerida). */
+export type InboxAction = 'overview' | 'squad' | 'tactics' | 'contracts' | 'season' | 'transfers' | 'scouting' | 'youth' | 'training' | 'staff' | 'medical' | 'infrastructure' | 'board' | 'finance' | 'trophies';
+/** Mensagem da caixa de entrada do treinador. */
+export interface NewsDto {
+  id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer' | 'staff' | 'medical' | 'market' | 'board' | 'squad';
+  title: string; body: string; sender: string; action: InboxAction | null; actionLabel: string | null; read: boolean;
+}
+/** Rede social do futebol (aba Notícias). */
+export interface SocialAccountDto { id: string; kind: 'outlet' | 'journalist' | 'league' | 'club' | 'fan'; name: string; handle: string; verified: boolean; clubId: string | null; leagueId: string | null; bio: string; hue: number }
+export type SocialCard =
+  | { type: 'match'; homeId: string; homeName: string; awayId: string; awayName: string; hg: number; ag: number; competition: string }
+  | { type: 'fixture'; homeId: string; homeName: string; awayId: string; awayName: string; competition: string }
+  | { type: 'transfer'; player: string; fromId: string | null; fromName: string | null; toId: string; toName: string; fee: number }
+  | { type: 'injury'; player: string; clubId: string; clubName: string; days: number }
+  | { type: 'table'; title: string; rows: Array<{ clubId: string; name: string; points: number; played: number; rank: number }> };
+export interface SocialPostDto {
+  id: number; date: string; kind: 'match' | 'preview' | 'transfer' | 'injury' | 'sacking' | 'title' | 'round' | 'coach' | 'hattrick' | 'upset';
+  author: SocialAccountDto; text: string; card: SocialCard | null; likes: number; reposts: number;
+  /** cita o clube do usuário */ mine: boolean;
+  comments: Array<{ id: number; author: SocialAccountDto; text: string; likes: number }>;
+}
+export type SocialFilter = 'all' | 'mine' | 'match' | 'transfer' | 'injury' | 'coach' | 'league';
+export interface SocialFeedDto { posts: SocialPostDto[]; trending: Array<{ clubId: string; name: string; posts: number }>; profiles: SocialAccountDto[]; total: number }
 export interface ContractRowDto {
   id: string; name: string; position: Position; age: number; overall: number; salary: number; contractEnd: string;
   monthsLeft: number; /** vence na próxima virada (1º/jul) */ expiresThisSeason: boolean; canRenew: boolean; maxYears: number;
@@ -320,6 +344,7 @@ export interface ScoutingOverviewDto {
 export interface PlayerProfileDto {
   id: string; name: string; age: number; nationality: string; position: Position; secondaryPositions: Position[]; foot: string; heightCm: number; weightKg: number;
   clubId: string | null; clubName: string | null; own: boolean; youth: boolean; marketValue: number; salary: number; contractEnd: string;
+  /** reputação (0–100, exibida em estrelas) */ reputation: number;
   knowledge: number; estOverall: Range; estPotential: Range;
   /** faixas (exatas no próprio clube ou com 100% de conhecimento) */
   attributes: { technical: Record<string, Range>; mental: Record<string, Range>; physical: Record<string, Range>; goalkeeper?: Record<string, Range> };
@@ -375,6 +400,7 @@ export interface InfrastructureOverviewDto {
 export type BoardStatus = 'pending' | 'on_track' | 'close' | 'off_track';
 export interface BoardOverviewDto {
   employed: boolean; coachReputation: number;
+  /** atributos do treinador (1–20) e pontos ainda não distribuídos */ coachAttributes: CoachAttributes; coachPoints: number;
   spells: Array<{ clubName: string; start: string; end: string | null; reason: 'sacked' | 'left' | null }>;
   offers: Array<{ id: number; clubName: string; league: string; reputation: number; date: string; expires: string }>;
   club: {
@@ -448,6 +474,10 @@ export interface GameApi {
   getContracts(profileId: string, careerId: string): Promise<IpcResult<ContractRowDto[]>>;
   renewContract(profileId: string, careerId: string, input: RenewInput): Promise<IpcResult<RenewResultDto>>;
   getNews(profileId: string, careerId: string): Promise<IpcResult<NewsDto[]>>;
+  /** marca uma mensagem da caixa de entrada como lida (null = todas) */
+  markInboxRead(profileId: string, careerId: string, id: number | null): Promise<IpcResult<true>>;
+  /** rede social do futebol (aba Notícias) */
+  getSocialFeed(profileId: string, careerId: string, filter: SocialFilter): Promise<IpcResult<SocialFeedDto>>;
   getHistory(profileId: string, careerId: string): Promise<IpcResult<HistoryRowDto[]>>;
   getTrophies(profileId: string, careerId: string): Promise<IpcResult<TrophyRoomDto>>;
   getScouting(profileId: string, careerId: string): Promise<IpcResult<ScoutingOverviewDto>>;
@@ -472,6 +502,8 @@ export interface GameApi {
   startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
   getBoard(profileId: string, careerId: string): Promise<IpcResult<BoardOverviewDto>>;
   respondJobOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;
+  /** distribui um ponto de atributo do treinador */
+  spendCoachPoint(profileId: string, careerId: string, key: CoachAttrKey): Promise<IpcResult<BoardOverviewDto>>;
   requestBudget(profileId: string, careerId: string, kind: 'transfer' | 'wage'): Promise<IpcResult<{ approved: boolean; message: string }>>;
   quit(): Promise<IpcResult<true>>;
 }

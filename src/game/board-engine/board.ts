@@ -52,8 +52,11 @@ export function evaluateSeason(a: {
   objective: Objective; target: number; position: number; champion: boolean; promoted: boolean; relegated: boolean; balance: number; youthTarget: number; youthPromoted: number;
 }): SeasonVerdict {
   const met = a.position <= a.target;
-  let conf = met ? 15 : -20, rep = met ? 5 : -4;
+  // superar a meta com folga também conta para a reputação (+1 por posição acima da meta, até +4)
+  const beyond = met ? Math.min(4, a.target - a.position) : 0;
+  let conf = met ? 15 : -20, rep = met ? 5 + beyond : -4;
   const lines = [met ? `Objetivo cumprido: ${OBJECTIVE_LABEL[a.objective].toLowerCase()} (${a.position}º, meta até ${a.target}º).` : `Objetivo NÃO cumprido: ${OBJECTIVE_LABEL[a.objective].toLowerCase()} (${a.position}º, meta até ${a.target}º).`];
+  if (beyond >= 2) lines.push(`Campanha acima do esperado: ${beyond} posições melhor que a meta.`);
   if (a.champion) { conf += 10; rep += 10; lines.push('Título conquistado.'); }
   if (a.promoted) { conf += 5; rep += 6; lines.push('Acesso conquistado.'); }
   if (a.relegated) { conf -= 15; rep -= 8; lines.push('Rebaixamento.'); }
@@ -99,4 +102,15 @@ export function aiSackChance(position: number, expected: number, teams: number, 
 }
 
 export const OFFER_DAYS = 10;
+/**
+ * Ritmo das propostas de emprego. Desempregado: frequentes (precisa voltar a trabalhar). Empregado: raras e seletivas — só clubes
+ * de reputação igual ou maior que a do clube atual, no máximo uma pendente, pelo menos 30 dias desde a última proposta e o mesmo
+ * clube não volta a chamar em 90 dias (respondida, expirada ou recusada).
+ */
+export const OFFER_PACE = {
+  unemployed: { daily: 0.08, maxPending: 3, gapDays: 0, sameClubDays: 60 },
+  employed: { daily: 0.012, maxPending: 1, gapDays: 30, sameClubDays: 90 },
+} as const;
+/** Empregado só recebe proposta de clube pelo menos do tamanho do atual. */
+export const worthLeaving = (clubReputation: number, currentClubReputation: number): boolean => clubReputation >= currentClubReputation;
 export const VACANCY_FILL_DAYS = 30;

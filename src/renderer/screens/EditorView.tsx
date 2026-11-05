@@ -11,6 +11,7 @@ import { useImages, type ImageKind } from '../images.ts';
 import { POS_NAME, posLabel, tone } from '../playerUi.tsx';
 import { attributeHelp } from '../../game/world/attributeInfo.ts';
 import { HelpTip } from '../help.tsx';
+import { Stars } from '../stars.tsx';
 
 type Rec = Record<string, unknown>;
 interface Props { onBack: () => void }
@@ -348,7 +349,8 @@ function ClubForm({ r, set, stadium, setStadium, errors, opts, images }: { r: Re
           <select value={String(r.league ?? '')} onChange={(e) => set({ ...r, league: e.target.value })}><option value="">Escolha…</option>{leagues.map((l) => <option key={l.id} value={l.id}>{l.tier}ª · {l.name}</option>)}</select></Field>
       </fieldset>
       <fieldset className="ed-section"><legend>Porte</legend>
-        <Field label="Reputação" help="1 a 100. Define a expectativa da diretoria e o nível dos jogadores gerados para completar o elenco." error={errors.reputation}><NumIn r={r} set={set} path="reputation" min={1} max={100} /></Field>
+        <Field label="Reputação" help="1 a 100 (valor do motor; no jogo aparece em estrelas, de 0 a 5, de meia em meia: 10 pontos = meia estrela). Define a expectativa da diretoria e o nível dos jogadores gerados para completar o elenco." error={errors.reputation}>
+          <span className="ed-rep"><NumIn r={r} set={set} path="reputation" min={1} max={100} />{Number.isFinite(Number(r.reputation)) && <Stars reputation={Number(r.reputation)} label="No jogo" />}</span></Field>
         <Field label="Caixa (€)" help="Em branco: calculado pelo jogo (reputação, economia e valor do elenco)." error={errors.balance}><NumIn r={r} set={set} path="balance" min={-1e10} max={1e11} step={100000} /></Field>
         <Field label="Torcida" error={errors.fans}><NumIn r={r} set={set} path="fans" min={0} max={1e8} step={1000} /></Field>
       </fieldset>

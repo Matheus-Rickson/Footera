@@ -9,8 +9,8 @@ import { createProfile, listProfiles } from '../services/profileService.node.ts'
 import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
-  getSeason, beginNextSeason, listContracts, offerRenewal, listNews, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget,
+  getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
+  getBoard, answerJobOffer, askBudget, spendCoachPointFor,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -222,6 +222,8 @@ function registerHandlers(): void {
     playerId: z.string().min(1).max(60), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
   }) }), (i) => offerRenewal(dataDir(), i.profileId, i.careerId, i.input as RenewInput));
   handle('news:list', ref, (i) => listNews(dataDir(), i.profileId, i.careerId));
+  handle('news:read', ref.extend({ id: z.number().int().positive().nullable() }), (i) => markInboxRead(dataDir(), i.profileId, i.careerId, i.id));
+  handle('news:social', ref.extend({ filter: z.enum(['all', 'mine', 'match', 'transfer', 'injury', 'coach', 'league']) }), (i) => socialFeed(dataDir(), i.profileId, i.careerId, i.filter));
   handle('career:history', ref, (i) => careerHistory(dataDir(), i.profileId, i.careerId));
   handle('career:trophies', ref, (i) => trophyRoom(dataDir(), i.profileId, i.careerId));
   const id60 = z.string().min(1).max(60);
@@ -251,6 +253,7 @@ function registerHandlers(): void {
   handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
   handle('board:job', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerJobOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
+  handle('board:coachPoint', ref.extend({ key: z.enum(['tactics', 'motivation', 'youth', 'discipline', 'negotiation', 'adaptability']) }), (i) => spendCoachPointFor(dataDir(), i.profileId, i.careerId, i.key));
   handle('board:budget', ref.extend({ kind: z.enum(['transfer', 'wage']) }), (i) => askBudget(dataDir(), i.profileId, i.careerId, i.kind));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });
 }

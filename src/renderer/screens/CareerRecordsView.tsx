@@ -4,9 +4,6 @@ import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { OUTCOME_LABEL } from './SeasonView.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string }
-const NEWS_LABEL: Record<NewsDto['kind'], string> = {
-  season: 'Temporada', trophy: 'Título', transfer: 'Transferência', contract: 'Contrato', youth: 'Base', retirement: 'Aposentadoria', offer: 'Proposta', staff: 'Comissão'
-};
 
 /** Carrega um recurso do save sempre que a data ou a rodada mudam. */
 function useLoad<T>(fn: () => Promise<T>, key: string): { data: T | null; error: string | null } {
@@ -14,23 +11,6 @@ function useLoad<T>(fn: () => Promise<T>, key: string): { data: T | null; error:
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { fn().then(setData, (e) => setError(errMsg(e))); }, [key]);
   return { data, error };
-}
-
-export function NewsView({ profileId, careerId, refreshKey }: Props) {
-  const { data, error } = useLoad(() => unwrap(window.api.getNews(profileId, careerId)), refreshKey);
-  if (!data) return error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando notícias…</p>;
-  return (
-    <section className="card scroll tall">
-      {data.length === 0 ? <p className="muted">Nenhuma notícia ainda. Transferências do seu clube, renovações e o fim de temporada aparecem aqui.</p> : (
-        <ul className="newsfeed">{data.map((n) => (
-          <li key={n.id} className={`k-${n.kind}`}>
-            <span className="muted small">{fmtDate(n.date)} · {NEWS_LABEL[n.kind]}</span>
-            <strong>{n.title}</strong>
-            {n.body && <span className="small">{n.body}</span>}
-          </li>))}</ul>
-      )}
-    </section>
-  );
 }
 
 export function HistoryView({ profileId, careerId, refreshKey }: Props) {

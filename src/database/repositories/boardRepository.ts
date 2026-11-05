@@ -6,7 +6,7 @@ import { addDays, daysBetween } from '../../shared/date.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
 import { annualEstimate } from '../../game/finance-engine/finance.ts';
 import {
-  aiSackChance, CONFIDENCE, eligibleForCoach, evaluateSeason, expectedPosition, matchDelta, monthlyDelta, OBJECTIVE_LABEL, objectiveFor, OFFER_DAYS,
+  aiSackChance, CONFIDENCE, eligibleForCoach, OFFER_PACE, worthLeaving, evaluateSeason, expectedPosition, matchDelta, monthlyDelta, OBJECTIVE_LABEL, objectiveFor, OFFER_DAYS,
   seasonBudgets, VACANCY_FILL_DAYS, vetoReason, youthTargetFor, type Objective, type SeasonVerdict,
 } from '../../game/board-engine/board.ts';
 import type { Coach, LeagueRules } from '../../shared/types.ts';
@@ -16,6 +16,10 @@ import { loadClubEcon } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
+import { hireConfidence, seasonPoints, spendError } from '../../game/coach-engine/coach.ts';
+import { baseCoachAttributes, COACH_ATTRS, type CoachAttrKey } from '../../shared/coachAttributes.ts';
+import { boardBrief } from './newsRepository.ts';
+import { toStars } from '../../shared/scale.ts';
 
 export class BoardError extends UserError {}
 
@@ -30,6 +34,24 @@ const payrollOf = (db: SqlDb, id: string) => N(db.prepare('SELECT COALESCE(SUM(s
 
 // ---------------------------------------------------------------- treinador
 export function coachOf(db: SqlDb): Coach { return JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as Coach; }
+const saveCoach = (db: SqlDb, c: Coach) => db.prepare('UPDATE career SET coach_json = ? WHERE id = 1').run(JSON.stringify(c));
+/** Pontos de atributo ganhos na avaliação da temporada. NÃO abre transação. */
+function grantPoints(db: SqlDb, n: number): void {
+  const c = coachOf(db);
+  c.attributePoints = (c.attributePoints ?? 0) + n;
+  saveCoach(db, c);
+}
+/** Distribui um ponto de atributo do treinador (save sem atributos: começa da base de criação). */
+export function spendCoachPoint(db: SqlDb, key: CoachAttrKey): void {
+  if (!COACH_ATTRS.some((a) => a.key === key)) throw new BoardError('Atributo do treinador desconhecido.');
+  const c = coachOf(db);
+  const attrs = c.attributes ?? baseCoachAttributes();
+  const err = spendError(attrs, c.attributePoints ?? 0, key);
+  if (err) throw new BoardError(err);
+  c.attributes = { ...attrs, [key]: attrs[key] + 1 };
+  c.attributePoints = (c.attributePoints ?? 0) - 1;
+  withTransaction(db, () => saveCoach(db, c));
+}
 function changeReputation(db: SqlDb, delta: number): number {
   const c = coachOf(db);
   c.reputation = Math.max(1, Math.min(100, Math.round(c.reputation + delta)));
@@ -177,7 +199,7 @@ export function fireCoach(db: SqlDb, date: string, why: string): void {
   db.prepare('UPDATE career SET club_id = NULL WHERE id = 1').run();
   changeReputation(db, -6);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending'").run();
-  addNews(db, date, 'season', `DEMITIDO: ${name} encerra o trabalho do treinador`, `${why} A carreira continua: aguarde propostas de emprego na aba Diretoria.`);
+  addNews(db, date, 'board', `DEMITIDO: ${name} encerra o trabalho do treinador`, `A diretoria do ${name} decidiu encerrar o seu trabalho. ${why}\n\nSua reputação caiu 6 pontos (agora ${String(toStars(coachOf(db).reputation)).replace('.', ',')} de 5 estrelas). Comissão técnica, olheiros, rotina de treino e listas de transferência ficam no clube.\n\nA carreira continua: o calendário segue e clubes com vaga fazem propostas conforme a sua reputação. Acompanhe e responda na Diretoria.`, { actionLabel: 'Ver propostas na Diretoria' });
 }
 
 /** Assume outro clube (proposta aceita). NÃO abre transação. */
@@ -189,8 +211,10 @@ function takeJob(db: SqlDb, clubId: string, date: string): void {
   db.prepare('DELETE FROM job_vacancies WHERE club_id = ?').run(clubId);
   db.prepare('INSERT INTO coach_spells (club_id, start_date) VALUES (?, ?)').run(clubId, date);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending'").run();
-  setBoardForSeason(db, CONFIDENCE.newHire);
-  addNews(db, date, 'season', `Novo clube: o treinador assume o ${clubName(db, clubId)}`, from ? `Deixou o ${from}. A diretoria já definiu os objetivos da temporada.` : 'A diretoria já definiu os objetivos da temporada.');
+  // reputação acima da do clube dá crédito; a adaptabilidade também
+  const coach = coachOf(db);
+  setBoardForSeason(db, hireConfidence(CONFIDENCE.newHire, coach.reputation, N(db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(clubId)!.reputation), coach.attributes));
+  addNews(db, date, 'board', `Novo clube: o treinador assume o ${clubName(db, clubId)}`, `Bem-vindo ao ${clubName(db, clubId)}!${from ? ` Você deixou o ${from}.` : ''}\n\n${boardBrief(db)}\n\nComissão técnica e olheiros do clube anterior não vêm junto: confira a equipe em Comissão técnica e Olheiros. Os objetivos podem ser acompanhados na Diretoria.`, { actionLabel: 'Ver objetivos na Diretoria' });
 }
 
 export function respondJobOffer(db: SqlDb, offerId: number, accept: boolean): void {
@@ -225,7 +249,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
     const conf = N(board(db)!.confidence);
     if (conf < CONFIDENCE.warning && !N(b.warned)) {
       db.prepare('UPDATE board_state SET warned = 1 WHERE id = 1').run();
-      addNews(db, date, 'season', 'Diretoria em alerta: o cargo do treinador está ameaçado', `Confiança em ${Math.round(conf)}. Melhore os resultados para evitar a demissão.`);
+      addNews(db, date, 'board', 'Diretoria em alerta: o cargo do treinador está ameaçado', `A confiança da diretoria no seu trabalho caiu para ${Math.round(conf)} de 100.\n\nSe chegar a ${CONFIDENCE.sack} (depois de ${CONFIDENCE.minMatchesBeforeSack} jogos no cargo), você será demitido. Vitórias e uma posição na tabela dentro da meta recuperam a confiança.`, { actionLabel: 'Ver objetivos na Diretoria' });
     } else if (conf >= CONFIDENCE.recovered && N(b.warned)) db.prepare('UPDATE board_state SET warned = 0 WHERE id = 1').run();
     if (conf <= CONFIDENCE.sack && N(b.matches) >= CONFIDENCE.minMatchesBeforeSack) fireCoach(db, date, `A confiança da diretoria chegou a ${Math.round(conf)}.`);
   }
@@ -247,13 +271,19 @@ export function processBoardDay(db: SqlDb, date: string): void {
   const coachRep = coachOf(db).reputation;
   const unemployed = !now.clubId;
   const pending = N(db.prepare("SELECT COUNT(*) AS n FROM job_offers WHERE status = 'pending'").get()!.n);
-  if (pending < 3) {
+  const pace = unemployed ? OFFER_PACE.unemployed : OFFER_PACE.employed;
+  const lastOffer = db.prepare('SELECT MAX(date) AS d FROM job_offers').get()?.d;
+  const rested = !pace.gapDays || lastOffer == null || daysBetween(S(lastOffer), date) >= pace.gapDays;
+  const currentRep = unemployed ? 0 : N(db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(now.clubId)!.reputation);
+  if (pending < pace.maxPending && rested) {
     const rng = createRng(`job-offers:${seed}:${date}`);
     for (const v of db.prepare('SELECT v.club_id, c.reputation FROM job_vacancies v JOIN clubs c ON c.id = v.club_id ORDER BY v.club_id').all()) {
       const roll = rng.next();
       if (S(v.club_id) === now.clubId || !eligibleForCoach(N(v.reputation), coachRep, unemployed)) continue;
-      if (db.prepare("SELECT 1 AS x FROM job_offers WHERE club_id = ? AND (status = 'pending' OR (status = 'declined' AND date > ?))").get(S(v.club_id), addDays(date, -60))) continue;
-      if (roll >= (unemployed ? 0.08 : 0.03)) continue;
+      if (!unemployed && !worthLeaving(N(v.reputation), currentRep)) continue;
+      // o mesmo clube não insiste: pendente, ou chamou há pouco (empregado: qualquer resposta; desempregado: recusada)
+      if (db.prepare(`SELECT 1 AS x FROM job_offers WHERE club_id = ? AND (status = 'pending' OR (date > ? AND ${unemployed ? "status = 'declined'" : '1 = 1'}))`).get(S(v.club_id), addDays(date, -pace.sameClubDays))) continue;
+      if (roll >= pace.daily) continue;
       offerJob(db, S(v.club_id), date);
       break; // no máximo uma proposta nova por dia
     }
@@ -272,7 +302,9 @@ export function processBoardDay(db: SqlDb, date: string): void {
 
 function offerJob(db: SqlDb, clubId: string, date: string): void {
   db.prepare('INSERT INTO job_offers (club_id, date, expires) VALUES (?,?,?)').run(clubId, date, addDays(date, OFFER_DAYS));
-  addNews(db, date, 'offer', `Proposta de emprego: ${clubName(db, clubId)} quer contratar o treinador`, `Responda até ${br(addDays(date, OFFER_DAYS))} na aba Diretoria.`);
+  const c = db.prepare('SELECT c.name, c.reputation, l.name AS league, l.tier, co.name AS country FROM clubs c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = c.country_id WHERE c.id = ?').get(clubId)!;
+  const employed = !!getCareerState(db).clubId;
+  addNews(db, date, 'offer', `Proposta de emprego: ${S(c.name)} quer contratar o treinador`, `O ${S(c.name)} (${S(c.league)}, ${N(c.tier)}ª divisão, ${S(c.country)}) está sem técnico e quer você no comando. Reputação do clube: ${String(toStars(N(c.reputation))).replace('.', ',')} de 5 estrelas.\n\n${employed ? 'Aceitar significa deixar o clube atual na hora: comissão técnica, olheiros e rotina de treino ficam para trás.' : 'Aceitar encerra o período sem clube e você assume na hora.'} A diretoria define os objetivos e os orçamentos assim que você chegar.\n\nA proposta vale até ${br(addDays(date, OFFER_DAYS))}. Aceite ou recuse na Diretoria.`, { actionLabel: 'Responder na Diretoria' });
 }
 
 // ---------------------------------------------------------------- virada de temporada
@@ -290,7 +322,10 @@ export function reviewSeason(db: SqlDb, date: string, a: { position: number; cha
   const verdict = evaluateSeason({ objective: S(b.objective) as Objective, target: N(b.target_position), ...a, balance: balanceOf(db, st.clubId), youthTarget: N(b.youth_target), youthPromoted: N(b.youth_promoted) });
   const conf = Math.max(0, Math.min(100, N(b.confidence) + verdict.confidenceDelta));
   changeReputation(db, verdict.reputationDelta);
-  addNews(db, date, 'season', verdict.met ? 'Diretoria satisfeita com a temporada' : 'Diretoria insatisfeita com a temporada', verdict.lines.join(' '));
+  const pts = seasonPoints({ met: verdict.met, champion: a.champion, promoted: a.promoted });
+  grantPoints(db, pts);
+  verdict.lines.push(`Treinador: +${pts} ponto(s) de atributo para distribuir (aba Diretoria).`);
+  addNews(db, date, 'board', verdict.met ? 'Diretoria satisfeita com a temporada' : 'Diretoria insatisfeita com a temporada', `A diretoria concluiu a avaliação da temporada:\n\n${verdict.lines.join('\n')}\n\nConfiança da diretoria agora: ${Math.round(Math.max(0, Math.min(100, N(b.confidence) + verdict.confidenceDelta)))}/100.`, { actionLabel: 'Distribuir pontos e ver objetivos' });
   if (conf <= CONFIDENCE.sack + 5 && !verdict.met) { fireCoach(db, date, 'A diretoria não renovou a confiança depois da avaliação da temporada.'); return { verdict, sacked: true }; }
   setConfidence(db, conf);
   return { verdict, sacked: false };
@@ -311,7 +346,7 @@ export function getBoardOverview(db: SqlDb): BoardOverviewDto {
   const offers = db.prepare(`SELECT o.id, o.date, o.expires, c.name, c.reputation, l.name AS league, co.name AS country FROM job_offers o JOIN clubs c ON c.id = o.club_id
     JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = c.country_id WHERE o.status = 'pending' AND o.expires >= ? ORDER BY o.id`).all(st.gameDate)
     .map((r) => ({ id: N(r.id), clubName: S(r.name), league: `${S(r.league)} (${S(r.country)})`, reputation: N(r.reputation), date: S(r.date), expires: S(r.expires) }));
-  const base = { employed: !!st.clubId, coachReputation: coach.reputation, spells, offers };
+  const base = { employed: !!st.clubId, coachReputation: coach.reputation, coachAttributes: coach.attributes ?? baseCoachAttributes(), coachPoints: coach.attributePoints ?? 0, spells, offers };
   const b = board(db);
   if (!st.clubId || !b) return { ...base, club: null };
   const sit = leagueSituation(db, st.clubId, st.season);

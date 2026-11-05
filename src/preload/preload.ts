@@ -58,6 +58,8 @@ const api: GameApi = {
   getContracts: (profileId, careerId) => ipcRenderer.invoke('contracts:list', { profileId, careerId }),
   renewContract: (profileId, careerId, input) => ipcRenderer.invoke('contracts:renew', { profileId, careerId, input }),
   getNews: (profileId, careerId) => ipcRenderer.invoke('news:list', { profileId, careerId }),
+  markInboxRead: (profileId, careerId, id) => ipcRenderer.invoke('news:read', { profileId, careerId, id }),
+  getSocialFeed: (profileId, careerId, filter) => ipcRenderer.invoke('news:social', { profileId, careerId, filter }),
   getHistory: (profileId, careerId) => ipcRenderer.invoke('career:history', { profileId, careerId }),
   getTrophies: (profileId, careerId) => ipcRenderer.invoke('career:trophies', { profileId, careerId }),
   getScouting: (profileId, careerId) => ipcRenderer.invoke('scouting:get', { profileId, careerId }),
@@ -82,6 +84,7 @@ const api: GameApi = {
   startUpgrade: (profileId, careerId, kind) => ipcRenderer.invoke('infra:upgrade', { profileId, careerId, kind }),
   getBoard: (profileId, careerId) => ipcRenderer.invoke('board:get', { profileId, careerId }),
   respondJobOffer: (profileId, careerId, offerId, accept) => ipcRenderer.invoke('board:job', { profileId, careerId, offerId, accept }),
+  spendCoachPoint: (profileId, careerId, key) => ipcRenderer.invoke('board:coachPoint', { profileId, careerId, key }),
   requestBudget: (profileId, careerId, kind) => ipcRenderer.invoke('board:budget', { profileId, careerId, kind }),
   quit: () => ipcRenderer.invoke('app:quit'),
 };
