@@ -740,3 +740,23 @@ Sem novas funcionalidades de jogo.
   força média e evolução aparecem de 1 a 20 (inteiro, decisão do usuário) em todas as telas; o motor, as calibrações e o banco continuam em 0–100.
   Moral, confiança da diretoria e reputação seguem em 0–100 (não são qualidade de jogador). Testes: 184 (estimativas exatas com 100%, faixas largas
   sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.
+
+## Fase 9 — Base de dados editável (branch `fase-9-base-de-dados`; detalhes em `docs/DATABASE.md`)
+Decisões do usuário: JSON + CSV; pacotes só para carreiras novas (exceto fotos/nomes); começar pela etapa 1; commit da v0.8.7 antes (feito: `a33826b`).
+### Etapa 1 — formato, IDs fixos, montagem do universo, validador (funcional, testada)
+- **IDs fixos e legíveis** no gerador, únicos no universo: `bra`, `bra-1`, clubes/estádios pelo nome, jogadores `nome-sobrenome-ano`
+  (`shared/slug.ts`). Como os IDs alimentam sementes aleatórias, os cenários dos testes mudaram: 3 testes tinham suposições frágeis e foram
+  ajustados sem afrouxar o que verificam (técnico demitido no cenário novo → diretoria mantida satisfeita no teste de contabilidade;
+  titular lesionado no treino antes do jogo → ignorado; peneira de março com goleiro melhor → lista de goleiros lida na virada).
+- **Formato v1** (`game/data-pack/format.ts`, Zod estrito): manifest + countries/leagues/stadiums/clubs/players; criar/alterar/remover por id;
+  jogador completo (23 atributos) ou resumido (`ability` 1–20 → atributos gerados com o perfil da posição); erros com pacote › arquivo › registro.
+- **Montagem** (`compileUniverse`): base gerada ou vazia (`"base": "none"`) + pacotes; valida referências, países/ligas, divisões, acesso ×
+  rebaixamento, idade, IDs entre tipos, `requires` e ordem; completa elencos curtos; tudo ou nada. Carreira nova já passa por ela e grava
+  `meta.data_packs`.
+- **Exportação** (`exportUniverse`) e disco (`services/packService.node.ts`: limite de 64 MB por arquivo, BOM aceito, arquivo desconhecido = erro).
+- **CLI** `npm run pack -- validate|export|schema`; **JSON Schema** gerado das próprias regras em `docs/schema/`; exemplo em `docs/exemplos/pacote-exemplo/`.
+- **Testes:** 193 (9 novos em `data-pack.test.ts`: IDs, ida e volta exata pela memória e pelo disco, patch parcial, criar país/liga/clubes/
+  jogadores e jogar uma rodada com o clube novo, remoções, erros, disco, schema em dia, exemplo da documentação). **Mutação 12/12** detectadas.
+  Typecheck limpo.
+- **Pendente:** etapas 2–5 (interface de pacotes e `.zip`, fotos e escudos, editor + CSV, técnicos da IA). **Não executado:** nenhuma tela nova
+  nesta etapa; nada para verificar no Electron além de criar uma carreira (deve funcionar como antes, com IDs legíveis).

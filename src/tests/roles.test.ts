@@ -132,7 +132,8 @@ test('Esquema: funções por vaga são validadas, gravadas e usadas na partida; 
   const rep = JSON.parse(String(db.prepare('SELECT report_json FROM matches WHERE fixture_id = ?').get(day.userMatch!.fixtureId)!.report_json)) as { players: Array<{ id: string; slot: Position; role?: string; minutes: number }> };
   let checked = 0;
   lineup.forEach((id, i) => {
-    const rp = rep.players.find((p) => p.id === id)!;
+    const rp = rep.players.find((p) => p.id === id);
+    if (!rp) return; // lesionado no treino antes do jogo: ficou fora
     if (rp.slot !== slots[i]!.pos) return; // reorganizado por substituição/expulsão
     assert.equal(rp.role, roles[i], `vaga ${i}`);
     const expected = Math.min(100, Math.round((pre.get(id)! + (ROLE_MATCH_GAIN * rp.minutes) / 90) * 10) / 10);

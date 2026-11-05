@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "exemplo-liga-argentina",
+  "name": "Exemplo: Liga Argentina e ajustes",
+  "version": "1.0.0",
+  "author": "FOOTERA",
+  "description": "Cria um país, uma liga, quatro clubes e jogadores (completos, resumidos pela força e um livre) e altera uma liga da base (renomeia a Série A)."
+}

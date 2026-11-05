@@ -26,7 +26,8 @@ export function validateCoach(c: Coach, careerStartDate: string): void {
  * Cria uma carreira independente: aplica migrações em um banco novo e copia o universo para ele.
  * O banco recebido deve estar vazio. Alterações posteriores não afetam o `world` original nem outras carreiras.
  */
-export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: string, now: Date = new Date()): void {
+/** `dataPacks`: pacotes de dados usados para montar o universo (id@versão, na ordem de carga), gravados no save. */
+export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: string, now: Date = new Date(), dataPacks: string[] = []): void {
   validateCoach(coach, world.startDate);
   if (!world.clubs.some((c) => c.id === clubId)) throw new ValidationError('Clube inexistente no universo.');
   migrate(db);
@@ -40,6 +41,7 @@ export function createCareer(db: SqlDb, world: World, coach: Coach, clubId: stri
   ensureSchemes(db, now);
   // a 1ª cobrança mensal ocorre quando o jogo passar do dia 1 do mês de início
   db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('finance_last_month', prevMonth(world.startDate.slice(0, 7)));
+  db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('data_packs', JSON.stringify(dataPacks));
   ensureFinance(db);
   ensureYouthAcademies(db);
   ensureBoard(db);

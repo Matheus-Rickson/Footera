@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://footera.local/schema/clubs.schema.json",
+  "title": "FOOTERA — Clubes",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "$remove": {
+        "const": true
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      },
+      "shortName": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 5
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "league": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "city": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      },
+      "stadium": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "reputation": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "balance": {
+        "type": "integer",
+        "minimum": -10000000000,
+        "maximum": 100000000000
+      },
+      "fans": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100000000
+      },
+      "facilities": {
+        "type": "object",
+        "properties": {
+          "training": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "youth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "medical": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "stadium": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  }
+}

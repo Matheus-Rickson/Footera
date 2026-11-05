@@ -1,0 +1,4 @@
+[
+  { "id": "arg-1", "country": "arg", "name": "Primera División", "tier": 1, "rules": { "continentalSlots": 4 } },
+  { "id": "bra-1", "name": "Brasileirão Série A" }
+]

@@ -1,0 +1,12 @@
+[
+  { "id": "mateo-fernandez-1998", "firstName": "Mateo", "lastName": "Fernández", "birthDate": "1998-04-12", "nationality": "ARG", "club": "club-atletico-norte", "position": "CF", "secondaryPositions": ["SS"], "foot": "left", "ability": 16, "potential": 17 },
+  { "id": "bruno-acosta-2004", "firstName": "Bruno", "lastName": "Acosta", "birthDate": "2004-09-30", "nationality": "ARG", "club": "deportivo-sur", "position": "GK", "heightCm": 192, "ability": 11, "potential": 16 },
+  { "id": "lucas-rivera-1995", "firstName": "Lucas", "lastName": "Rivera", "birthDate": "1995-01-08", "nationality": "ARG", "club": "union-oeste", "position": "CM",
+    "attributes": {
+      "technical": { "finishing": 9, "passing": 15, "dribbling": 12, "tackling": 11, "marking": 10, "firstTouch": 14, "crossing": 10, "heading": 8, "longShots": 12, "goalkeeping": 1 },
+      "mental": { "vision": 15, "composure": 13, "decisions": 14, "positioning": 11, "workRate": 14, "leadership": 12, "aggression": 9 },
+      "physical": { "pace": 11, "stamina": 15, "strength": 10, "agility": 12, "jumping": 9, "naturalFitness": 13 }
+    },
+    "contract": { "salary": 18000, "end": "2029-06-30" } },
+  { "id": "jogador-livre-1997", "firstName": "Diego", "lastName": "Molina", "birthDate": "1997-11-02", "nationality": "ARG", "club": null, "position": "LW", "ability": 13 }
+]

@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://footera.local/schema/players.schema.json",
+  "title": "FOOTERA — Jogadores",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "$remove": {
+        "const": true
+      },
+      "firstName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "lastName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      },
+      "birthDate": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+      },
+      "nationality": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "extraNationalities": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "maxItems": 3
+      },
+      "club": {
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "GK",
+          "CB",
+          "LB",
+          "RB",
+          "LWB",
+          "RWB",
+          "DM",
+          "CM",
+          "LM",
+          "RM",
+          "AM",
+          "LW",
+          "RW",
+          "SS",
+          "CF",
+          "ST"
+        ]
+      },
+      "secondaryPositions": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "GK",
+            "CB",
+            "LB",
+            "RB",
+            "LWB",
+            "RWB",
+            "DM",
+            "CM",
+            "LM",
+            "RM",
+            "AM",
+            "LW",
+            "RW",
+            "SS",
+            "CF",
+            "ST"
+          ]
+        },
+        "maxItems": 3
+      },
+      "foot": {
+        "type": "string",
+        "enum": [
+          "right",
+          "left",
+          "both"
+        ]
+      },
+      "heightCm": {
+        "type": "integer",
+        "minimum": 140,
+        "maximum": 220
+      },
+      "weightKg": {
+        "type": "integer",
+        "minimum": 40,
+        "maximum": 130
+      },
+      "attributes": {
+        "type": "object",
+        "properties": {
+          "technical": {
+            "type": "object",
+            "properties": {
+              "finishing": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "passing": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "dribbling": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "tackling": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "marking": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "firstTouch": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "crossing": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "heading": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "longShots": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "goalkeeping": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "additionalProperties": false
+          },
+          "mental": {
+            "type": "object",
+            "properties": {
+              "vision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "composure": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "decisions": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "positioning": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "workRate": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "leadership": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "aggression": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "additionalProperties": false
+          },
+          "physical": {
+            "type": "object",
+            "properties": {
+              "pace": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "stamina": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "strength": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "agility": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "jumping": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "naturalFitness": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ability": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "potential": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "personality": {
+        "type": "object",
+        "properties": {
+          "professionalism": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "ambition": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "loyalty": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "temperament": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "consistency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "additionalProperties": false
+      },
+      "contract": {
+        "type": "object",
+        "properties": {
+          "salary": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "end": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "marketValue": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100000000000
+      },
+      "internal": {
+        "type": "object",
+        "properties": {
+          "potentialHidden": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "potentialEstimated": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "condition": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "fatigue": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "morale": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "form": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  }
+}

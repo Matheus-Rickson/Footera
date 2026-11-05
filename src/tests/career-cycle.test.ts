@@ -229,7 +229,9 @@ test('Determinismo: mesma semente, mesma temporada e mesma virada (jogadores, cl
 test('Duas viradas seguidas: contabilidade, elencos e calendário continuam íntegros (e a IA renova sem inflacionar salários)', async () => {
   const { db, initial } = await setup('cycle-two', 6);
   for (const season of [2026, 2027]) {
-    playSeason(db); toTurnover(db);
+    // diretoria satisfeita: este teste é sobre contabilidade e elencos; a demissão tem testes próprios (o histórico precisa das duas temporadas)
+    for (let i = 0; i < 80 && scheduled(db) > 0; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); db.exec('UPDATE board_state SET confidence = 100'); }
+    toTurnover(db);
     const r = startNextSeason(db);
     assert.equal(r.season, season + 1);
     assertBooksBalance(db, initial);

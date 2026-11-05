@@ -29,6 +29,7 @@ import { withTransaction } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
 import { generateWorld } from '../game/world/generator.ts';
+import { compileUniverse } from '../game/data-pack/compile.ts';
 import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology } from '../shared/types.ts';
@@ -60,7 +61,8 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
     catch (e) { if (e instanceof ImageError) throw new ValidationError(e.message); throw e; }
   }
 
-  const world = generateWorld({ seed });
+  // universo = base gerada pela semente + pacotes de dados (a escolha dos pacotes na tela chega na etapa 2 da base de dados)
+  const { world, applied } = compileUniverse(generateWorld({ seed }), []);
   const coach: Coach = {
     firstName: input.coach.firstName.trim(), lastName: input.coach.lastName.trim(),
     birthDate: input.coach.birthDate, nationality: input.coach.nationality,
@@ -78,7 +80,7 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
   let db: SqlDb | null = null;
   try {
     db = await openDatabase(path.join(tmp, 'career.db'));
-    createCareer(db, world, coach, input.clubId);
+    createCareer(db, world, coach, input.clubId, new Date(), applied);
     db.close(); db = null;
     if (ext && input.photo) fs.writeFileSync(path.join(tmp, `coach.${ext}`), input.photo);
     fs.renameSync(tmp, final);

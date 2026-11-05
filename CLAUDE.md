@@ -9,15 +9,16 @@ Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa
 - `npm run typecheck:core` — checa só o motor/banco/serviços (sem React).
 - `npm run typecheck` — checa tudo (precisa de `npm install`).
 - `npm run dev` — Electron + Vite em desenvolvimento. `npm run package` — instalador Windows.
+- `npm run pack -- validate|export|schema` — ferramenta de pacotes de dados (patches).
 - Requer Node >= 22.18 com `erasableSyntaxOnly`: imports com extensão `.ts`, **sem enums**.
 
 ## Arquitetura (detalhes em docs/ARCHITECTURE.md)
 - `src/shared`: tipos, datas, `api.ts` (contrato `GameApi` + DTOs), `UserError`.
-- `src/game/*`: lógica pura, determinística (`createRng` com semente). Sem I/O.
+- `src/game/*`: lógica pura, determinística (`createRng` com semente). Sem I/O. `game/data-pack`: formato dos pacotes de dados e montagem do universo (base + pacotes).
 - `src/database`: interface `SqlDb`, migrações numeradas, repositórios.
 - `src/services/*.node.ts`: usam fs. `src/main`: IPC validado com Zod. `src/preload`.
 - `src/renderer`: React; só fala com o motor via `window.api`.
-- Cada save é um arquivo SQLite independente (`saves/<profileId>/<careerId>/career.db`), copiado do universo.
+- Cada save é um arquivo SQLite independente (`saves/<profileId>/<careerId>/career.db`), copiado do universo (`compileUniverse`: base gerada pela semente + pacotes de dados; ver `docs/DATABASE.md`). IDs fixos e legíveis (`shared/slug.ts`).
 
 ## Regras inegociáveis (cada uma tem teste)
 1. Todo dinheiro passa por `makePoster`: saldo = saldo inicial + soma do extrato, para TODOS os clubes.
@@ -47,6 +48,6 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   Validação do usuário pelo `docs/CHECKLIST_VALIDACAO.md`. Saves do app instalado ficam em `%APPDATA%\football-manager-simulator` (fixado no main.ts).
 - v0.8.6 commitada (funções com popup verificadas pelo usuário; validação completa em andamento): ME/MD/AE/AD e SA/CA como posições; funções táticas (`playerRoles.ts`, migração 011,
   domínio que se aprende jogando/treinando); motor rebalanceado (`ZONE_EXP` 0,35, `K.chance` 0,070). Ver PROGRESS.md.
-- v0.8.7 commitada (aguardando validação completa pelo checklist 13c). Em seguida: **Fase 9 começando pela base de dados editável** (pacotes de dados
-  JSON + CSV, IDs fixos, universo montado de base + pacotes, só carreiras novas — exceto fotos/nomes). Ver `docs/DATABASE.md`.
+- v0.8.7 commitada (aguardando validação completa pelo checklist 13c). **Fase 9 em andamento** (branch `fase-9-base-de-dados`): base de dados
+  editável — etapa 1 (formato, IDs fixos, montagem, validador, CLI, JSON Schema) feita, sem commit; etapas 2–5 pendentes. Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

@@ -3,6 +3,7 @@ import { COUNTRY_TEMPLATES, STADIUM_SUFFIX, type CountryTemplate } from './names
 import { overallFor } from './overall.ts';
 import { addDays, addYears } from '../../shared/date.ts';
 import { SECONDARY_OPTIONS } from '../../shared/positions.ts';
+import { uniqueIds } from '../../shared/slug.ts';
 import type {
   Attributes, Club, Country, Foot, League, Player, Position, Stadium, World, IsoDate,
 } from '../../shared/types.ts';
@@ -38,22 +39,22 @@ const POS_BIAS: Record<Position, Partial<Record<string, number>>> = {
   ST: { finishing: 4, composure: 2, positioning: 2, firstTouch: 2, heading: 1, pace: 1, tackling: -5, marking: -5, goalkeeping: -12 },
 };
 
-const ATTR_KEYS = {
+export const ATTR_KEYS = {
   technical: ['finishing','passing','dribbling','tackling','marking','firstTouch','crossing','heading','longShots','goalkeeping'],
   mental: ['vision','composure','decisions','positioning','workRate','leadership','aggression'],
   physical: ['pace','stamina','strength','agility','jumping','naturalFitness'],
 } as const;
 
+/**
+ * IDs legíveis e fixos por semente (base de dados editável), únicos no universo inteiro (um patch se refere a qualquer
+ * entidade só pelo ID). Jogador: `nome-sobrenome-ano`; clube e estádio: o nome; país (`bra`) e liga (`bra-1`) vêm prontos.
+ */
 function makeIdFactory() {
-  const counters = new Map<string, number>();
-  return (prefix: string): string => {
-    const n = (counters.get(prefix) ?? 0) + 1;
-    counters.set(prefix, n);
-    return `${prefix}_${n.toString(36).padStart(5, '0')}`;
-  };
+  const gen = uniqueIds();
+  return (prefix: string, hint?: string): string => gen(hint ?? prefix);
 }
 
-function genAttributes(rng: Rng, pos: Position, ability: number): Attributes {
+export function genAttributes(rng: Rng, pos: Position, ability: number): Attributes {
   const bias = POS_BIAS[pos];
   const make = <K extends string>(keys: readonly K[]): Record<K, number> => {
     const out = {} as Record<K, number>;
@@ -92,7 +93,7 @@ export interface BuildOptions {
 }
 
 export function buildPlayer(
-  rng: Rng, newId: (p: string) => string, tpl: CountryTemplate, clubId: string, clubRep: number,
+  rng: Rng, newId: (prefix: string, hint?: string) => string, tpl: CountryTemplate, clubId: string, clubRep: number,
   pos: Position, startDate: IsoDate, name: { first: string; last: string }, opts: BuildOptions = {},
 ): Player {
   const age = opts.forceAge ?? clamp(Math.round(rng.normal(25.5, 4.2)), 17, 38);
@@ -119,7 +120,7 @@ export function buildPlayer(
   const options = SECONDARY_OPTIONS[pos];
   const secondary: Position[] = rng.chance(0.35) && options.length > 0 ? [rng.pick(options)] : [];
   return {
-    id: newId('plr'),
+    id: newId('plr', `${name.first} ${name.last} ${birthDate.slice(0, 4)}`),
     clubId,
     firstName: name.first,
     lastName: name.last,
@@ -162,14 +163,14 @@ export function generateWorld(opts: WorldOptions): World {
 
   for (const tpl of COUNTRY_TEMPLATES) {
     const crng = root.fork(`country:${tpl.code}`);
-    const country: Country = { id: newId('cty'), code: tpl.code, name: tpl.name, economy: tpl.wageScale };
+    const country: Country = { id: newId('cty', tpl.code), code: tpl.code, name: tpl.name, economy: tpl.wageScale };
     countries.push(country);
     const usedClubNames = new Set<string>();
 
     for (const lt of tpl.leagues) {
       const teams = opts.teamsPerLeagueOverride ?? lt.teams;
       const league: League = {
-        id: newId('lg'), countryId: country.id, name: lt.name, tier: lt.tier, teamCount: teams,
+        id: newId('lg', `${country.id}-${lt.tier}`), countryId: country.id, name: lt.name, tier: lt.tier, teamCount: teams,
         rules: {
           rounds: 2, pointsWin: 3, pointsDraw: 1,
           tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
@@ -197,13 +198,14 @@ export function generateWorld(opts: WorldOptions): World {
         const reputation = clamp(Math.round(tierBase - (i / Math.max(teams - 1, 1)) * 24 + lrng.normal(0, 3)), 5, 99);
         const capacity = Math.round((6000 + reputation * 650 + lrng.int(0, 4000)) / 100) * 100;
         const stadium: Stadium = {
-          id: newId('std'), city, capacity,
+          id: '', city, capacity,
           name: `${lrng.pick(STADIUM_SUFFIX)} ${city}`,
         };
+        stadium.id = newId('std', stadium.name);
         stadiums.push(stadium);
 
         const club: Club = {
-          id: newId('clb'), name,
+          id: newId('clb', name), name,
           shortName: name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w.slice(0, 3)).join('').toUpperCase().slice(0, 4) || 'CLB',
           countryId: country.id, city, leagueId: league.id, stadiumId: stadium.id, reputation,
           balance: Math.round((reputation * 180_000 * tpl.wageScale) / 1000) * 1000,

@@ -190,9 +190,10 @@ test('Virada: jovens de 19 do usuário saem da base; com elenco incompleto, o me
   db.prepare("UPDATE players SET position = 'GK', birth_date = '2010-01-01' WHERE id = ?").run(gkYouth);
   const gks = db.prepare("SELECT id FROM players WHERE club_id = ? AND position = 'GK' ORDER BY overall").all(clubId).map((r) => String(r.id));
   for (const id of gks.slice(0, gks.length - 1)) db.prepare("UPDATE players SET club_id = NULL WHERE id = ?").run(id);
-  const youthGks = db.prepare("SELECT id FROM players WHERE youth_club_id = ? AND position = 'GK'").all(clubId).map((r) => String(r.id));
   for (let i = 0; i < 80 && n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") > 0; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); }
   advanceTime(db, 'nextMatchday');
+  // goleiros da base na hora da virada (a peneira de março pode ter trazido um melhor)
+  const youthGks = db.prepare("SELECT id FROM players WHERE youth_club_id = ? AND position = 'GK'").all(clubId).map((r) => String(r.id));
   const r = startNextSeason(db);
   assert.ok(r.youthReleased.length >= 1, 'jovem de 19 dispensado');
   assert.equal(db.prepare('SELECT youth_club_id FROM players WHERE id = ?').get(String(old.id))!.youth_club_id, null);

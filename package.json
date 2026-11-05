@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --disable-warning=ExperimentalWarning --test \"src/tests/**/*.test.ts\"",
     "package": "npm run build && electron-builder --win --x64",
-    "typecheck:core": "tsc --noEmit -p tsconfig.core.json"
+    "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
+    "pack": "node --disable-warning=ExperimentalWarning scripts/pack.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

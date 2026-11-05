@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://footera.local/schema/countries.schema.json",
+  "title": "FOOTERA — Países",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "$remove": {
+        "const": true
+      },
+      "code": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      },
+      "economy": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 5
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  }
+}

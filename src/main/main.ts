@@ -78,7 +78,7 @@ function registerHandlers(): void {
     methodology: z.enum(['defensive', 'possession', 'aggressive']),
   });
   handle('career:create', z.object({
-    profileId: uuid, seed: seedSchema, clubId: z.string().min(1).max(40), coach, photoToken: uuid.nullable(),
+    profileId: uuid, seed: seedSchema, clubId: z.string().min(1).max(60), coach, photoToken: uuid.nullable(),
   }), async (i) => {
     let photo: Uint8Array | undefined;
     if (i.photoToken) {

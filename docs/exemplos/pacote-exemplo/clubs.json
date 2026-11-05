@@ -1,0 +1,6 @@
+[
+  { "id": "club-atletico-norte", "name": "Club Atlético Norte", "shortName": "CAN", "country": "arg", "league": "arg-1", "city": "Buenos Aires", "reputation": 72 },
+  { "id": "deportivo-sur", "name": "Deportivo Sur", "country": "arg", "league": "arg-1", "city": "Rosario", "reputation": 64 },
+  { "id": "union-oeste", "name": "Unión Oeste", "country": "arg", "league": "arg-1", "city": "Córdoba" },
+  { "id": "racing-este", "name": "Racing Este", "country": "arg", "league": "arg-1", "city": "Mendoza", "facilities": { "youth": 15 } }
+]
