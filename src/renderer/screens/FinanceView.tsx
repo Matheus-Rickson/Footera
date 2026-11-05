@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FinanceOverviewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, fmtNum, unwrap } from '../util.ts';
 import { composeBar } from '../../shared/financeChart.ts';
 
 export const CATEGORY_LABEL: Record<string, string> = {
@@ -8,7 +8,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   prize: 'Premiação da liga', youth: 'Categorias de base (salários)', scouting: 'Olheiros', coaching: 'Comissão técnica (salários)', infrastructure: 'Obras de infraestrutura', transfer_in: 'Venda de jogadores', transfer_out: 'Compra de jogadores', wages: 'Salários dos jogadores', staff: 'Comissão técnica e base', maintenance: 'Estádio e instalações', operations: 'Administração e viagens',
 };
 const KIND_LABEL: Record<string, string> = { shirt: 'Camisa (master)', kit: 'Material esportivo', stadium: 'Naming rights' };
-const money = (n: number) => `${n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;
+const money = fmtMoney;
 const monthLabel = (m: string) => `${m.slice(5, 7)}/${m.slice(2, 4)}`;
 
 interface Hover { month: string; kind: 'income' | 'expense'; x: number; y: number }

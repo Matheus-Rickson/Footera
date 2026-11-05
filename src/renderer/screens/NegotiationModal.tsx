@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, CircleCheck, X } from 'lucide-react';
 import type { NegotiationDto, OfferResultDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { fmtRange, fmtRange20, initials, PlayerFlags, PosPill } from '../playerUi.tsx';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { YearsPicker } from './YearsPicker.tsx';
@@ -58,7 +58,7 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
     setFee(value);
     const r = await unwrap(window.api.proposeFee(profileId, careerId, playerId, Math.round(value)));
     if (r.outcome === 'accepted') { setAgreedFee(Math.round(value)); setStep('contract'); setAnswer({ kind: 'ok', text: r.message }); }
-    else if (r.outcome === 'club_counter') setAnswer({ kind: 'notice', text: r.message, action: { label: `Aceitar ${fmtNum(r.counterFee!)}`, run: () => void offerFee(r.counterFee!) } });
+    else if (r.outcome === 'club_counter') setAnswer({ kind: 'notice', text: r.message, action: { label: `Aceitar ${fmtMoney(r.counterFee!)}`, run: () => void offerFee(r.counterFee!) } });
     else setAnswer({ kind: 'error', text: r.message });
   });
 
@@ -66,7 +66,7 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
     setWage(w);
     const r: OfferResultDto = await unwrap(window.api.makeOffer(profileId, careerId, { playerId, fee: agreedFee ?? 0, wage: Math.round(w), years }));
     if (r.outcome === 'completed') { setSignedText(r.message); setStep('signed'); await onSigned(); return; }
-    if (r.outcome === 'player_counter') { setAnswer({ kind: 'notice', text: r.message, action: { label: `Aceitar ${fmtNum(r.counterWage!)}/mês`, run: () => void offerContract(r.counterWage!) } }); return; }
+    if (r.outcome === 'player_counter') { setAnswer({ kind: 'notice', text: r.message, action: { label: `Aceitar ${fmtMoney(r.counterWage!)}/mês`, run: () => void offerContract(r.counterWage!) } }); return; }
     if (r.outcome === 'club_counter' || r.outcome === 'club_rejected') { setAgreedFee(null); setStep('fee'); }
     setAnswer({ kind: 'error', text: r.message });
   });
@@ -97,8 +97,8 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
                 <div><dt>Nível (est.)</dt><dd><span className="tr-level">{fmtRange20(p.estOverall)}</span></dd></div>
                 <div><dt>Potencial (est.)</dt><dd>{fmtRange20(p.estPotential)}</dd></div>
                 <div><dt>Olheiros</dt><dd><KnowledgeBar value={p.knowledge} /></dd></div>
-                <div><dt>Valor de mercado</dt><dd>{fmtNum(p.marketValue)}</dd></div>
-                <div><dt>{p.clubId ? 'Salário atual' : 'Pretensão salarial'}</dt><dd>{fmtNum(p.salary)}/mês</dd></div>
+                <div><dt>Valor de mercado</dt><dd>{fmtMoney(p.marketValue)}</dd></div>
+                <div><dt>{p.clubId ? 'Salário atual' : 'Pretensão salarial'}</dt><dd>{fmtMoney(p.salary)}/mês</dd></div>
                 <div><dt>Fim do contrato atual</dt><dd>{p.clubId ? fmtDate(p.contractEnd) : 'Sem contrato'}</dd></div>
               </dl>
             </aside>
@@ -116,13 +116,13 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
                 <>
                   {n.clubWillingness !== null && <Gauge label="Disposição do clube" value={n.clubWillingness} hint="Pelo contrato restante, idade do jogador e caixa do clube vendedor. Zero: o clube não pode liberar o jogador sem desfalcar o elenco." />}
                   <Gauge label="Interesse do jogador" value={n.playerInterest} hint="Pelo prestígio do seu clube em relação ao atual. Menos interesse = pede salário maior." />
-                  <div className="neg-row"><span>Caixa disponível</span><strong>{fmtNum(n.balance)}</strong></div>
-                  {n.transferBudgetRemaining !== null && <div className="neg-row"><span>Orçamento de transferências (restante)</span><strong>{fmtNum(n.transferBudgetRemaining)}</strong></div>}
-                  <div className="neg-row"><span>Folha salarial</span><strong>{fmtNum(n.payroll)}/mês</strong></div>
+                  <div className="neg-row"><span>Caixa disponível</span><strong>{fmtMoney(n.balance)}</strong></div>
+                  {n.transferBudgetRemaining !== null && <div className="neg-row"><span>Orçamento de transferências (restante)</span><strong>{fmtMoney(n.transferBudgetRemaining)}</strong></div>}
+                  <div className="neg-row"><span>Folha salarial</span><strong>{fmtMoney(n.payroll)}/mês</strong></div>
                   <label className="neg-field">Valor da transferência
                     <input ref={firstField} type="number" min={0} step={10000} value={fee} disabled={busy || !n.windowOpen} onChange={(e) => setFee(Number(e.target.value))}
                       onKeyDown={(e) => { if (e.key === 'Enter' && n.windowOpen) void offerFee(fee); }} />
-                    <span className="muted small">{fmtNum(Math.round(fee || 0))} · pago de uma vez ao {n.sellerName}</span>
+                    <span className="muted small">{fmtMoney(Math.round(fee || 0))} · pago de uma vez ao {n.sellerName}</span>
                   </label>
                   {!n.windowOpen && <p className="notice" role="status">A janela de transferências está fechada{n.opensOn ? `: abre em ${fmtDate(n.opensOn)}` : ''}. Jogadores com clube só podem ser contratados nas janelas.</p>}
                 </>
@@ -132,18 +132,18 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
                 <>
                   {p.clubId && agreedFee !== null && (
                     <div className="neg-row"><span>Taxa acordada com o {n.sellerName}</span>
-                      <span className="row"><strong>{fmtNum(agreedFee)}</strong><button className="link" disabled={busy} onClick={() => { setStep('fee'); setAnswer(null); }}>Alterar</button></span></div>
+                      <span className="row"><strong>{fmtMoney(agreedFee)}</strong><button className="link" disabled={busy} onClick={() => { setStep('fee'); setAnswer(null); }}>Alterar</button></span></div>
                   )}
                   {!p.clubId && <p className="muted small">Jogador sem clube: não há taxa de transferência e a contratação vale mesmo fora da janela.</p>}
                   <Gauge label="Interesse do jogador" value={n.playerInterest} hint="Pelo prestígio do seu clube em relação ao atual. Menos interesse = pede salário maior." />
                   <label className="neg-field">Salário mensal
                     <input ref={firstField} type="number" min={1} step={100} value={wage} disabled={busy} onChange={(e) => setWage(Number(e.target.value))}
                       onKeyDown={(e) => { if (e.key === 'Enter') void offerContract(wage); }} />
-                    <span className="muted small">{fmtNum(Math.round(wage || 0))}/mês</span>
+                    <span className="muted small">{fmtMoney(Math.round(wage || 0))}/mês</span>
                   </label>
                   <YearsPicker label="Duração do contrato (temporadas)" value={years} onChange={setYears} />
                   <div className="neg-row"><span>Folha após a contratação</span>
-                    <strong className={n.wageCeiling !== null && n.payroll + wage > n.wageCeiling ? 'neg' : ''}>{fmtNum(n.payroll + Math.round(wage || 0))}/mês{n.wageCeiling !== null && <span className="muted"> · teto {fmtNum(n.wageCeiling)}</span>}</strong></div>
+                    <strong className={n.wageCeiling !== null && n.payroll + wage > n.wageCeiling ? 'neg' : ''}>{fmtMoney(n.payroll + Math.round(wage || 0))}/mês{n.wageCeiling !== null && <span className="muted"> · teto {fmtMoney(n.wageCeiling)}</span>}</strong></div>
                 </>
               )}
 
@@ -151,7 +151,7 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
                 <div className="neg-done">
                   <CircleCheck size={40} aria-hidden="true" />
                   <p><strong>{signedText}</strong></p>
-                  <p className="muted small">Contrato de {years} temporada(s) · salário {fmtNum(wage)}/mês{agreedFee ? ` · taxa ${fmtNum(agreedFee)}` : ''}.</p>
+                  <p className="muted small">Contrato de {years} temporada(s) · salário {fmtMoney(wage)}/mês{agreedFee ? ` · taxa ${fmtMoney(agreedFee)}` : ''}.</p>
                 </div>
               )}
 

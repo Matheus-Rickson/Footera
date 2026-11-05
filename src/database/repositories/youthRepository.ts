@@ -16,6 +16,7 @@ import { addNews } from './newsRepository.ts';
 import { playerInserter, rowToPlayer } from './worldRepository.ts';
 import { resetToFreeAgentWage } from './transferRepository.ts';
 import { recordYouthPromotionForBoard } from './boardRepository.ts';
+import { FULL_CLUBS } from './simLevelRepository.ts';
 
 export class YouthError extends UserError {}
 
@@ -73,7 +74,7 @@ export function ensureYouthAcademies(db: SqlDb): void {
     const st = getCareerState(db);
     const make = playerFactory(db, 'y0', st.gameDate);
     const rng = createRng(`youth-seed:${seedOf(db)}`);
-    for (const r of db.prepare('SELECT id FROM clubs ORDER BY rowid').all()) {
+    for (const r of db.prepare(`SELECT id FROM clubs WHERE id IN ${FULL_CLUBS} ORDER BY rowid`).all()) {
       const c = rng.fork(S(r.id));
       for (let i = 0, n = c.int(6, 8); i < n; i++) make(c, S(r.id), c.pick(groupPositions(db)[c.pick(ANY_GROUP)]), c.int(15, 18), true);
     }
@@ -91,7 +92,7 @@ export function youthIntake(db: SqlDb, date: string): number {
   const rng = createRng(`youth-intake:${seedOf(db)}:${season}`);
   let total = 0;
   const mine: Player[] = [];
-  for (const r of db.prepare('SELECT id, facilities_json FROM clubs ORDER BY rowid').all()) {
+  for (const r of db.prepare(`SELECT id, facilities_json FROM clubs WHERE id IN ${FULL_CLUBS} ORDER BY rowid`).all()) {
     const clubId = S(r.id), user = clubId === st.clubId, c = rng.fork(clubId);
     const level = (JSON.parse(S(r.facilities_json)) as { youth: number }).youth;
     const room = (user ? YOUTH_CAP.user : YOUTH_CAP.ai) - youthOf(db, clubId).length;

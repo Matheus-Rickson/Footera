@@ -12,10 +12,12 @@ import { migration009 } from './migrations/009_training_staff_infra.ts';
 import { migration010 } from './migrations/010_board_jobs.ts';
 import { migration011 } from './migrations/011_player_roles.ts';
 import { migration012 } from './migrations/012_plausible_secondary.ts';
+import { migration013 } from './migrations/013_sim_levels.ts';
+import { migration014 } from './migrations/014_league_sim_levels.ts';
 
 export interface Migration { version: number; name: string; sql: string }
 
-export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012];
+export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014];
 
 export function currentVersion(db: SqlDb): number {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');

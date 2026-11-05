@@ -10,12 +10,13 @@ import type { StaffOverviewDto } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
+import { fmtMoney } from '../../shared/money.ts';
 
 export class StaffError extends UserError {}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
 const monthsLeft = (date: string, end: string) => Math.max(0, (Number(end.slice(0, 4)) - Number(date.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(date.slice(5, 7)));
 const economyOf = (db: SqlDb, clubId: string) => N(db.prepare('SELECT co.economy FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!.economy);

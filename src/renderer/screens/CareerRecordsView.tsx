@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { HistoryRowDto, NewsDto, TrophyRoomDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { OUTCOME_LABEL } from './SeasonView.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string }
@@ -47,7 +47,7 @@ export function HistoryView({ profileId, careerId, refreshKey }: Props) {
             <td>{h.season}/{String(h.season + 1).slice(2)}{h.current && <span className="muted small"> (em andamento)</span>}</td>
             <td>{h.competitionName}</td><td>{h.played === 0 ? '—' : `${h.position}º/${h.teamCount}`}</td><td>{h.played}</td><td>{h.won}</td><td>{h.drawn}</td><td>{h.lost}</td>
             <td>{h.goalsFor}:{h.goalsAgainst}</td><td><strong>{h.points}</strong></td><td>{h.outcome ? OUTCOME_LABEL[h.outcome] : '—'}</td>
-            <td className="right">{h.current ? '—' : fmtNum(h.prize)}</td>
+            <td className="right">{h.current ? '—' : fmtMoney(h.prize)}</td>
           </tr>))}</tbody>
       </table>
       {done.length === 0 && <p className="muted">A primeira temporada ainda não terminou.</p>}

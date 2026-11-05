@@ -181,3 +181,26 @@ test('Pacote de exemplo da documentação (docs/exemplos/pacote-exemplo) é vál
   assert.equal(rivera.salary, 18000); assert.equal(rivera.attributes.technical.passing, 15);
   assert.equal(world.players.find((p) => p.id === 'jogador-livre-1997')!.clubId, null);
 });
+
+test('Caixa inicial acompanha o elenco: o clube mais forte da liga pode pagar o próprio melhor jogador; clube de pacote sem caixa usa a mesma regra', async () => {
+  const { startingBalance, BALANCE_SQUAD_SHARE } = await import('../game/world/generator.ts');
+  const w = generateWorld({ seed: 'caixa', teamsPerLeagueOverride: 8 });
+  for (const lg of w.leagues.filter((l) => l.tier === 1)) {
+    const best = w.clubs.filter((c) => c.leagueId === lg.id).sort((a, b) => b.reputation - a.reputation)[0]!;
+    const sq = w.players.filter((p) => p.clubId === best.id);
+    assert.ok(best.balance >= Math.max(...sq.map((p) => p.marketValue)), `${best.name}: caixa ${best.balance} cobre o melhor jogador`);
+    assert.ok(best.balance >= BALANCE_SQUAD_SHARE * sq.reduce((s, p) => s + p.marketValue, 0));
+    assert.equal(best.balance, startingBalance(best.reputation, w.countries.find((c) => c.id === best.countryId)!.economy, sq));
+  }
+  const r = compileUniverse(base, [pack('novo', { clubs: [{ id: 'clube-novo', name: 'Clube Novo', country: 'bra', league: 'bra-1', reputation: 60 }, { id: 'clube-rico', name: 'Clube Rico', country: 'bra', league: 'bra-1', balance: 123_000 }] })]);
+  const novo = r.world.clubs.find((c) => c.id === 'clube-novo')!;
+  assert.equal(novo.balance, startingBalance(60, base.countries.find((c) => c.id === 'bra')!.economy, r.world.players.filter((p) => p.clubId === 'clube-novo')));
+  assert.equal(r.world.clubs.find((c) => c.id === 'clube-rico')!.balance, 123_000, 'caixa informado prevalece');
+});
+
+test('Moeda única do jogo: euro, com separador de milhar e sinal de negativo', async () => {
+  const { fmtMoney } = await import('../shared/money.ts');
+  assert.equal(fmtMoney(33_820_000), '€ 33.820.000');
+  assert.equal(fmtMoney(-1_200_000), '−€ 1.200.000');
+  assert.equal(fmtMoney(0), '€ 0');
+});

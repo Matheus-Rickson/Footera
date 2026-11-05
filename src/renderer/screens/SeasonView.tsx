@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { NewSeasonReportDto, SeasonStatusDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>; onOpenContracts: () => void }
@@ -61,7 +61,7 @@ export function SeasonView({ profileId, careerId, refreshKey, onChanged, onOpenC
                 <>
                   <p><strong>{u.position}º de {u.teamCount}</strong> na {u.competitionName} · {u.points} pts em {u.played} jogo(s)</p>
                   {u.zone && <p className="muted">Hoje na {ZONE_LABEL[u.zone]}.</p>}
-                  <p className="muted">Premiação se a liga terminasse agora: <strong>{fmtNum(u.prizeIfEndedNow)}</strong></p>
+                  <p className="muted">Premiação se a liga terminasse agora: <strong>{fmtMoney(u.prizeIfEndedNow)}</strong></p>
                 </>
               )}
             </>
@@ -71,7 +71,7 @@ export function SeasonView({ profileId, careerId, refreshKey, onChanged, onOpenC
           <h2>Contratos que vencem em {fmtDate(st.turnoverDate)}</h2>
           {st.expiring.length === 0 ? <p className="muted">Nenhum: todo o elenco tem contrato para a próxima temporada.</p> : (
             <>
-              <table><tbody>{st.expiring.map((c) => <tr key={c.id}><td><PosPill pos={c.position} /></td><td>{c.name}</td><td>{c.age} anos</td><td className="right">{fmtNum(c.salary)}/mês</td></tr>)}</tbody></table>
+              <table><tbody>{st.expiring.map((c) => <tr key={c.id}><td><PosPill pos={c.position} /></td><td>{c.name}</td><td>{c.age} anos</td><td className="right">{fmtMoney(c.salary)}/mês</td></tr>)}</tbody></table>
               <button className="secondary" onClick={onOpenContracts}>Renovar contratos</button>
             </>
           )}
@@ -95,7 +95,7 @@ function SeasonReport({ r, onClose }: { r: NewSeasonReportDto; onClose: () => vo
       <div className="bar"><h2>Começa a temporada {r.label}</h2><button className="secondary" onClick={onClose}>Fechar</button></div>
       {r.previous && (
         <p><strong>{r.previous.position}º lugar</strong> de {r.previous.teamCount} na {r.previous.competitionName}
-          {r.previous.outcome && <> · <strong>{OUTCOME_LABEL[r.previous.outcome]}</strong></>} · premiação de {fmtNum(r.previous.prize)}</p>
+          {r.previous.outcome && <> · <strong>{OUTCOME_LABEL[r.previous.outcome]}</strong></>} · premiação de {fmtMoney(r.previous.prize)}</p>
       )}
       {r.board && <div className={r.board.sacked ? 'error' : r.board.met ? 'ok' : 'notice'}><strong>Avaliação da diretoria:</strong> {r.board.lines.join(' ')}{r.board.sacked ? ' O treinador foi DEMITIDO.' : ''}</div>}
       {r.newLeague ? <p className="muted">Nesta temporada o clube disputa a <strong>{r.newLeague}</strong>.</p> : <p className="muted">O treinador está sem clube: veja as propostas na aba Diretoria.</p>}

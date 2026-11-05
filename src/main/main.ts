@@ -18,13 +18,15 @@ import { ValidationError } from '../services/careerService.ts';
 import { UserError } from '../shared/errors.ts';
 import { ImageError, inspectImage, MAX_PHOTO_BYTES } from '../shared/photo.ts';
 import type { IpcResult, MarketFilter, OfferInput, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
+import { baseUniverse, setBaseUniverseDir } from '../services/universeService.node.ts';
 
 // O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
 // senão carreiras criadas antes da troca de nome sumiriam da lista.
 if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'football-manager-simulator'));
 const dataDir = () => path.join(app.getPath('userData'), 'data');
+// base de dados fixa distribuída com o jogo (no app instalado fica dentro do app.asar; o fs do Electron lê de lá)
+setBaseUniverseDir(path.join(app.getAppPath(), 'data', 'base'));
 const uuid = z.string().uuid();
-const seedSchema = z.string().trim().min(1).max(64);
 
 /** Fotos escolhidas aguardando a criação da carreira. O renderer só conhece o token, nunca o caminho. */
 const pendingPhotos = new Map<string, Uint8Array>();
@@ -47,7 +49,7 @@ function registerHandlers(): void {
   handle('app:info', z.unknown(), () => ({ dataDir: dataDir(), version: app.getVersion() }));
   handle('profile:list', z.unknown(), () => listProfiles(dataDir()));
   handle('profile:create', z.object({ name: z.string().max(200) }), (i) => createProfile(dataDir(), i.name));
-  handle('world:clubs', z.object({ seed: seedSchema }), (i) => listClubs(i.seed));
+  handle('world:clubs', z.unknown(), () => listClubs(baseUniverse().world));
 
   handle('photo:pick', z.unknown(), async (): Promise<PhotoPick | null> => {
     const opts: OpenDialogOptions = {
@@ -76,16 +78,20 @@ function registerHandlers(): void {
     firstName: z.string().trim().min(1).max(40), lastName: z.string().trim().min(1).max(40),
     birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), nationality: z.string().regex(/^[A-Z]{3}$/),
     methodology: z.enum(['defensive', 'possession', 'aggressive']),
+    attributes: z.object({
+      tactics: z.number().int().min(1).max(20), motivation: z.number().int().min(1).max(20), youth: z.number().int().min(1).max(20),
+      discipline: z.number().int().min(1).max(20), negotiation: z.number().int().min(1).max(20), adaptability: z.number().int().min(1).max(20),
+    }).strict(),
   });
   handle('career:create', z.object({
-    profileId: uuid, seed: seedSchema, clubId: z.string().min(1).max(60), coach, photoToken: uuid.nullable(),
+    profileId: uuid, clubId: z.string().min(1).max(60), coach, photoToken: uuid.nullable(), fullLeagues: z.array(z.string().min(1).max(60)).max(200),
   }), async (i) => {
     let photo: Uint8Array | undefined;
     if (i.photoToken) {
       photo = pendingPhotos.get(i.photoToken);
       if (!photo) throw new ValidationError('A foto selecionada expirou. Escolha a imagem novamente.');
     }
-    const created = await createCareerSave(dataDir(), { profileId: i.profileId, seed: i.seed, clubId: i.clubId, coach: i.coach, photo });
+    const created = await createCareerSave(dataDir(), { profileId: i.profileId, clubId: i.clubId, coach: i.coach, photo, fullLeagues: i.fullLeagues });
     if (i.photoToken) pendingPhotos.delete(i.photoToken);
     return created;
   });

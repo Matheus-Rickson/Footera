@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "footera-base",
+  "name": "FOOTERA — base fictícia",
+  "version": "1.0.0",
+  "author": "FOOTERA",
+  "description": "Universo fictício padrão: 16 países. Dados fictícios.",
+  "base": "none"
+}

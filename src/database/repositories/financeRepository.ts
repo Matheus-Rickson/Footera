@@ -8,6 +8,7 @@ import {
 import { addDays } from '../../shared/date.ts';
 import type { FinanceOverviewDto } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
+import { FULL_CLUBS } from './simLevelRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -76,7 +77,7 @@ const worldSeed = (db: SqlDb) => getMeta(db, 'world_seed') ?? 'sem-semente';
 /** Cria contratos de patrocínio iniciais (vencimentos escalonados) para clubes sem contrato vigente na data. */
 export function ensureSponsorDeals(db: SqlDb, date: string): void {
   const seed = worldSeed(db);
-  for (const c of db.prepare(ECON_SQL).all().map(toClub)) {
+  for (const c of db.prepare(`${ECON_SQL} WHERE c.id IN ${FULL_CLUBS}`).all().map(toClub)) {
     for (const kind of KINDS) {
       if (coveringDeal(db, c.id, kind, date)) continue;
       const rng = createRng(`sponsor-len:${seed}:${c.id}:${kind}:${date}`);
@@ -108,7 +109,7 @@ export function settleFinances(db: SqlDb, upTo: string): number {
     const youth = new Map(db.prepare('SELECT youth_club_id, SUM(salary) AS w FROM players WHERE youth_club_id IS NOT NULL GROUP BY youth_club_id').all().map((r) => [S(r.youth_club_id), N(r.w)]));
     const scouts = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM scouts').get()!.w); // só o clube do usuário tem olheiros
     const coaching = N(db.prepare('SELECT COALESCE(SUM(salary), 0) AS w FROM staff').get()!.w); // e comissão técnica contratada
-    for (const c of db.prepare(ECON_SQL).all().map(toClub)) {
+    for (const c of db.prepare(`${ECON_SQL} WHERE c.id IN ${FULL_CLUBS}`).all().map(toClub)) {
       const label = c.id === st.clubId;
       post(c.id, date, 'tv', tvMonthly(c.econ), 'Direitos de transmissão (TV)');
       post(c.id, date, 'merchandising', merchMonthly(c.econ), 'Produtos oficiais e licenciamento');

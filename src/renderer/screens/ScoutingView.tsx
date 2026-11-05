@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MarketPlayerDto, ScoutAssignment, ScoutingOverviewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { fmtRange20, PosPill } from '../playerUi.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>; onOpenPlayer: (id: string) => void; onNegotiate: (p: MarketPlayerDto) => void }
@@ -34,7 +34,7 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
       <thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Clube</th><th className="right">Valor</th><th>Força (est.)</th><th>Potencial (est.)</th><th>Conhecimento</th><th /></tr></thead>
       <tbody>{rows.map((p) => (
         <tr key={p.id}>
-          <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtNum(p.marketValue)}</td>
+          <td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td>{p.clubName ?? <em className="muted">Sem clube</em>}</td><td className="right">{fmtMoney(p.marketValue)}</td>
           <td>{fmtRange20(p.estOverall)}</td><td>{fmtRange20(p.estPotential)}</td><td><KnowledgeBar value={p.knowledge} /></td>
           <td className="row"><button className="secondary" onClick={() => onNegotiate(p)}>Negociar</button>{removable || !p.shortlisted
             ? <button className="secondary" disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.setShortlisted(profileId, careerId, p.id, !p.shortlisted)); return null; })}>{p.shortlisted ? 'Remover' : 'Observar'}</button>
@@ -49,7 +49,7 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
         <p className="muted small">Olheiros reduzem a margem de erro das estimativas de força e potencial (e aproximam o potencial estimado do real). Designe cada um para
           <strong> um país</strong> (acompanha 5 jogadores por vez até concluir cada relatório, começando pelos mais valiosos) ou para a <strong>lista de observação</strong> (divide o esforço entre os jogadores que você marcou com “Observar” no mercado).
           Salários entram nas Finanças no dia 1º de cada mês; demitir paga até 3 meses de multa. Clique no nome de um jogador para ver a ficha com atributos estimados e o parecer.</p>
-        <p>Custo mensal: <strong>{fmtNum(ov.monthlyCost)}</strong> · {ov.scouts.length} de {ov.maxScouts} olheiros</p>
+        <p>Custo mensal: <strong>{fmtMoney(ov.monthlyCost)}</strong> · {ov.scouts.length} de {ov.maxScouts} olheiros</p>
         {notice && <p className="ok" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </section>
@@ -61,11 +61,11 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
             <thead><tr><th>Nome</th><th>Qualidade</th><th className="right">Salário</th><th>Contrato até</th><th>Designação</th><th /></tr></thead>
             <tbody>{ov.scouts.map((s) => (
               <tr key={s.id}>
-                <td>{s.name} <span className="muted small">({s.nationality})</span></td><td>{s.ability}/20</td><td className="right">{fmtNum(s.salary)}</td><td>{fmtDate(s.contractEnd)}</td>
+                <td>{s.name} <span className="muted small">({s.nationality})</span></td><td>{s.ability}/20</td><td className="right">{fmtMoney(s.salary)}</td><td>{fmtDate(s.contractEnd)}</td>
                 <td><div className="row">{assignments.map((a) => (
                   <button key={a.label} className={sameAssignment(a.value, s.assignment) ? '' : 'secondary'} disabled={busy}
                     onClick={() => void run(async () => { await unwrap(window.api.assignScout(profileId, careerId, s.id, a.value)); return null; })}>{a.label}</button>))}</div></td>
-                <td><button className="danger" disabled={busy} onClick={() => void run(async () => { const paid = await unwrap(window.api.fireScout(profileId, careerId, s.id)); return `${s.name} demitido. Multa paga: ${fmtNum(paid)}.`; }, true)}>Demitir</button></td>
+                <td><button className="danger" disabled={busy} onClick={() => void run(async () => { const paid = await unwrap(window.api.fireScout(profileId, careerId, s.id)); return `${s.name} demitido. Multa paga: ${fmtMoney(paid)}.`; }, true)}>Demitir</button></td>
               </tr>))}</tbody>
           </table>
         )}
@@ -77,7 +77,7 @@ export function ScoutingView({ profileId, careerId, refreshKey, onChanged, onOpe
         <table>
           <thead><tr><th>Nome</th><th>Qualidade</th><th className="right">Salário pedido</th><th /></tr></thead>
           <tbody>{ov.candidates.map((c) => (
-            <tr key={c.id}><td>{c.name} <span className="muted small">({c.nationality})</span></td><td>{c.ability}/20</td><td className="right">{fmtNum(c.salary)}</td>
+            <tr key={c.id}><td>{c.name} <span className="muted small">({c.nationality})</span></td><td>{c.ability}/20</td><td className="right">{fmtMoney(c.salary)}</td>
               <td><button disabled={busy || full} title={full ? `Limite de ${ov.maxScouts} olheiros` : ''} onClick={() => void run(async () => { await unwrap(window.api.hireScout(profileId, careerId, c.id)); return `${c.name} contratado.`; })}>Contratar</button></td></tr>))}</tbody>
         </table>
       </section>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FacilityKind, InfrastructureOverviewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, fmtNum, unwrap } from '../util.ts';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
 
@@ -21,11 +21,11 @@ export function InfrastructureView({ profileId, careerId, refreshKey, onChanged 
   return (
     <div className="grid1">
       <section className="card">
-        <p>Caixa: <strong>{fmtNum(ov.balance)}</strong> · estádio com <strong>{fmtNum(ov.capacity)}</strong> lugares</p>
+        <p>Caixa: <strong>{fmtMoney(ov.balance)}</strong> · estádio com <strong>{fmtNum(ov.capacity)}</strong> lugares</p>
         <p className="muted small">Cada obra sobe um nível (1 a 20), é paga à vista ao encomendar e fica pronta depois do prazo. Só uma obra por vez. Níveis maiores aumentam a manutenção mensal.</p>
         {ov.project && (
           <div className="notice">
-            <p>Obra em andamento: <strong>{ov.project.label}</strong> → nível {ov.project.toLevel} · {fmtNum(ov.project.cost)} · {fmtDate(ov.project.start)} a {fmtDate(ov.project.end)}</p>
+            <p>Obra em andamento: <strong>{ov.project.label}</strong> → nível {ov.project.toLevel} · {fmtMoney(ov.project.cost)} · {fmtDate(ov.project.start)} a {fmtDate(ov.project.end)}</p>
             <div className="progress"><i style={{ width: `${ov.project.progress}%` }} /></div>
           </div>
         )}
@@ -39,9 +39,9 @@ export function InfrastructureView({ profileId, careerId, refreshKey, onChanged 
             {f.maxed ? <p className="ok">Nível máximo.</p> : (
               <>
                 <p className="small">Próximo nível: {f.nextEffect}</p>
-                <p className="small">Custo {fmtNum(f.cost!)} · prazo {f.days} dias · manutenção +{fmtNum(f.extraMonthly!)}/mês{f.extraSeats ? ` · +${fmtNum(f.extraSeats)} lugares` : ''}</p>
+                <p className="small">Custo {fmtMoney(f.cost!)} · prazo {f.days} dias · manutenção +{fmtMoney(f.extraMonthly!)}/mês{f.extraSeats ? ` · +${fmtNum(f.extraSeats)} lugares` : ''}</p>
                 {confirm === f.kind
-                  ? <div className="row"><button disabled={busy} onClick={() => void build(f.kind)}>Confirmar obra ({fmtNum(f.cost!)})</button><button className="secondary" onClick={() => setConfirm(null)}>Cancelar</button></div>
+                  ? <div className="row"><button disabled={busy} onClick={() => void build(f.kind)}>Confirmar obra ({fmtMoney(f.cost!)})</button><button className="secondary" onClick={() => setConfirm(null)}>Cancelar</button></div>
                   : <button disabled={busy || !!ov.project || ov.balance < f.cost!} title={ov.project ? 'Já há uma obra em andamento' : ov.balance < f.cost! ? 'Caixa insuficiente' : ''} onClick={() => setConfirm(f.kind)}>Encomendar obra</button>}
               </>
             )}

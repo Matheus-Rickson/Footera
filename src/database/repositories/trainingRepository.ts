@@ -15,6 +15,7 @@ import { facilitiesOf, medicalFactor, staffQuality } from './staffRepository.ts'
 import { rowToPlayer } from './worldRepository.ts';
 import { addFamiliarity, familiarityOf, ROLE_TRAIN_GAIN, roleFocusMap } from './roleRepository.ts';
 import { roleById } from '../../game/match-engine/playerRoles.ts';
+import { FULL_CLUBS, FULL_PLAYERS, lightClubIds } from './simLevelRepository.ts';
 
 export class TrainingError extends UserError {}
 
@@ -94,7 +95,7 @@ export function processTrainingDay(db: SqlDb, date: string): void {
   const fitness = new Map<string, number>(), medical = new Map<string, number>();
   const upStatus = db.prepare(`INSERT INTO player_status (player_id, injury_until, injury_note) VALUES (?,?,?)
     ON CONFLICT(player_id) DO UPDATE SET injury_until = excluded.injury_until, injury_note = excluded.injury_note`);
-  for (const r of db.prepare('SELECT id, club_id, first_name, last_name, condition_pct FROM players WHERE club_id IS NOT NULL ORDER BY id').all()) {
+  for (const r of db.prepare(`SELECT id, club_id, first_name, last_name, condition_pct FROM players WHERE club_id IN ${FULL_CLUBS} ORDER BY id`).all()) {
     const clubId = S(r.club_id), id = S(r.id);
     const roll = rng.next();
     if (injured.has(id)) continue;
@@ -137,7 +138,8 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
   const roleFocus = roleFocusMap(db);
   const roleFam = familiarityOf(db, [...roleFocus.keys()]);
   let n = 0;
-  for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
+  // países simplificados evoluem uma vez por ano, na virada (developLightPlayers)
+  for (const r of db.prepare(`SELECT * FROM players WHERE retired = 0 AND ${FULL_PLAYERS} ORDER BY id`).all()) {
     const p = rowToPlayer(r);
     const age = ageOn(p.birthDate, date);
     const youthClub = r.youth_club_id == null ? null : S(r.youth_club_id);
@@ -210,4 +212,26 @@ export function getMedicalOverview(db: SqlDb): MedicalOverviewDto {
       dailyRisk: Math.round(trainingInjuryChance(N(r.condition_pct), intensity, fitnessQ) * 100000) / 1000,
     })),
   };
+}
+
+/**
+ * Evolução ANUAL dos jogadores de países com simulação simplificada (eles não passam pela evolução mensal nem jogam partidas detalhadas).
+ * Chamada na virada. Minutos estimados pela posição no elenco: os 11 melhores como titulares, os 7 seguintes como reservas.
+ * NÃO abre transação.
+ */
+export function developLightPlayers(db: SqlDb, date: string): number {
+  const seed = seedOf(db);
+  const economy = new Map(db.prepare('SELECT code, economy FROM countries').all().map((r) => [S(r.code), N(r.economy)]));
+  const up = db.prepare('UPDATE players SET attributes_json = ?, overall = ?, potential_hidden = ?, potential_estimated = ?, market_value = ? WHERE id = ?');
+  let n = 0;
+  for (const clubId of lightClubIds(db)) {
+    const squad = db.prepare('SELECT * FROM players WHERE club_id = ? AND retired = 0').all(clubId).map(rowToPlayer).sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id));
+    squad.forEach((p, i) => {
+      const age = ageOn(p.birthDate, date);
+      const d = developPlayer(p, age, i < 11 ? 0.8 : i < 18 ? 0.35 : 0.08, createRng(`light-dev:${seed}:${date}:${p.id}`), { fraction: 1 });
+      up.run(JSON.stringify(d.attributes), d.overall, d.potentialHidden, d.potentialEstimated, marketValue(d.overall, age, d.potentialHidden, economy.get(p.nationality) ?? 1), p.id);
+      n++;
+    });
+  }
+  return n;
 }

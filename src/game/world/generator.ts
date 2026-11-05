@@ -13,7 +13,14 @@ export interface WorldOptions {
   startDate?: IsoDate;
   /** Reduz o universo (útil em testes). */
   teamsPerLeagueOverride?: number;
+  /** países gerados (códigos); padrão: Brasil e Inglaterra (universo dos testes e calibrações). A base fixa usa todos. */
+  countries?: string[] | 'all';
+  /** última divisão gerada; padrão 2 (universo dos testes). A base fixa usa todas as divisões de cada país. */
+  maxTier?: number;
 }
+
+/** Universo de teste/calibração: o mesmo de antes da base fixa (Brasil e Inglaterra, duas divisões). */
+export const TEST_COUNTRIES = ['BRA', 'ENG'];
 
 /** 25 jogadores por elenco: composição fixa e coerente. */
 export const SQUAD_TEMPLATE: Position[] = [
@@ -78,6 +85,16 @@ export function ageAbilityDelta(age: number): number {
   if (age <= 29) return 0;
   if (age >= 35) return -2.4;
   return -({ 30: 0.2, 31: 0.5, 32: 0.9, 33: 1.3, 34: 1.8 } as Record<number, number>)[age]!;
+}
+
+/**
+ * Caixa inicial: parte fixa pela reputação e pela economia do país + 22% do valor do elenco. Sem a segunda parcela, os grandes clubes
+ * começavam com caixa menor que o preço do próprio melhor jogador (ex.: 8,7 mi com elenco de 114 mi) e não conseguiam contratar.
+ */
+export const BALANCE_SQUAD_SHARE = 0.22;
+export function startingBalance(reputation: number, economy: number, squad: ReadonlyArray<{ marketValue: number }>): number {
+  const value = squad.reduce((s, p) => s + p.marketValue, 0);
+  return Math.round((reputation * 180_000 * economy + BALANCE_SQUAD_SHARE * value) / 1000) * 1000;
 }
 
 export function marketValue(overall: number, age: number, potential: number, scale: number): number {
@@ -161,13 +178,15 @@ export function generateWorld(opts: WorldOptions): World {
   const clubs: Club[] = [];
   const players: Player[] = [];
 
-  for (const tpl of COUNTRY_TEMPLATES) {
+  const wanted = opts.countries === 'all' ? null : new Set(opts.countries ?? TEST_COUNTRIES);
+  const maxTier = opts.maxTier ?? (opts.countries === 'all' ? 99 : 2);
+  for (const tpl of COUNTRY_TEMPLATES.filter((t) => !wanted || wanted.has(t.code))) {
     const crng = root.fork(`country:${tpl.code}`);
     const country: Country = { id: newId('cty', tpl.code), code: tpl.code, name: tpl.name, economy: tpl.wageScale };
     countries.push(country);
     const usedClubNames = new Set<string>();
 
-    for (const lt of tpl.leagues) {
+    for (const lt of tpl.leagues.filter((l) => l.tier <= maxTier)) {
       const teams = opts.teamsPerLeagueOverride ?? lt.teams;
       const league: League = {
         id: newId('lg', `${country.id}-${lt.tier}`), countryId: country.id, name: lt.name, tier: lt.tier, teamCount: teams,
@@ -194,12 +213,12 @@ export function generateWorld(opts: WorldOptions): World {
         usedClubNames.add(name);
 
         // Reputação decresce com a posição na liga e com o nível da divisão.
-        const tierBase = 78 - (lt.tier - 1) * 22;
+        const tierBase = 78 - (lt.tier - 1) * 22 + (tpl.strength ?? 0);
         const reputation = clamp(Math.round(tierBase - (i / Math.max(teams - 1, 1)) * 24 + lrng.normal(0, 3)), 5, 99);
         const capacity = Math.round((6000 + reputation * 650 + lrng.int(0, 4000)) / 100) * 100;
         const stadium: Stadium = {
           id: '', city, capacity,
-          name: `${lrng.pick(STADIUM_SUFFIX)} ${city}`,
+          name: `${lrng.pick(tpl.stadiumNames ?? STADIUM_SUFFIX)} ${city}`,
         };
         stadium.id = newId('std', stadium.name);
         stadiums.push(stadium);
@@ -208,7 +227,7 @@ export function generateWorld(opts: WorldOptions): World {
           id: newId('clb', name), name,
           shortName: name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w.slice(0, 3)).join('').toUpperCase().slice(0, 4) || 'CLB',
           countryId: country.id, city, leagueId: league.id, stadiumId: stadium.id, reputation,
-          balance: Math.round((reputation * 180_000 * tpl.wageScale) / 1000) * 1000,
+          balance: 0, // definido depois do elenco (startingBalance)
           fans: reputation * 3500 + lrng.int(0, 20000),
           facilities: {
             training: clamp(Math.round(reputation / 6 + lrng.int(-2, 2)), 1, 20),
@@ -229,6 +248,7 @@ export function generateWorld(opts: WorldOptions): World {
           takenNames.add(`${first} ${last}`);
           players.push(buildPlayer(prng, newId, tpl, club.id, reputation, pos, startDate, { first, last }));
         }
+        club.balance = startingBalance(reputation, tpl.wageScale, players.filter((p) => p.clubId === club.id));
       }
     }
   }

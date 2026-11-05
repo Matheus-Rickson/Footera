@@ -12,12 +12,13 @@ import { loadClubEcon, makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { facilitiesOf } from './staffRepository.ts';
 import { boardApprovesConstruction } from './boardRepository.ts';
+import { fmtMoney } from '../../shared/money.ts';
 
 export class InfrastructureError extends UserError {}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const br = (d: string) => d.split('-').reverse().join('/');
 export const FACILITY_LABEL: Record<FacilityKind, string> = { training: 'Centro de treinamento', youth: 'Categorias de base', medical: 'Departamento médico', stadium: 'Estádio' };
 
@@ -92,7 +93,7 @@ export function processConstructionDay(db: SqlDb, date: string): void {
       const st = db.prepare('SELECT s.id, s.capacity FROM stadiums s JOIN clubs c ON c.stadium_id = s.id WHERE c.id = ?').get(clubId)!;
       const seats = stadiumExpansion(N(st.capacity));
       db.prepare('UPDATE stadiums SET capacity = capacity + ? WHERE id = ?').run(seats, S(st.id));
-      extra = ` Capacidade: ${fmt(N(st.capacity) + seats)} lugares (+${fmt(seats)}).`;
+      extra = ` Capacidade: ${(N(st.capacity) + seats).toLocaleString('pt-BR')} lugares (+${seats.toLocaleString('pt-BR')}).`;
     }
     db.prepare("UPDATE construction_projects SET status = 'done' WHERE id = ?").run(N(p.id));
     addNews(db, date, 'staff', `Obra concluída: ${FACILITY_LABEL[kind]} agora no nível ${f[kind]}`, `A manutenção mensal aumentou.${extra}`);

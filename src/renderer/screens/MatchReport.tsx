@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, Ban, Cross, FastForward, Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSummaryDto } from '../../shared/api.ts';
 import type { TeamStats } from '../../game/match-engine/types.ts';
-import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
+import { BUILDUP_LABEL, errMsg, fmtDate, fmtMoney, MENTALITY_LABEL, shortName, unwrap } from '../util.ts';
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
 import { initials, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
@@ -283,7 +283,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
         </div>
         <div className="mc-meta muted small">
           <span>{r.competitionName} · rodada {r.round} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
-          {finished && <span>{DECIDED[r.decidedIn] ? `Encerrado${DECIDED[r.decidedIn]}` : 'Encerrado'}{r.manOfTheMatch ? ` · Craque: ${r.manOfTheMatch.name}` : ''}{r.attendance ? ` · Público ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%) · renda ${r.attendance.revenue.toLocaleString('pt-BR')}` : ''}</span>}
+          {finished && <span>{DECIDED[r.decidedIn] ? `Encerrado${DECIDED[r.decidedIn]}` : 'Encerrado'}{r.manOfTheMatch ? ` · Craque: ${r.manOfTheMatch.name}` : ''}{r.attendance ? ` · Público ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%) · renda ${fmtMoney(r.attendance.revenue)}` : ''}</span>}
           {!finished && deciding && <span>Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
           {r.detail === 'compact' && <span className="notice-text">Relatório resumido (jogo de outros clubes): só eventos-chave.</span>}
           {!r.timeline && r.detail === 'full' && <span>Partida antiga: notas e estatísticas aparecem no fim.</span>}

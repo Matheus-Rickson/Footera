@@ -19,6 +19,8 @@ import { loadSquad, type Squad, type Status } from './squadRepository.ts';
 import { addFamiliarity, ROLE_MATCH_GAIN } from './roleRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
 import { applyMatchesToBoard } from './boardRepository.ts';
+import { quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
+import { lightClubIds } from './simLevelRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -53,8 +55,8 @@ interface StoredReport {
 
 interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string }
 
-function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string): MatchSummaryDto {
-  return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub };
+function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasReport = true): MatchSummaryDto {
+  return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
 }
 
 interface Ctx { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[] }
@@ -165,6 +167,16 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   return summaryOf(f, out.homeGoals, out.awayGoals, ctx.userClub);
 }
 
+/**
+ * Partida de país com simulação simplificada: só o placar, pela força dos elencos (sem relatório, sem efeitos nos jogadores, sem bilheteria).
+ * A classificação continua derivada das partidas (regra 4).
+ */
+function simulateLight(db: SqlDb, f: FixtureRow, ctx: Ctx, strengthOf: (clubId: string) => number): MatchSummaryDto {
+  const r = quickResult(strengthOf(f.homeId), strengthOf(f.awayId), createRng(`quick:${ctx.seed}:${f.id}`));
+  applyResult(db, f.id, r.homeGoals, r.awayGoals);
+  return summaryOf(f, r.homeGoals, r.awayGoals, ctx.userClub, false);
+}
+
 function pendingFixtures(db: SqlDb, date: string): FixtureRow[] {
   return db.prepare(
     `SELECT f.id, f.competition_id, c.name AS competition_name, f.round, f.match_date, f.home_club_id, f.away_club_id, h.name AS home_name, a.name AS away_name
@@ -189,9 +201,16 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
   const st = getCareerState(db);
   const rows = pendingFixtures(db, st.gameDate);
   const ctx = contextOf(db), notes = ctx.notes;
+  const light = lightClubIds(db);
+  const strength = new Map<string, number>();
+  const strengthOf = (clubId: string) => {
+    let s = strength.get(clubId);
+    if (s === undefined) { s = teamStrength(db.prepare('SELECT overall FROM players WHERE club_id = ?').all(clubId).map((r) => N(r.overall))); strength.set(clubId, s); }
+    return s;
+  };
   const results = withTransaction(db, () => {
     const post = makePoster(db, st.clubId);
-    const out = rows.map((f) => simulateOne(db, f, { ...ctx, post }, live));
+    const out = rows.map((f) => (light.has(f.homeId) && light.has(f.awayId) ? simulateLight(db, f, ctx, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
     return out;
   });

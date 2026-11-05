@@ -18,10 +18,11 @@ Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa
 - `src/database`: interface `SqlDb`, migrações numeradas, repositórios.
 - `src/services/*.node.ts`: usam fs. `src/main`: IPC validado com Zod. `src/preload`.
 - `src/renderer`: React; só fala com o motor via `window.api`.
-- Cada save é um arquivo SQLite independente (`saves/<profileId>/<careerId>/career.db`), copiado do universo (`compileUniverse`: base gerada pela semente + pacotes de dados; ver `docs/DATABASE.md`). IDs fixos e legíveis (`shared/slug.ts`).
+- Cada save é um arquivo SQLite independente (`saves/<profileId>/<careerId>/career.db`), copiado do universo (`compileUniverse`: **base fixa `data/base`** (16 países, congelada) + pacotes de dados; ver `docs/DATABASE.md`). IDs fixos e legíveis (`shared/slug.ts`). A carreira tem semente própria só para o acaso.
+- Países com simulação completa × simplificada (`countries.sim_level`): rotinas detalhadas (finanças, treino, base, mercado da IA, diretoria/vagas, partidas lance a lance) filtram por `FULL_CLUBS`/`FULL_PLAYERS` (`simLevelRepository.ts`); simplificados usam `quickResult` e evolução anual na virada.
 
 ## Regras inegociáveis (cada uma tem teste)
-1. Todo dinheiro passa por `makePoster`: saldo = saldo inicial + soma do extrato, para TODOS os clubes.
+1. Todo dinheiro passa por `makePoster`: saldo = saldo inicial + soma do extrato, para TODOS os clubes. Moeda exibida: euro (`fmtMoney`).
 2. Jogador só entra em clube vindo de outro clube/livre via `executeTransfer`; saída sem destino (fim de contrato, aposentadoria) via `releasePlayer`; base → principal (mesmo clube) via `promoteFromYouth`.
 3. O tempo só avança por `moveClock`, dia a dia: mercado do dia, depois fechamento mensal. Nunca passa de 1º/jul; a virada é `startNextSeason` (ação do usuário, atômica).
 4. Classificação é derivada das partidas, nunca armazenada.
@@ -48,6 +49,7 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   Validação do usuário pelo `docs/CHECKLIST_VALIDACAO.md`. Saves do app instalado ficam em `%APPDATA%\football-manager-simulator` (fixado no main.ts).
 - v0.8.6 commitada (funções com popup verificadas pelo usuário; validação completa em andamento): ME/MD/AE/AD e SA/CA como posições; funções táticas (`playerRoles.ts`, migração 011,
   domínio que se aprende jogando/treinando); motor rebalanceado (`ZONE_EXP` 0,35, `K.chance` 0,070). Ver PROGRESS.md.
-- v0.8.7 commitada (aguardando validação completa pelo checklist 13c). **Fase 9 em andamento** (branch `fase-9-base-de-dados`): base de dados
-  editável — etapa 1 (formato, IDs fixos, montagem, validador, CLI, JSON Schema) feita, sem commit; etapas 2–5 pendentes. Ver `docs/DATABASE.md`.
+- v0.8.7 commitada (aguardando validação completa pelo checklist 13c). **Fase 9 em andamento** (branch `fase-9-base-de-dados`): etapa 1 da base
+  editável commitada (`0304652`); base fixa de 16 países + países completos × simplificados feitos, sem commit; etapas 2–5 pendentes
+  (tela de pacotes/.zip, fotos, editor+CSV, técnicos da IA); competições continentais depois. Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

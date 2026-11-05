@@ -33,3 +33,12 @@ a `economia × (reputação/65)^2,35`, e as receitas foram ancoradas na mesma es
 - Extrato detalhado só para o clube do usuário; os demais têm resumo mensal por categoria.
 - Fatores econômicos de países além de Brasil e Inglaterra caem em 1,0 até a Fase 9 (universo ampliado).
 - O gráfico é um SVG próprio (testável sem dependências); a biblioteca Recharts prevista na especificação não foi usada.
+
+## Caixa inicial e moeda (Fase 9, 05/11/2026)
+- **Moeda única: euro (€)**, nas telas e nas mensagens do jogo (`shared/money.ts`, `fmtMoney`). A economia de cada país continua escalando
+  salários, valores e receitas; só a unidade exibida é única.
+- **Caixa inicial** = `reputação × 180.000 × economia + 22% do valor do elenco` (`startingBalance`). Antes era só a primeira parcela, e o
+  clube mais forte da Série A começava com € 8,7 mi tendo um elenco de € 114 mi e um jogador de € 16,7 mi — não conseguia contratar.
+  Agora: melhor da Série A ~€ 34 mi; pior da Série A ~€ 13 mi; melhor da Premier ~€ 82 mi; Série D ~€ 2 mi. A regra vale para clubes
+  criados por pacote sem caixa informado. Os fluxos mensais não mudaram (a margem anual não depende do saldo); todos os testes de finanças
+  e mercado continuam passando. A base fixa foi regenerada com o novo caixa (ainda não havia sido publicada).

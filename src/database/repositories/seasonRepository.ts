@@ -21,16 +21,17 @@ import { aiSignFreeAgents, neededGroup, processMarketDay, releasePlayer } from '
 import { rowToPlayer } from './worldRepository.ts';
 import { GROUP_POSITIONS, playerFactory, promoteBestOfGroup, youthTurnover } from './youthRepository.ts';
 import { processScoutingDay } from './scoutRepository.ts';
-import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
+import { processTrainingDay, processTrainingMonth, developLightPlayers } from './trainingRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
 import { boardVeto, reviewSeason, startBoardSeason } from './boardRepository.ts';
+import { fmtMoney } from '../../shared/money.ts';
 
 export class SeasonError extends UserError {}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const br = (d: string) => d.split('-').reverse().join('/');
 const nameOf = (p: Pick<Player, 'firstName' | 'lastName'>) => `${p.firstName} ${p.lastName}`;
 const seasonLabel = (s: number) => `${s}/${String(s + 1).slice(2)}`;
@@ -152,6 +153,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     processTrainingDay(db, date);
     processConstructionDay(db, date);
     processTrainingMonth(db, date);
+    developLightPlayers(db, date); // países simplificados: a evolução da temporada inteira de uma vez
     const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
     const report: NewSeasonReportDto = {
       season: newSeason, label: seasonLabel(newSeason), previous: null, newLeague: '', champions: [], movements: [],

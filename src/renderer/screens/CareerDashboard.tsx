@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
 import { PosPill, to20 } from '../playerUi.tsx';
 import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
 import { MatchReport } from './MatchReport.tsx';
@@ -163,9 +163,9 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
           <div className="stats">
             <div className="stat-tile"><span className="stat-label">Classificação</span><span className="stat-value">{pos && pos.played > 0 ? `${pos.position}º de ${pos.total}` : '—'}</span>
               <span className="muted small">{pos ? (pos.played > 0 ? `${pos.points} pts em ${pos.played} jogo(s) · ` : 'liga ainda não começou · ') : 'sem competição'}{pos && <button className="link" onClick={() => go('competitions')}>ver tabela</button>}</span></div>
-            <div className="stat-tile"><span className="stat-label">Caixa</span><span className={`stat-value ${club.balance < 0 ? 'neg' : ''}`}>{fmtNum(club.balance)}</span><span className="muted small">saldo atual do clube</span></div>
+            <div className="stat-tile"><span className="stat-label">Caixa</span><span className={`stat-value ${club.balance < 0 ? 'neg' : ''}`}>{fmtMoney(club.balance)}</span><span className="muted small">saldo atual do clube</span></div>
             <div className="stat-tile"><span className="stat-label">Elenco</span><span className="stat-value">{squad.length}</span><span className="muted small">força média {to20(avg)}</span></div>
-            <div className="stat-tile"><span className="stat-label">Folha mensal</span><span className="stat-value">{fmtNum(payroll)}</span><span className="muted small">salários dos jogadores</span></div>
+            <div className="stat-tile"><span className="stat-label">Folha mensal</span><span className="stat-value">{fmtMoney(payroll)}</span><span className="muted small">salários dos jogadores</span></div>
           </div>
         )}
         {!match && !player && view === 'overview' && (
@@ -209,10 +209,11 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
                 </>
               ) : <p className="muted">Nenhuma partida agendada.</p>}
             </section>
-            {lastSim && lastSim.results.length > 0 && (
+            {lastSim && lastSim.results.some((m) => m.hasReport) && (
               <section className="card wide scroll">
                 <h2>Resultados da rodada ({fmtDate(lastSim.date)})</h2>
-                <table><tbody>{lastSim.results.map((m) => (
+                {lastSim.results.some((m) => !m.hasReport) && <p className="muted small">Só os países com simulação completa. Os placares dos demais estão em Competições.</p>}
+                <table><tbody>{lastSim.results.filter((m) => m.hasReport).map((m) => (
                   <tr key={m.fixtureId} className={m.involvesUser ? 'mine' : ''}>
                     <td className="muted small">{m.competitionName}</td><td className="right">{m.homeName}</td>
                     <td className="center"><strong>{m.homeGoals} x {m.awayGoals}</strong></td><td>{m.awayName}</td>

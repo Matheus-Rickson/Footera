@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Binoculars } from 'lucide-react';
 import type { MarketPageDto, MarketPlayerDto, TransfersOverviewDto } from '../../shared/api.ts';
 import { EMPTY_FILTERS, MarketFilters, toMarketFilter, type Filters } from './MarketFilters.tsx';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, PosPill, tone } from '../playerUi.tsx';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { NegotiationModal } from './NegotiationModal.tsx';
@@ -103,7 +103,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
         </div>
         <div className="row small">
           <span className={`tr-window ${w.open ? 'open' : ''}`}>{w.open ? `Janela aberta até ${fmtDate(w.closesOn!)}` : `Janela fechada · abre em ${fmtDate(w.opensOn!)}`}</span>
-          <span className="muted">Caixa <strong>{fmtNum(ov.balance)}</strong></span>
+          <span className="muted">Caixa <strong>{fmtMoney(ov.balance)}</strong></span>
           <span className="muted">Elenco <strong>{ov.squadSize}</strong>/{ov.squadMax} (mín. {ov.squadMin})</span>
         </div>
       </div>
@@ -146,8 +146,8 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                       <td>{FOOT_LABEL[p.foot] ?? p.foot}</td>
                       <td className="right nowrap">{p.heightCm} cm</td>
                       <td className="right nowrap">{p.weightKg} kg</td>
-                      <td className="right">{fmtNum(p.marketValue)}</td>
-                      <td className="right">{fmtNum(p.salary)}</td>
+                      <td className="right">{fmtMoney(p.marketValue)}</td>
+                      <td className="right">{fmtMoney(p.salary)}</td>
                       <td className="nowrap">{p.clubId ? fmtDate(p.contractEnd) : <span className="muted">—</span>}</td>
                       <td><KnowledgeBar value={p.knowledge} /></td>
                       <td><div className="row tr-actions">
@@ -171,7 +171,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
           {ov.incoming.length === 0 ? <p className="muted">Nenhuma proposta pendente. Jogadores marcados como transferíveis (aba Meus jogadores) atraem mais propostas, e só durante as janelas.</p> : (
             <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Comprador</th><th className="right">Taxa oferecida</th><th className="right">Valor de mercado</th><th>Vence em</th><th /></tr></thead>
               <tbody>{ov.incoming.map((o) => (
-                <tr key={o.id}><td><button className="link" onClick={() => onOpenPlayer(o.playerId)}>{o.playerName}</button></td><td><PosPill pos={o.position} /></td><td>{o.age}</td><td>{o.buyerClubName}</td><td className="right pos">{fmtNum(o.fee)}</td><td className="right">{fmtNum(o.marketValue)}</td><td>{fmtDate(o.expires)}</td>
+                <tr key={o.id}><td><button className="link" onClick={() => onOpenPlayer(o.playerId)}>{o.playerName}</button></td><td><PosPill pos={o.position} /></td><td>{o.age}</td><td>{o.buyerClubName}</td><td className="right pos">{fmtMoney(o.fee)}</td><td className="right">{fmtMoney(o.marketValue)}</td><td>{fmtDate(o.expires)}</td>
                   <td className="row"><button disabled={busy} onClick={() => void respond(o.id, true)}>Aceitar</button><button className="secondary" disabled={busy} onClick={() => void respond(o.id, false)}>Recusar</button></td></tr>))}</tbody></table>
           )}
         </section>
@@ -181,7 +181,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
         <section className="card">
           <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th className="right">Valor</th><th className="right">Salário</th><th>Contrato até</th><th>Transferível</th></tr></thead>
             <tbody>{ov.mine.map((p) => (
-              <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td className="right">{fmtNum(p.marketValue)}</td><td className="right">{fmtNum(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td>
+              <tr key={p.id}><td><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button></td><td><PosPill pos={p.position} /></td><td>{p.age}</td><td className="right">{fmtMoney(p.marketValue)}</td><td className="right">{fmtMoney(p.salary)}</td><td>{fmtDate(p.contractEnd)}</td>
                 <td><input type="checkbox" checked={p.listed} disabled={busy} aria-label={`Listar ${p.name} para venda`} onChange={(e) => void toggleListed(p.id, e.target.checked)} /></td></tr>))}</tbody></table>
         </section>
       )}
@@ -191,7 +191,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
           {ov.recent.length === 0 ? <p className="muted">Nenhuma transferência registrada ainda.</p> : (
             <table><thead><tr><th>Data</th><th>Jogador</th><th>De</th><th>Para</th><th className="right">Taxa</th><th>Tipo</th></tr></thead>
               <tbody>{ov.recent.map((t) => (
-                <tr key={t.id} className={t.kind === 'ai' ? '' : 'mine'}><td>{fmtDate(t.date)}</td><td>{t.playerName}</td><td>{t.fromClub ?? '—'}</td><td>{t.toClub}</td><td className="right">{fmtNum(t.fee)}</td><td>{KIND_LABEL[t.kind]}</td></tr>))}</tbody></table>
+                <tr key={t.id} className={t.kind === 'ai' ? '' : 'mine'}><td>{fmtDate(t.date)}</td><td>{t.playerName}</td><td>{t.fromClub ?? '—'}</td><td>{t.toClub}</td><td className="right">{fmtMoney(t.fee)}</td><td>{KIND_LABEL[t.kind]}</td></tr>))}</tbody></table>
           )}
         </section>
       )}

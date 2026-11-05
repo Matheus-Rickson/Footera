@@ -10,7 +10,7 @@ function Row({ f, onOpen, mine }: { f: FixtureDto; onOpen: (id: string) => void;
     <tr className={mine && (f.homeId === mine || f.awayId === mine) ? 'mine' : ''}>
       <td>{fmtDate(f.date)}</td><td className="right">{f.homeName}</td>
       <td className="center"><strong>{played ? `${f.homeGoals} x ${f.awayGoals}` : 'x'}</strong></td><td>{f.awayName}</td>
-      <td>{played ? <button className="secondary" onClick={() => onOpen(f.id)}>Relatório</button> : <span className="muted small">a disputar</span>}</td>
+      <td>{!played ? <span className="muted small">a disputar</span> : f.hasReport ? <button className="secondary" onClick={() => onOpen(f.id)}>Relatório</button> : <span className="muted small" title="País com simulação simplificada: só o placar">só placar</span>}</td>
     </tr>
   );
 }

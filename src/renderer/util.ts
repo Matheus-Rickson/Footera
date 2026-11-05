@@ -11,6 +11,7 @@ export const errMsg = (e: unknown): string => (e instanceof Error ? e.message : 
 export const fmtDate = (iso: string): string => new Date(`${iso}T00:00:00Z`).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 export const fmtDateTime = (iso: string): string => new Date(iso).toLocaleString('pt-BR');
 export const fmtNum = (n: number): string => n.toLocaleString('pt-BR');
+export { fmtMoney } from '../shared/money.ts';
 export const fmtPlay = (s: number): string => (s < 60 ? 'menos de 1 min' : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}min`);
 
 export const METHODOLOGY: Record<Methodology, { label: string; description: string }> = {

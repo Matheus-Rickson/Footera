@@ -4,19 +4,32 @@ Decisões do usuário (04/11/2026): JSON como formato principal (+ CSV para plan
 (exceto fotos e nomes, que poderão ser aplicados a saves existentes); começar pela etapa 1. O jogo vem só com dados fictícios: nomes e fotos
 reais têm direitos de imagem e de marca, então pacotes com dados reais são feitos e distribuídos pelos usuários.
 
+## Base fixa (decisão do usuário, 04/11/2026)
+O jogo vem com **uma única base fictícia**, igual para todos os jogadores e todas as carreiras, gravada como pacote em `data/base/`
+(`footera-base@1.0.0`, ~15 MB): 16 países — Brasil e Inglaterra com 4 divisões; Espanha e Alemanha com 3; Itália, França, Portugal,
+Holanda, Argentina, Bélgica, Japão, Áustria, México, Irlanda, Croácia e Rússia com 2 — 672 clubes e 16.800 jogadores.
+- A base foi gerada uma vez (`npm run pack -- build-base`, semente `BASE_SEED`) e fica **congelada**: mudanças no gerador não a afetam.
+  Regenerar exige `--force` e uma versão nova (`BASE_VERSION`), porque patches feitos para a anterior podem deixar de funcionar.
+- **Semente:** a carreira não escolhe mais semente. Cada carreira ganha uma semente interna só para o acaso (resultados, lesões, peneiras);
+  o universo é sempre a base. Por isso um patch feito para a base vale em qualquer carreira.
+- Nomes de cidades e clubes são fictícios; as listas de nomes evitam combinações de jogadores famosos reais.
+
+## Países completos e simplificados
+Na criação da carreira o usuário escolhe os países com **simulação completa** (o do clube entra sempre); os demais ficam **simplificados**
+(`countries.sim_level`, migração 013). Detalhes em `docs/PROGRESS.md` (Fase 9).
+
 ## Como o universo é montado
 `universo = base + pacotes na ordem de carga` (`compileUniverse`, em `src/game/data-pack/compile.ts`, puro e determinístico).
-- **Base:** o mundo gerado pela semente da carreira — ou nada, se o primeiro pacote declarar `"base": "none"` (base de dados completa).
+- **Base:** a base fixa (`data/base`) na carreira; nos testes e na linha de comando, o mundo gerado por semente. Um pacote com
+  `"base": "none"` (base de dados completa) descarta a base.
 - **Pacotes:** aplicados em ordem; o último vence em caso de conflito. O save grava quais pacotes usou (`meta.data_packs`, `id@versão`).
 - Depois dos pacotes: validação de tudo (referências e regras do jogo) e **elencos completados** (clube com menos de `squadMin + 2`
   jogadores ou menos de 2 goleiros ganha jogadores gerados do país do clube, com aviso). Erro em qualquer pacote = nada é aplicado.
 
 ## IDs fixos
 Todo registro tem um `id` único no universo inteiro: minúsculas, números, `-` e `_`, até 60 caracteres (ex.: `joao-silva-1998`).
-- Na base gerada: países `bra`, `eng`; ligas `bra-1`, `bra-2`, `eng-1`, `eng-2` (**fixos**); clubes e estádios pelo nome; jogadores por
-  `nome-sobrenome-ano`. **Clubes, estádios e jogadores da base gerada dependem da semente** — um patch que altera um jogador da base só
-  funciona em carreiras com a mesma semente. Para dados próprios (ligas reais, por exemplo), crie as entidades com IDs seus ou use uma
-  base completa (`"base": "none"`).
+- Na base fixa: países pelo código (`bra`, `eng`, `esp`…); ligas `<país>-<divisão>` (`bra-1` … `bra-4`); clubes e estádios pelo nome;
+  jogadores por `nome-sobrenome-ano`. Todos **fixos** (a base é congelada). Abra `data/base/` para achar os IDs.
 - Jogadores da base criados durante a carreira (peneiras) usam outro formato e não entram em pacotes.
 
 ## Estrutura do pacote
@@ -88,6 +101,7 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
 ## Etapas
 1. **Formato, IDs fixos, montagem do universo, validador, exportação e JSON Schema** — feito (v0.9.0-dev). A carreira nova já passa
    pela montagem (sem pacotes ainda: a escolha chega na etapa 2).
+1b. **Base fixa (16 países) e países completos × simplificados** — feito (sem commit). Ver PROGRESS.md.
 2. Pacotes e ordem de carga na interface (tela "Pacotes de dados" no menu principal; `.zip`; pasta de pacotes do usuário).
 3. Fotos e escudos (jogadores, clubes, técnicos, competições), por pacote e pela pasta de fotos do usuário; protocolo próprio do Electron.
 4. Editor no jogo (salva num pacote do usuário) + importação/exportação CSV.

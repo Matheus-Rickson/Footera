@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BoardOverviewDto, BoardStatus } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
 const STATUS: Record<BoardStatus, { label: string; cls: string }> = {
@@ -47,8 +47,8 @@ export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props)
           </section>
           <section className="card wide">
             <h2>Orçamentos</h2>
-            <p>Transferências: <strong>{fmtNum(c.budgets.remaining)}</strong> disponíveis (orçamento {fmtNum(c.budgets.transfer)}, gasto {fmtNum(c.budgets.spent)}; vendas devolvem metade da taxa)</p>
-            <p>Folha salarial: <strong>{fmtNum(c.budgets.payroll)}</strong> de um teto de {fmtNum(c.budgets.wageCeiling)} por mês</p>
+            <p>Transferências: <strong>{fmtMoney(c.budgets.remaining)}</strong> disponíveis (orçamento {fmtMoney(c.budgets.transfer)}, gasto {fmtMoney(c.budgets.spent)}; vendas devolvem metade da taxa)</p>
+            <p>Folha salarial: <strong>{fmtMoney(c.budgets.payroll)}</strong> de um teto de {fmtMoney(c.budgets.wageCeiling)} por mês</p>
             <p className="muted small">A diretoria barra contratações e renovações que estourem o orçamento ou o teto, e veta valores fora da realidade do clube (taxa acima de 2× o valor de mercado,
               salário acima de 2,2× o justo). Obras acima de 30% do caixa precisam de aprovação. Cada pedido de aumento pode ser feito uma vez por temporada e depende da confiança (65+).</p>
             <div className="row">

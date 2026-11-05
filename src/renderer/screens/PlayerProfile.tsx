@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { MarketPlayerDto, PlayerProfileDto, Range } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
-import { errMsg, fmtDate, fmtNum, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, POS_NAME, PosPill, to20, tone } from '../playerUi.tsx';
 
@@ -104,8 +104,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           </div>
         </div>
         <div className="pf-strip">
-          <span><span className="muted">Valor</span> <strong>{fmtNum(p.marketValue)}</strong></span>
-          <span><span className="muted">{p.clubId || p.youth ? 'Salário' : 'Pretensão'}</span> <strong>{fmtNum(p.salary)}/mês</strong></span>
+          <span><span className="muted">Valor</span> <strong>{fmtMoney(p.marketValue)}</strong></span>
+          <span><span className="muted">{p.clubId || p.youth ? 'Salário' : 'Pretensão'}</span> <strong>{fmtMoney(p.salary)}/mês</strong></span>
           <span><span className="muted">Fim do contrato</span> <strong>{p.clubId || p.youth ? fmtDate(p.contractEnd) : '—'}</strong></span>
           <span><span className="muted">Potencial estimado</span> <strong>{fmtRange20(p.estPotential)}</strong></span>
           {!p.own && <span className="row"><span className="muted">Olheiros</span> <KnowledgeBar value={p.knowledge} /></span>}
@@ -215,7 +215,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
             <h2>Transferências</h2>
             {p.transfers.length === 0 ? <p className="muted">Nenhuma transferência registrada nesta carreira.</p> : (
               <table><thead><tr><th>Data</th><th>De</th><th>Para</th><th className="right">Taxa</th></tr></thead>
-                <tbody>{p.transfers.map((t, i) => <tr key={i}><td>{fmtDate(t.date)}</td><td>{t.from ?? <span className="muted">sem clube</span>}</td><td>{t.to}</td><td className="right">{t.fee ? fmtNum(t.fee) : 'livre'}</td></tr>)}</tbody></table>
+                <tbody>{p.transfers.map((t, i) => <tr key={i}><td>{fmtDate(t.date)}</td><td>{t.from ?? <span className="muted">sem clube</span>}</td><td>{t.to}</td><td className="right">{t.fee ? fmtMoney(t.fee) : 'livre'}</td></tr>)}</tbody></table>
             )}
           </section>
           <section className="card">

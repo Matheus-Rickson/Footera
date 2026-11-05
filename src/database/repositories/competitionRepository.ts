@@ -62,7 +62,8 @@ export function createSeason(db: SqlDb, season: number): { created: number } {
 
 export const FIXTURE_SELECT = `
   SELECT f.id, f.competition_id, c.name AS competition_name, f.round, f.match_date, f.home_club_id, h.name AS home_name,
-         f.away_club_id, a.name AS away_name, f.status, f.home_goals, f.away_goals
+         f.away_club_id, a.name AS away_name, f.status, f.home_goals, f.away_goals,
+         EXISTS (SELECT 1 FROM matches m WHERE m.fixture_id = f.id) AS has_report
     FROM fixtures f
     JOIN competitions c ON c.id = f.competition_id
     JOIN clubs h ON h.id = f.home_club_id
@@ -74,6 +75,7 @@ export function toFixture(r: Record<string, unknown>): FixtureDto {
     homeId: S(r.home_club_id), homeName: S(r.home_name), awayId: S(r.away_club_id), awayName: S(r.away_name),
     status: S(r.status) as FixtureDto['status'],
     homeGoals: r.home_goals == null ? null : N(r.home_goals), awayGoals: r.away_goals == null ? null : N(r.away_goals),
+    hasReport: N(r.has_report ?? 0) === 1,
   };
 }
 

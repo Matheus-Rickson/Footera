@@ -9,7 +9,7 @@ import { uniqueIds } from '../../shared/slug.ts';
 import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World } from '../../shared/types.ts';
 import { COUNTRY_TEMPLATES, type CountryTemplate } from '../world/names.ts';
 import { overallFor } from '../world/overall.ts';
-import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE } from '../world/generator.ts';
+import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
 import { PackError, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
@@ -62,6 +62,8 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const clubs = new Map<string, Club>(fresh ? [] : base.clubs.map((c) => [c.id, { ...c, facilities: { ...c.facilities } }]));
   const players = new Map<string, Player>(fresh ? [] : base.players.map((p) => [p.id, { ...p }]));
   const typeOf = new Map<string, string>();
+  /** clubes criados por pacote sem caixa informado: o caixa é calculado depois do elenco (startingBalance) */
+  const autoBalance = new Set<string>();
   for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players]] as const) for (const k of m.keys()) typeOf.set(k, kind);
   const economyOf = (code: string) => [...countries.values()].find((c) => c.code === code)?.economy ?? 1;
   const tplOf = (code: string): CountryTemplate => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
@@ -116,18 +118,17 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
           stadiums.set(stadiumId, { id: stadiumId, name: `Estádio ${city}`, city, capacity: Math.round((6000 + reputation * 650) / 100) * 100 });
         }
         const fac = (j: number) => clamp(Math.round(reputation / 6 + rng.int(-j, j)), 1, 20);
-        const economy = countries.get(c.country!)?.economy ?? 1;
         return {
           id: c.id, name: c.name!, countryId: c.country!, leagueId: c.league!, stadiumId, city, reputation,
           shortName: c.shortName ?? (c.name!.normalize('NFD').replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w.slice(0, 3)).join('').toUpperCase().slice(0, 4) || 'CLB'),
-          balance: c.balance ?? Math.round((reputation * 180_000 * economy) / 1000) * 1000,
+          balance: c.balance ?? (autoBalance.add(c.id), 0),
           fans: c.fans ?? reputation * 3500 + rng.int(0, 20_000),
           facilities: { training: fac(2), youth: fac(3), medical: fac(2), stadium: fac(2), ...c.facilities },
         };
       }, (cur, c) => {
         if (c.name) cur.name = c.name; if (c.shortName) cur.shortName = c.shortName; if (c.country) cur.countryId = c.country; if (c.league) cur.leagueId = c.league;
         if (c.city) cur.city = c.city; if (c.stadium) cur.stadiumId = c.stadium; if (c.reputation !== undefined) cur.reputation = c.reputation;
-        if (c.balance !== undefined) cur.balance = c.balance; if (c.fans !== undefined) cur.fans = c.fans; if (c.facilities) cur.facilities = { ...cur.facilities, ...c.facilities };
+        if (c.balance !== undefined) { cur.balance = c.balance; autoBalance.delete(cur.id); } if (c.fans !== undefined) cur.fans = c.fans; if (c.facilities) cur.facilities = { ...cur.facilities, ...c.facilities };
       });
     }
 
@@ -246,6 +247,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       players.set(p.id, p); squad.push(p); added++;
     }
     if (added) warnings.push({ pack: 'universo', file: 'clubs.json', record: c.id, message: `elenco completado com ${added} jogador(es) gerado(s)` });
+    if (autoBalance.has(c.id)) c.balance = startingBalance(c.reputation, country.economy, squad);
     if (squad.length > rules.squadMax) issues.push({ pack: 'universo', file: 'players.json', record: c.id, message: `elenco com ${squad.length} jogadores (máximo ${rules.squadMax})` });
   }
   for (const l of leagues.values()) {

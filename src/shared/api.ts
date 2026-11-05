@@ -1,5 +1,6 @@
 /** Contrato da API exposta pelo preload ao renderer. */
 import type { AttrSummary } from './attributeSummary.ts';
+import type { CoachAttributes } from './coachAttributes.ts';
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
 import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
@@ -11,12 +12,21 @@ export interface AppInfo { dataDir: string; version: string }
 export interface ProfileDto { id: string; name: string; createdAt: string }
 
 export interface ClubOption {
-  id: string; name: string; league: string; leagueTier: number; country: string;
+  id: string; countryId: string; leagueId: string; name: string; league: string; leagueTier: number; country: string;
   reputation: number; avgOverall: number; stadium: string; capacity: number;
+  city: string; fans: number; balance: number; facilities: { training: number; youth: number; medical: number; stadium: number };
+  /** objetivo que a diretoria vai cobrar (mesma regra da Diretoria) e posição esperada na liga */
+  objective: string; expectedPosition: number; teamCount: number;
+  squadSize: number; avgAge: number;
+  /** 3 jogadores mais fortes (força 0–100; a tela mostra 1–20) */
+  stars: Array<{ name: string; position: Position; overall: number }>;
+  /** história resumida de EXEMPLO (gerada; provisória até a base ter histórias próprias) */
+  story: { founded: number; nickname: string; colors: string; text: string[] };
 }
+/** Base de dados fixa, para a tela de nova carreira: países (com divisões e clubes) e clubes escolhíveis. */
 export interface ClubList {
-  seed: string; startDate: string;
-  countries: Array<{ code: string; name: string }>;
+  startDate: string;
+  countries: Array<{ id: string; code: string; name: string; divisions: number; clubs: number; leagues: Array<{ id: string; name: string; tier: number; clubs: number }> }>;
   clubs: ClubOption[];
 }
 
@@ -24,9 +34,12 @@ export interface PhotoPick { token: string; dataUrl: string; width: number; heig
 
 export interface CoachInput {
   firstName: string; lastName: string; birthDate: string; nationality: string; methodology: Methodology;
+  /** distribuição inicial dos atributos (base + 12 pontos); obrigatória pela tela (validada no IPC) */ attributes?: CoachAttributes;
 }
 export interface CreateCareerInput {
-  profileId: string; seed: string; clubId: string; coach: CoachInput; photoToken: string | null;
+  profileId: string; clubId: string; coach: CoachInput; photoToken: string | null;
+  /** divisões com simulação completa (ids de liga); as demais ficam simplificadas. A do clube entra sempre. */
+  fullLeagues: string[];
 }
 
 export interface CareerSummaryDto {
@@ -42,6 +55,7 @@ export interface FixtureDto {
   id: string; competitionId: string; competitionName: string; round: number; date: string;
   homeId: string; homeName: string; awayId: string; awayName: string;
   status: 'scheduled' | 'played'; homeGoals: number | null; awayGoals: number | null;
+  /** há relatório lance a lance (não há em países com simulação simplificada) */ hasReport: boolean;
 }
 export interface CompetitionInfoDto { id: string; name: string; country: string; tier: number; teamCount: number }
 export type TableZone = 'promotion' | 'continental' | 'relegation' | null;
@@ -147,6 +161,7 @@ export interface TacticsOverviewDto {
 export interface MatchSummaryDto {
   fixtureId: string; competitionName: string; date: string; round: number;
   homeName: string; awayName: string; homeGoals: number; awayGoals: number; involvesUser: boolean;
+  /** false = país com simulação simplificada (só o placar) */ hasReport: boolean;
 }
 export interface SimulationSummaryDto {
   date: string; simulated: number; userMatch: MatchSummaryDto | null; results: MatchSummaryDto[]; notes: string[];
@@ -334,7 +349,7 @@ export interface GameApi {
   appInfo(): Promise<IpcResult<AppInfo>>;
   listProfiles(): Promise<IpcResult<ProfileDto[]>>;
   createProfile(name: string): Promise<IpcResult<ProfileDto>>;
-  listClubs(seed: string): Promise<IpcResult<ClubList>>;
+  listClubs(): Promise<IpcResult<ClubList>>;
   pickPhoto(): Promise<IpcResult<PhotoPick | null>>;
   discardPhoto(token: string): Promise<IpcResult<true>>;
   createCareer(input: CreateCareerInput): Promise<IpcResult<CareerSummaryDto>>;

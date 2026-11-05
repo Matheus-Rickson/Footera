@@ -760,3 +760,54 @@ Decisões do usuário: JSON + CSV; pacotes só para carreiras novas (exceto foto
   Typecheck limpo.
 - **Pendente:** etapas 2–5 (interface de pacotes e `.zip`, fotos e escudos, editor + CSV, técnicos da IA). **Não executado:** nenhuma tela nova
   nesta etapa; nada para verificar no Electron além de criar uma carreira (deve funcionar como antes, com IDs legíveis).
+### Base fixa e países completos × simplificados (sem commit; telas NÃO verificadas no Electron)
+Decisões do usuário: base fixa (não depende de semente: um patch feito para uma semente não funcionaria em outra); 16 países (+ Bélgica,
+Japão, Áustria, México, Irlanda, Croácia, Rússia); Brasil e Inglaterra com 4 divisões, Espanha e Alemanha com 3, os demais com 2;
+propostas de emprego só de clubes completos; competições continentais depois da edição da base.
+- **Base fixa** em `data/base/` (pacote `footera-base@1.0.0`, 672 clubes, 16.800 jogadores), carregada uma vez por sessão
+  (`universeService.node.ts`; 0,6 s) e incluída no instalador (`build.files`). Modelos de nomes/cidades fictícios por país (`names.ts`),
+  força por país (`strength`) e nomes de estádio no idioma. O gerador manteve o universo dos testes (Brasil e Inglaterra, 2 divisões).
+- **Semente:** saiu da tela; cada carreira tem semente interna (acaso dos jogos), universo idêntico (testado).
+- **Nível de simulação por país** (migração 013, `simLevelRepository.ts`). Simplificado = só o placar das partidas (`quickResult`: Poisson
+  pela força dos 11 melhores e fator casa; 2,59 gols/jogo, mandante 45%, empates 26%, 0x0 7% — o motor completo dá 2,69 / 44,7% / 26,8% / 7,6%),
+  sem relatório, estatísticas, lesões, cartões nem bilheteria; sem finanças mensais e patrocínios; sem categorias de base; sem treino nem
+  evolução mensal (evolução anual na virada, `developLightPlayers`, minutos estimados pela posição no elenco); a IA não compra nem
+  contrata livres durante a temporada (na virada completa os elencos); sem demissões da IA, vagas e propostas de emprego. Acesso,
+  rebaixamento, premiação e aposentadorias valem para todos. O usuário pode contratar de clubes simplificados.
+- **Tela de nova carreira:** escolha dos países completos (o do clube sempre), contagem de clubes completos e ritmo estimado; filtro
+  por país e liga. Resultados da rodada na Visão geral só dos países completos; partidas simplificadas mostram "só placar".
+- **Desempenho medido** (10 rodadas): universo antigo (80 clubes, todos completos) 4,9 s; base com só o Brasil completo (80 completos +
+  592 simplificados) 5,6 s; Brasil + Inglaterra + Espanha (220 completos) 14,3 s; todos completos (672) 41,8 s.
+- **Testes:** 198 (5 novos em `sim-levels.test.ts`: resultado rápido, carreira mista com temporada e virada, compra de clube
+  simplificado + vagas só em completos + determinismo, base fixa com as divisões pedidas, carreira pela base com semente própria).
+  Testes de saves ajustados à base (contagens de competições/partidas derivadas da base). **Mutação 11/11** detectadas (uma só depois de
+  reforçar o teste das vagas, que expiravam antes da checagem). Typecheck limpo.
+- **Não executado:** soak de várias temporadas com a base inteira; telas no Electron.
+- **Tela de nova carreira refeita (pedido do usuário):** 3 passos. (1) Países: bandeira (SVG próprio, `flags.tsx`) e nome em destaque,
+  "Completa / Simplificada" e divisões abaixo; resumo de países/ligas/clubes de cada nível e ritmo; botão "Escolher clube".
+  (2) Clube: lista (só países completos — é onde o técnico pode treinar e ser contratado) e painel do clube destacado, que já abre com o
+  de maior reputação do primeiro país completo. Só dados reais da base: escudo gerado pelas cores do id (até a etapa de fotos e escudos),
+  estádio e capacidade, objetivo da diretoria (mesma regra da Diretoria; teste compara com o `board_state` da carreira criada), força
+  média, elenco, idade média, reputação, torcida, caixa, 3 destaques e estrutura. Sem foto do estádio e sem texto de história (não há
+  esses dados ainda). (3) Treinador. Testes: 199; mutação no objetivo detectada. Telas NÃO verificadas no Electron.
+- **Cor do clube no passo 2:** ao destacar um clube, o fundo ganha um leve tom da cor dele, com transição suave, e a faixa do estádio, a borda do painel e a linha selecionada usam as cores do clube. Enquanto a base não tem cores cadastradas, são as cores do escudo gerado (`clubHues`). Tela NÃO verificada no Electron.
+- **Nível de simulação por divisão (pedido do usuário):** marcar o país = todas as divisões completas; um campo opcional permite deixar
+  só algumas divisões completas. Migração 014 (`leagues.sim_level`, copiando o nível do país das carreiras de teste); `countries.sim_level`
+  fica sem uso. O clube segue o nível da divisão em que está (quem sobe para divisão completa passa a ser completo; quem cai, simplificado);
+  o clube do usuário é sempre completo, inclusive a partida dele dentro de uma divisão simplificada. Só clubes de divisões completas
+  aparecem no passo 2. Testes: 200 (novo: divisões, acesso/rebaixamento entre níveis, usuário rebaixado, partida mista em casa e fora).
+  Mutação 4/4 (uma só depois de cobrir a partida fora de casa). Tela NÃO verificada no Electron.
+- **Passo 1 em estilo minimalista (pedido do usuário):** barra de etapas; cartões limpos (caixa, bandeira, nome); divisões num painel fechado por padrão, aberto pelo botão "n/total" no cartão do país; explicações só em ícones de interrogação (ao passar o mouse ou focar), também nos passos 2 e 3; barra inferior fixa com o resumo e o botão "Escolher clube". Tela NÃO verificada no Electron.
+- **Conteúdo de exemplo para testar a tela (pedido do usuário):** logo do FOOTERA no topo da nova carreira; imagem ILUSTRATIVA do estádio (`StadiumArt`, vista aérea em SVG nas cores do clube, variações fixas pelo id) e história resumida de EXEMPLO (`clubStory`, determinística, só com dados reais do universo e sem citar títulos; teste e mutação). Ambas marcadas na tela como exemplo/ilustrativa e provisórias até a base de dados ter fotos e histórias (etapas 3 e 4). 201 testes. Tela NÃO verificada no Electron.
+- **Nova carreira cabe na janela (padrão das telas principais):** sem barra de rolagem da página nos três passos (`nc-fit`); só áreas internas rolam quando falta espaço. Passo 3 em duas colunas (dados e metodologia | foto). Painel de divisões com posição fixa na janela (abre para cima quando falta espaço; fecha ao rolar ou redimensionar); interrogações perto do rodapé abrem para cima. Tela NÃO verificada no Electron.
+- **Correção:** a imagem do estádio cobria as caixas de informação do painel do clube (proporção fixa + altura máxima); agora tem altura definida.
+- **Atributos do treinador (pedido do usuário; base dos sistemas de reputação):** 6 atributos 1–20 (conhecimento tático, motivação,
+  desenvolvimento de jovens, disciplina, negociação, adaptabilidade; `shared/coachAttributes.ts`). Todos começam em 5; o usuário distribui
+  12 pontos (máximo 15 por atributo na criação), com + e −, contador e "Redistribuir"; iniciar a carreira exige os 12 pontos usados.
+  Validados no IPC (Zod) e em `validateCoach`, gravados em `coach_json`. **Ainda não alteram a simulação** (próxima fase: reputação).
+  Carreiras antigas seguem sem atributos. Testes: 202; mutação 3/3. Tela NÃO verificada no Electron.
+- **Correção e encaixe do passo 2:** a lista de clubes era uma grade de altura fixa que espremia as linhas (o selecionado ficava torto, sobrepondo o vizinho); agora é coluna com linhas de altura natural. Painel do clube em duas colunas (imagem e história | informações, destaques e estrutura), tela mais larga (até 1600 px), para caber sem rolagem; rolagem interna só como reserva em janelas pequenas. Tela NÃO verificada no Electron.
+- **Caixa inicial e moeda (pedido do usuário):** o caixa inicial passou a incluir 22% do valor do elenco (os grandes não conseguiam
+  contratar; ver `docs/FINANCE.md`); base fixa regenerada (ainda não publicada). Moeda única **euro (€)** em todas as telas e nas mensagens
+  do jogo (`fmtMoney`, 60 pontos trocados; capacidade, torcida, público e lugares seguem sem moeda). Testes: 204 (caixa cobre o melhor
+  jogador do clube mais forte de cada 1ª divisão + clube de pacote; formato da moeda). Mutação no caixa detectada. Telas NÃO verificadas.

@@ -703,3 +703,121 @@ button.tc-role.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px va
 .pq-role-name { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; } .pq-role-pos { display: inline-flex; gap: 3px; } .pq-role b { text-align: right; }
 .pq-foot { align-items: center; }
 @media (max-width: 860px) { .pq-modal .pq-body { grid-template-columns: 1fr; } .pq-modal .pq-attrs { grid-template-columns: 1fr 1fr; } }
+
+/* Nova carreira — cabeçalho com etapas e passo 1 (países) em estilo minimalista */
+.nc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.nc-top-title { display: grid; gap: 10px; } .nc-top-title h1 { margin: 0; }
+.nc-steps { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.nc-steps li { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; color: var(--text-muted); font-size: .84rem; font-weight: 600; background: var(--surface-2); }
+.nc-steps li > span { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-3); font-size: .75rem; }
+.nc-steps li.on { color: var(--text); background: var(--primary-soft); } .nc-steps li.on > span { background: var(--primary); color: #fff; }
+.nc-steps li.done > span { background: color-mix(in srgb, var(--primary) 35%, transparent); color: var(--primary-text); }
+.nc-section { display: grid; gap: 14px; }
+.nc-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.nc-section-head h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem; }
+.nc-presets { display: flex; gap: 4px; }
+.nc-ghost { min-height: 30px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text-muted); font-size: .84rem; font-weight: 600; }
+.nc-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.nc-countries { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.nc-country { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); cursor: pointer; user-select: none; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+.nc-country:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.nc-country:focus-visible { outline: none; box-shadow: var(--ring); }
+.nc-country.on { border-color: color-mix(in srgb, var(--primary) 60%, transparent); background: color-mix(in srgb, var(--primary) 7%, var(--surface)); }
+.nc-check { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--border-strong); color: #fff; transition: background-color .15s ease, border-color .15s ease; }
+.nc-country.on .nc-check { background: var(--primary); border-color: var(--primary); }
+.nc-flag { flex: none; border-radius: 3px; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.nc-country-name { flex: 1; display: grid; min-width: 0; } .nc-country-name strong { font-size: .98rem; } .nc-country-name span { font-size: .78rem; color: var(--text-muted); }
+.nc-divmenu { position: relative; }
+.nc-divbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 26px; padding: 0 6px 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text-muted); font-size: .76rem; font-weight: 700; }
+.nc-divbtn.partial { color: var(--primary-text); border-color: color-mix(in srgb, var(--primary) 50%, transparent); }
+.nc-divpop { position: fixed; top: 0; left: 0; z-index: 60; width: 270px; display: grid; gap: 2px; padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); cursor: default; }
+.nc-divpop-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; font-size: .86rem; }
+.nc-divopt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 0; padding: 6px 4px; border-radius: 8px; font-size: .86rem; font-weight: 500; cursor: pointer; }
+.nc-divopt:hover { background: var(--surface-2); } .nc-divopt em { font-style: normal; font-size: .75rem; color: var(--text-muted); }
+.nc-help { position: relative; display: inline-flex; align-items: center; color: var(--text-faint); cursor: help; vertical-align: middle; }
+.nc-help:hover, .nc-help:focus-visible { color: var(--text); outline: none; }
+.nc-help-pop { display: none; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 40; width: 300px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); color: var(--text); font-size: .82rem; font-weight: 400; line-height: 1.45; text-transform: none; letter-spacing: 0; white-space: normal; text-align: left; }
+.nc-help:hover .nc-help-pop, .nc-help:focus-visible .nc-help-pop { display: block; }
+.nc-help-up .nc-help-pop { top: auto; bottom: calc(100% + 8px); }
+.nc-footer { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; gap: 28px; flex-wrap: wrap; padding: 14px 16px 14px 20px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(8px); box-shadow: var(--shadow-lg); }
+.nc-stat { display: grid; gap: 2px; } .nc-stat > span { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.nc-stat strong { font-size: .95rem; }
+.nc-cta { margin-left: auto; min-height: 40px; padding: 0 18px; border-radius: 10px; }
+.nc-count { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+/* passo 2: lista de clubes + painel do clube destacado */
+.nc-wide { max-width: 1600px; }
+.nc-club-grid { display: grid; grid-template-columns: minmax(290px, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.nc-club-list { display: grid; gap: 10px; }
+.nc-club-filters { display: grid; gap: 8px; } .nc-club-filters select { flex: 1; min-width: 0; }
+.nc-club-scroll { display: flex; flex-direction: column; gap: 4px; max-height: 62vh; overflow: auto; padding: 2px 4px 2px 2px; }
+.nc-club-row { flex: none; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; justify-content: stretch; text-align: left; min-height: 50px; padding: 6px 10px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--text); font-weight: 500; }
+.nc-club-row:hover:not(:disabled) { background: var(--surface-2); }
+.nc-club-row.on { border-color: color-mix(in srgb, var(--primary) 55%, transparent); background: var(--primary-soft); }
+.nc-club-row-name { display: grid; min-width: 0; } .nc-club-row-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-panel { display: grid; gap: 16px; }
+.nc-panel-head { display: flex; align-items: center; gap: 16px; }
+.nc-panel-head h2 { margin: 0 0 4px; font-size: 1.5rem; }
+.nc-panel-head > div { display: grid; gap: 6px; justify-items: start; }
+.nc-crest { flex: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .35)); }
+.nc-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--surface-3); font-size: .8rem; font-weight: 600; }
+.nc-hero { position: relative; flex: none; width: 100%; height: clamp(140px, 23vh, 240px); overflow: hidden; border-radius: 14px; background: #222; box-shadow: var(--shadow-sm); }
+.nc-stadium-art { display: block; width: 100%; height: 100%; }
+.nc-hero-tag { position: absolute; top: 10px; right: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: .72rem; font-weight: 600; backdrop-filter: blur(4px); }
+.nc-hero-caption { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 28px 18px 14px; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .75)); }
+.nc-hero-caption > div { display: grid; } .nc-hero-caption strong { font-size: 1.1rem; } .nc-hero-caption span { opacity: .85; font-size: .85rem; }
+.nc-story { display: grid; gap: 6px; } .nc-story h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 2px; font-size: .95rem; }
+.nc-story p { margin: 0; line-height: 1.55; color: var(--text); }
+.nc-tag { padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-muted); font-size: .7rem; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.nc-story-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 4px; font-size: .82rem; color: var(--text-muted); } .nc-story-meta b { color: var(--text); font-weight: 600; }
+.nc-brand { display: flex; align-items: center; gap: 8px; }
+.nc-logo { display: block; width: 30px; height: 30px; background: linear-gradient(135deg, var(--primary), var(--primary-hover)); -webkit-mask: var(--mark) center / contain no-repeat; mask: var(--mark) center / contain no-repeat; }
+.nc-brand-word { font-weight: 800; letter-spacing: .14em; font-size: .9rem; }
+.nc-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.nc-facts > div { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.nc-facts span { font-size: .75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.nc-facts strong { display: inline-flex; align-items: center; gap: 6px; font-size: 1.05rem; } .nc-facts small { color: var(--text-muted); font-weight: 500; }
+.nc-facts em { font-style: normal; font-size: .8rem; color: var(--text-muted); }
+.nc-panel-main { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.nc-panel-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.nc-h3 { margin: 0 0 6px; font-size: .95rem; }
+.nc-fact-wide { grid-column: 1 / -1; }
+.nc-star { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.nc-fac { grid-template-columns: 150px 1fr 28px; font-size: .85rem; margin-bottom: 6px; }
+@media (max-width: 1100px) { .nc-club-grid, .nc-panel-main { grid-template-columns: 1fr; } }
+/* cor do clube destacado: fundo levemente tingido, faixa do estádio e destaques do painel (transição suave) */
+.nc-tint { position: fixed; inset: 0; z-index: 0; pointer-events: none; transition: background-color .6s ease;
+  background-color: hsl(var(--club-h) 65% 42% / .16); mask-image: radial-gradient(ellipse 85% 70% at 70% 0%, #000 20%, transparent 80%); }
+.nc-tinted > :not(.nc-tint) { position: relative; z-index: 1; }
+.nc-tinted .nc-panel { border-top: 3px solid hsl(var(--club-h) 60% 48%); transition: border-color .6s ease; }
+.nc-tinted .nc-club-row.on { border-color: hsl(var(--club-h) 60% 50% / .7); background: hsl(var(--club-h) 60% 45% / .16); }
+.nc-tinted .nc-chip { background: hsl(var(--club-h) 55% 45% / .25); }
+
+/* Nova carreira cabe na janela (sem barra de rolagem da página): só as áreas internas rolam quando faltar espaço */
+.nc-fit { height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding-top: 20px; padding-bottom: 16px; overflow: hidden; }
+.nc-fit > * { flex: none; }
+.nc-fit > .nc-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.nc-body > * { flex: none; }
+.nc-body-countries > .nc-section { flex: 1; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.nc-body-countries .nc-countries { min-height: 0; overflow: auto; align-content: start; padding: 2px; }
+.nc-body-countries > .nc-footer { position: static; }
+.nc-body > .nc-club-grid { flex: 1; min-height: 0; align-items: stretch; }
+.nc-club-grid > .nc-club-list { min-height: 0; display: flex; flex-direction: column; }
+.nc-club-list > .nc-club-scroll { flex: 1; min-height: 0; max-height: none; }
+.nc-club-grid > .nc-panel { min-height: 0; overflow: auto; align-content: start; }
+.nc-body > .nc-coach-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 12px; align-items: start; overflow: auto; }
+.nc-coach-col { display: grid; gap: 12px; }
+.nc-photo-card .row { flex-wrap: wrap; }
+@media (max-width: 980px) { .nc-body > .nc-coach-grid { grid-template-columns: 1fr; } }
+
+/* Atributos do treinador (nova carreira, passo 3) */
+.nc-attrs { display: grid; gap: 8px; }
+.nc-attrs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.nc-attrs-head h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
+.nc-points { padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-text); font-size: .8rem; font-weight: 700; }
+.nc-points.done { background: var(--surface-3); color: var(--text-muted); }
+.nc-attr { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(60px, 1fr) auto; align-items: center; gap: 12px; }
+.nc-attr-label { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; font-weight: 500; }
+.nc-attr .pf-track { height: 6px; }
+.nc-stepper { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.nc-stepper button { width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 0; background: var(--surface-2); color: var(--text); font-size: 1rem; font-weight: 700; justify-content: center; }
+.nc-stepper b { min-width: 30px; text-align: center; font-size: .9rem; }

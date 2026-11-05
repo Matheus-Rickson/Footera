@@ -3,6 +3,7 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import type { MarketFilter, MarketPageDto } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { POS_NAME, posLabel } from '../playerUi.tsx';
+import { fmtMoney } from '../../shared/money.ts';
 
 /** Filtros do mercado como a tela os edita (campos de texto ficam como texto até virar busca). */
 export interface Filters {
@@ -39,7 +40,7 @@ const POSITION_GROUPS: Array<[string, Position[]]> = [
 const FOOT_OPTS: Array<[Filters['foot'], string]> = [['', 'Qualquer'], ['right', 'Destro'], ['left', 'Canhoto'], ['both', 'Ambidestro']];
 const CONTRACT_OPTS: Array<[Filters['contract'], string]> = [['', 'Qualquer'], ['season', 'Termina nesta temporada'], ['next', 'Termina até a próxima']];
 const STATUS_OPTS: Array<[Filters['status'], string]> = [['all', 'Todos'], ['club', 'Com clube'], ['free', 'Sem clube']];
-const money = (s: string) => Number(s).toLocaleString('pt-BR');
+const money = (s: string) => fmtMoney(Number(s));
 
 /** Botão de categoria que abre um painel; fecha ao clicar fora ou com Esc. */
 function FilterMenu({ label, count, children, wide }: { label: string; count: number; children: ReactNode; wide?: boolean }) {
@@ -149,9 +150,9 @@ export function MarketFilters({ filters, set, nationalities }: { filters: Filter
 
         <FilterMenu label="Contrato e valor" count={contractCount}>
           <div className="mf-field"><span>Situação</span><Segmented label="Situação" value={f.status} options={STATUS_OPTS} onChange={(v) => set({ status: v })} /></div>
-          <div className="mf-field"><span>Valor de mercado até</span>
+          <div className="mf-field"><span>Valor de mercado até (€)</span>
             <input type="number" min={0} step={100000} placeholder="sem limite" aria-label="Valor de mercado máximo" value={f.maxValue} onChange={(e) => set({ maxValue: e.target.value })} /></div>
-          <div className="mf-field"><span>Salário mensal até</span>
+          <div className="mf-field"><span>Salário mensal até (€)</span>
             <input type="number" min={0} step={1000} placeholder="sem limite" aria-label="Salário máximo" value={f.maxWage} onChange={(e) => set({ maxWage: e.target.value })} /></div>
           <div className="mf-field"><span>Fim do contrato</span><Segmented label="Fim do contrato" value={f.contract} options={CONTRACT_OPTS} onChange={(v) => set({ contract: v })} /></div>
         </FilterMenu>

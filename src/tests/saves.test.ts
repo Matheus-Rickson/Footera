@@ -9,13 +9,13 @@ import {
 } from '../services/saveService.node.ts';
 import { openDatabase } from '../database/connection.ts';
 import { ValidationError } from '../services/careerService.ts';
-import { generateWorld } from '../game/world/generator.ts';
+import { baseUniverse } from '../services/universeService.node.ts';
 import { makePng, makeJpeg } from './fixtures.ts';
 import type { CoachInput } from '../shared/api.ts';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fmsim-'));
 const coach: CoachInput = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession' };
-const clubId = generateWorld({ seed: 's1' }).clubs[0]!.id;
+const clubId = baseUniverse().world.clubs[0]!.id; // carreiras partem da base fixa (data/base)
 
 test('Perfis: cria, lista, normaliza o nome e impede duplicados e nomes inválidos', () => {
   const base = tmp();
@@ -41,7 +41,7 @@ test('Saves: cria carreira com foto, lista e abre com dados reais do banco', asy
   const base = tmp();
   const prof = createProfile(base, 'Teste');
   const png = makePng(100, 100);
-  const created = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach, photo: png });
+  const created = await createCareerSave(base, { profileId: prof.id, clubId, coach, photo: png });
   assert.equal(created.coachName, 'Ana Silva');
   assert.equal(created.gameDate, '2026-07-01');
   const list = await listCareerSaves(base, prof.id);
@@ -60,9 +60,9 @@ test('Saves: cria carreira com foto, lista e abre com dados reais do banco', asy
 
 test('Saves: JPEG também é aceito e a foto é opcional', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const a = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach, photo: makeJpeg(120, 120) });
+  const a = await createCareerSave(base, { profileId: prof.id, clubId, coach, photo: makeJpeg(120, 120) });
   assert.ok(fs.existsSync(path.join(base, 'saves', prof.id, a.id, 'coach.jpg')));
-  const b = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const b = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   assert.equal((await openCareer(base, prof.id, b.id)).photoDataUrl, null);
 });
 
@@ -70,12 +70,12 @@ test('Saves: entradas inválidas são rejeitadas e não deixam rastros no disco'
   const base = tmp(); const prof = createProfile(base, 'Teste');
   const dir = path.join(base, 'saves', prof.id);
   const bad: Array<[string, Parameters<typeof createCareerSave>[1]]> = [
-    ['foto inválida', { profileId: prof.id, seed: 's1', clubId, coach, photo: new TextEncoder().encode('nao sou imagem') }],
-    ['nascimento futuro', { profileId: prof.id, seed: 's1', clubId, coach: { ...coach, birthDate: '2030-01-01' } }],
-    ['data impossível', { profileId: prof.id, seed: 's1', clubId, coach: { ...coach, birthDate: '1990-02-31' } }],
-    ['clube inexistente', { profileId: prof.id, seed: 's1', clubId: 'clb_zzzzz', coach }],
-    ['nacionalidade inválida', { profileId: prof.id, seed: 's1', clubId, coach: { ...coach, nationality: 'br' } }],
-    ['perfil inexistente', { profileId: '00000000-0000-4000-8000-000000000000', seed: 's1', clubId, coach }],
+    ['foto inválida', { profileId: prof.id, clubId, coach, photo: new TextEncoder().encode('nao sou imagem') }],
+    ['nascimento futuro', { profileId: prof.id, clubId, coach: { ...coach, birthDate: '2030-01-01' } }],
+    ['data impossível', { profileId: prof.id, clubId, coach: { ...coach, birthDate: '1990-02-31' } }],
+    ['clube inexistente', { profileId: prof.id, clubId: 'clb_zzzzz', coach }],
+    ['nacionalidade inválida', { profileId: prof.id, clubId, coach: { ...coach, nationality: 'br' } }],
+    ['perfil inexistente', { profileId: '00000000-0000-4000-8000-000000000000', clubId, coach }],
   ];
   for (const [label, input] of bad) await assert.rejects(() => createCareerSave(base, input), ValidationError, label);
   assert.deepEqual(fs.readdirSync(dir), [], 'nenhum diretório (nem .tmp) deve restar');
@@ -84,7 +84,7 @@ test('Saves: entradas inválidas são rejeitadas e não deixam rastros no disco'
 test('Saves: isolamento entre perfis e proteção contra path traversal', async () => {
   const base = tmp();
   const a = createProfile(base, 'A'), b = createProfile(base, 'B');
-  const ca = await createCareerSave(base, { profileId: a.id, seed: 's1', clubId, coach });
+  const ca = await createCareerSave(base, { profileId: a.id, clubId, coach });
   assert.equal((await listCareerSaves(base, a.id)).careers.length, 1);
   assert.equal((await listCareerSaves(base, b.id)).careers.length, 0);
   await assert.rejects(() => openCareer(base, b.id, ca.id), /não encontrado/);
@@ -94,7 +94,7 @@ test('Saves: isolamento entre perfis e proteção contra path traversal', async 
 
 test('Saves: save corrompido é reportado sem derrubar a listagem', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const ok = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const ok = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const brokenId = '11111111-1111-4111-8111-111111111111';
   fs.mkdirSync(path.join(base, 'saves', prof.id, brokenId));
   fs.writeFileSync(path.join(base, 'saves', prof.id, brokenId, 'career.db'), 'isto não é um banco sqlite');
@@ -106,7 +106,7 @@ test('Saves: save corrompido é reportado sem derrubar a listagem', async () => 
 
 test('Saves: foto ausente no disco gera aviso, não erro', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach, photo: makePng(90, 90) });
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach, photo: makePng(90, 90) });
   fs.rmSync(path.join(base, 'saves', prof.id, c.id, 'coach.png'));
   const ov = await openCareer(base, prof.id, c.id);
   assert.equal(ov.photoDataUrl, null);
@@ -115,7 +115,7 @@ test('Saves: foto ausente no disco gera aviso, não erro', async () => {
 
 test('Saves: visão geral traz próxima partida, posição na liga e nacionalidade por extenso', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const ov = await openCareer(base, prof.id, c.id);
   assert.equal(ov.nationalityName, 'Brasil');
   assert.equal(ov.nextFixture?.date, '2026-08-01');
@@ -125,7 +125,7 @@ test('Saves: visão geral traz próxima partida, posição na liga e nacionalida
   const cal = await getCalendar(base, prof.id, c.id);
   assert.equal(cal.fixtures.length, 38);
   const comps = await listCompetitionsFor(base, prof.id, c.id);
-  assert.equal(comps.competitions.length, 4);
+  assert.equal(comps.competitions.length, baseUniverse().world.leagues.length, 'uma competição por liga da base fixa');
   const table = await getTable(base, prof.id, c.id, comps.userCompetitionId!);
   assert.equal(table.rows.length, 20);
   await assert.rejects(() => getTable(base, prof.id, c.id, 'cmp_nao_existe'), /não encontrada/);
@@ -133,10 +133,10 @@ test('Saves: visão geral traz próxima partida, posição na liga e nacionalida
 
 test('Saves: avanço do tempo é persistido e sobrevive a fechar e reabrir o save', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const r1 = await advanceCareer(base, prof.id, c.id, 'nextMatchday');
   assert.deepEqual([r1.advanced, r1.toDate], [true, '2026-08-01']);
-  assert.equal(r1.pendingMatches, 40);
+  assert.equal(r1.pendingMatches, baseUniverse().world.leagues.reduce((s, l) => s + Math.floor(l.teamCount / 2), 0), 'primeira rodada de todas as ligas da base');
   const r2 = await advanceCareer(base, prof.id, c.id, 'day');
   assert.deepEqual([r2.advanced, r2.reason], [false, 'pending_matches']);
   const ov = await openCareer(base, prof.id, c.id);
@@ -148,7 +148,7 @@ test('Saves: avanço do tempo é persistido e sobrevive a fechar e reabrir o sav
 
 test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticamente ao abrir', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const db = await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db'));
   db.exec('DELETE FROM fixtures; DELETE FROM competitions;');
   db.close();
@@ -159,7 +159,7 @@ test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticam
 
 test('Elenco: cada jogador traz nacionalidade, altura, situação e estatísticas da temporada iguais às gravadas', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 's1', clubId, coach });
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   for (let k = 0; k < 3; k++) { await advanceCareer(base, prof.id, c.id, 'nextMatchday'); await simulateCareerMatchday(base, prof.id, c.id); }
   const file = path.join(base, 'saves', prof.id, c.id, 'career.db');
   const db = await openDatabase(file);
@@ -183,4 +183,20 @@ test('Elenco: cada jogador traz nacionalidade, altura, situação e estatística
   assert.ok(played >= 11, 'quem jogou tem estatísticas');
   const v = ov.squad.find((p) => p.id === victim)!;
   assert.deepEqual(v.status, { injuredUntil: '2026-12-01', suspension: 1 });
+});
+
+test('Treinador: atributos com a distribuição inicial (base 5 + 12 pontos, máx. 15) são validados e gravados no save', async () => {
+  const { baseCoachAttributes } = await import('../shared/coachAttributes.ts');
+  const base = tmp(); const prof = createProfile(base, 'Teste');
+  const good = { ...baseCoachAttributes(), tactics: 11, motivation: 9, negotiation: 7 }; // 6 + 4 + 2 = 12
+  const c = await createCareerSave(base, { profileId: prof.id, clubId, coach: { ...coach, attributes: good } });
+  const db = await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db'));
+  try { assert.deepEqual(JSON.parse(String(db.prepare('SELECT coach_json FROM career').get()!.coach_json)).attributes, good); } finally { db.close(); }
+  const bad: Array<[string, Record<string, number>, RegExp]> = [
+    ['pontos de menos', { ...baseCoachAttributes(), tactics: 16 - 5 }, /exatamente 12/],
+    ['pontos de mais', { ...baseCoachAttributes(), tactics: 12, motivation: 11 }, /exatamente 12/],
+    ['acima do máximo de criação', { ...baseCoachAttributes(), tactics: 17 }, /de 5 a 15/],
+    ['abaixo da base', { ...baseCoachAttributes(), tactics: 4, motivation: 15, youth: 10 }, /de 5 a 15/],
+  ];
+  for (const [label, attributes, msg] of bad) await assert.rejects(() => createCareerSave(base, { profileId: prof.id, clubId, coach: { ...coach, attributes: attributes as never } }), msg, label);
 });

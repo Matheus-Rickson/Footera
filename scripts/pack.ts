@@ -4,6 +4,7 @@
  *   npm run pack -- validate <pasta> [<pasta> …] [--seed <semente>]   valida os pacotes nessa ordem de carga e monta o universo
  *   npm run pack -- export <pasta-destino> [--seed <semente>]         exporta a base gerada como pacote completo (ponto de partida)
  *   npm run pack -- schema [<pasta-destino>]                          gera os JSON Schema (padrão: docs/schema)
+ *   npm run pack -- build-base [--force]                              gera a base fixa em data/base (só antes de publicar uma versão nova da base!)
  */
 import path from 'node:path';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ import { compileUniverse } from '../src/game/data-pack/compile.ts';
 import { exportUniverse } from '../src/game/data-pack/export.ts';
 import { fmtIssue, PackError } from '../src/game/data-pack/format.ts';
 import { packJsonSchemas } from '../src/game/data-pack/jsonSchema.ts';
+import { BASE_ID, BASE_NAME, BASE_SEED, BASE_VERSION } from '../src/game/data-pack/base.ts';
 import { readPackDir, writePackDir } from '../src/services/packService.node.ts';
 
 const args = process.argv.slice(2);
@@ -35,6 +37,14 @@ try {
     const world = generateWorld({ seed });
     writePackDir(exportUniverse(world, { id: 'base', name: `Base gerada (semente ${seed})` }), dir);
     console.log(`Base exportada em ${path.resolve(dir)}: ${world.clubs.length} clubes e ${world.players.length} jogadores.`);
+  } else if (cmd === 'build-base') {
+    const dir = path.join('data', 'base');
+    const force = rest.includes('--force');
+    if (fs.existsSync(path.join(dir, 'manifest.json')) && !force) fail(`A base fixa já existe em ${dir}. Ela é congelada: regenerar pode quebrar patches. Use --force só ao publicar uma versão nova da base.`);
+    const world = generateWorld({ seed: BASE_SEED, countries: 'all' });
+    fs.rmSync(dir, { recursive: true, force: true });
+    writePackDir(exportUniverse(world, { id: BASE_ID, name: BASE_NAME, version: BASE_VERSION, author: 'FOOTERA', description: 'Universo fictício padrão: 16 países. Dados fictícios.' }), dir);
+    console.log(`Base fixa ${BASE_VERSION} gravada em ${path.resolve(dir)}: ${world.countries.length} países, ${world.clubs.length} clubes, ${world.players.length} jogadores.`);
   } else if (cmd === 'schema') {
     const dir = rest[0] ?? path.join('docs', 'schema');
     fs.mkdirSync(dir, { recursive: true });

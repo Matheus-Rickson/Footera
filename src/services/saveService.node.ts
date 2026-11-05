@@ -28,11 +28,10 @@ import type { SqlDb } from '../database/types.ts';
 import { withTransaction } from '../database/types.ts';
 import { createCareer, validateCoach, ValidationError } from './careerService.ts';
 import { ID_RE, listProfiles } from './profileService.node.ts';
-import { generateWorld } from '../game/world/generator.ts';
-import { compileUniverse } from '../game/data-pack/compile.ts';
+import { baseUniverse } from './universeService.node.ts';
 import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
-import type { Coach, Methodology } from '../shared/types.ts';
+import type { Coach, Methodology, World } from '../shared/types.ts';
 import type {
   BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
@@ -46,13 +45,14 @@ function assertId(id: string, label: string): void {
   if (!ID_RE.test(id)) throw new ValidationError(`${label} inválido.`);
 }
 
-export interface NewCareerInput { profileId: string; seed: string; clubId: string; coach: CoachInput; photo?: Uint8Array }
+/**
+ * `fullLeagues`: divisões com simulação completa (a do clube entra sempre). `universe`: só para testes (padrão: a base fixa de data/base).
+ */
+export interface NewCareerInput { profileId: string; clubId: string; coach: CoachInput; photo?: Uint8Array; fullLeagues?: string[]; universe?: { world: World; applied: string[] } }
 
 export async function createCareerSave(base: string, input: NewCareerInput): Promise<CareerSummaryDto> {
   assertId(input.profileId, 'Perfil');
   if (!listProfiles(base).some((p) => p.id === input.profileId)) throw new ValidationError('Perfil inexistente.');
-  const seed = input.seed.trim();
-  if (!seed || seed.length > 64) throw new ValidationError('A semente deve ter de 1 a 64 caracteres.');
   if (!/^[A-Z]{3}$/.test(input.coach.nationality)) throw new ValidationError('Nacionalidade inválida.');
 
   let ext: 'png' | 'jpg' | null = null;
@@ -61,12 +61,16 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
     catch (e) { if (e instanceof ImageError) throw new ValidationError(e.message); throw e; }
   }
 
-  // universo = base gerada pela semente + pacotes de dados (a escolha dos pacotes na tela chega na etapa 2 da base de dados)
-  const { world, applied } = compileUniverse(generateWorld({ seed }), []);
+  // universo = base fixa (data/base) + pacotes de dados (a escolha dos pacotes na tela chega na etapa 2 da base de dados).
+  // A semente da carreira é só para o acaso (resultados, lesões, peneiras): o universo é sempre o mesmo.
+  const universe = input.universe ?? baseUniverse();
+  const world: World = { ...universe.world, seed: `carreira-${randomUUID().slice(0, 8)}` };
+  const applied = universe.applied;
   const coach: Coach = {
     firstName: input.coach.firstName.trim(), lastName: input.coach.lastName.trim(),
     birthDate: input.coach.birthDate, nationality: input.coach.nationality,
     methodology: input.coach.methodology, reputation: 20, photoPath: ext ? `coach.${ext}` : null,
+    ...(input.coach.attributes ? { attributes: { ...input.coach.attributes } } : {}),
   };
   validateCoach(coach, world.startDate);
   if (!world.clubs.some((c) => c.id === input.clubId)) throw new ValidationError('Clube inexistente no universo.');
@@ -80,7 +84,7 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
   let db: SqlDb | null = null;
   try {
     db = await openDatabase(path.join(tmp, 'career.db'));
-    createCareer(db, world, coach, input.clubId, new Date(), applied);
+    createCareer(db, world, coach, input.clubId, new Date(), applied, input.fullLeagues ?? [world.clubs.find((c) => c.id === input.clubId)?.leagueId ?? '']);
     db.close(); db = null;
     if (ext && input.photo) fs.writeFileSync(path.join(tmp, `coach.${ext}`), input.photo);
     fs.renameSync(tmp, final);

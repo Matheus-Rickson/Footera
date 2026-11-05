@@ -17,12 +17,14 @@ import { boardVeto, getBoardOverview, recordTransferForBoard } from './boardRepo
 import { contractEndFor } from '../../game/career-engine/contracts.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
+import { FULL_CLUBS } from './simLevelRepository.ts';
+import { fmtMoney } from '../../shared/money.ts';
 
 export class TransferError extends UserError {}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
 
 const monthsLeft = (date: string, end: string) => Math.max(0, (Number(end.slice(0, 4)) - Number(date.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(date.slice(5, 7)));
@@ -256,7 +258,7 @@ function offersToUser(db: SqlDb, rng: Rng, date: string, userClub: string): void
 }
 
 function aiDeals(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string): void {
-  const clubs = db.prepare('SELECT id, balance, reputation, country_id FROM clubs WHERE id <> ? ORDER BY rowid').all(userClub);
+  const clubs = db.prepare(`SELECT id, balance, reputation, country_id FROM clubs WHERE id <> ? AND id IN ${FULL_CLUBS} ORDER BY rowid`).all(userClub);
   for (const c of clubs) {
     if (!rng.chance(0.012)) continue;
     const squad = squadOf(db, S(c.id)).sort((a, b) => b.overall - a.overall);
@@ -296,7 +298,7 @@ export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string
   const pool = db.prepare('SELECT * FROM players WHERE club_id IS NULL AND youth_club_id IS NULL AND retired = 0 ORDER BY overall DESC, id').all().map(rowToPlayer);
   if (!fill && pool.length === 0) return unmet;
   const taken = new Set<string>();
-  for (const c of db.prepare('SELECT id, reputation FROM clubs WHERE id <> ? ORDER BY rowid').all(userClub)) {
+  for (const c of db.prepare(`SELECT id, reputation FROM clubs WHERE id <> ?${fill ? '' : ` AND id IN ${FULL_CLUBS}`} ORDER BY rowid`).all(userClub)) {
     if (!fill && !rng.chance(0.15)) continue;
     const squad = squadOf(db, S(c.id));
     const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível

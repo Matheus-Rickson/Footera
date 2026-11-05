@@ -1,4 +1,5 @@
 /** Tipos de domínio compartilhados entre main, renderer e motores. Sem dependências externas. */
+import type { CoachAttributes } from './coachAttributes.ts';
 
 export type Id = string;
 export type IsoDate = string; // YYYY-MM-DD
@@ -130,4 +131,6 @@ export interface Coach {
   reputation: number;
   /** Caminho relativo, dentro do save, para a foto copiada. */
   photoPath: string | null;
+  /** atributos do treinador (1–20); ausente em carreiras criadas antes da v0.9 */
+  attributes?: CoachAttributes;
 }

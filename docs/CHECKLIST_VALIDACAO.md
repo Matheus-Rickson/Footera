@@ -153,6 +153,32 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Jogador de outro clube sem observação: força, potencial e atributos aparecem como faixas largas (sem "?"); com "Observar", as faixas estreitam a cada dia; com 100%, mostram um número só.
 - [ ] Escala 1–20 em todas as telas: força no Elenco, Táticas (lista, "Na vaga", campo e compatibilidade das funções), ficha, janela do jogador, Treinamento, Base, Contratos, Transferências, Olheiros, partida e Visão geral.
 
+## 13d. Base fixa e países completos × simplificados (Fase 9)
+- [ ] Nova carreira: barra de etapas (Países · Clube · Treinador) no topo.
+- [ ] Passo 1: cartões limpos (caixa, bandeira, nome); clicar no cartão ou usar espaço/Enter marca e desmarca; atalhos "Só o Brasil", "Todos", "Limpar".
+- [ ] País marcado mostra o botão "4/4" (divisões); ele abre um painel com as divisões (fecha ao clicar fora ou Esc); desmarcar vira "3/4" em destaque; a última não desmarca.
+- [ ] Explicações só nos ícones de interrogação (passar o mouse ou focar com Tab), nos três passos.
+- [ ] Barra inferior fixa com o resumo (completa, simplificada, ritmo) e o botão "Escolher clube" (desabilitado sem países).
+- [ ] Resumo: países, ligas e clubes em simulação completa e simplificada, e o ritmo estimado; "Só o Brasil" / "Todos completos".
+- [ ] "Escolher clube" (desabilitado sem nenhum país completo) leva ao passo 2.
+- [ ] Passo 2: já abre com um clube destacado (o de maior reputação do primeiro país completo) e o painel: escudo gerado, cidade e país,
+      liga, estádio e capacidade, objetivo da diretoria e posição esperada, força média, elenco e idade média, reputação, torcida, caixa,
+      destaques do elenco e estrutura. Só aparecem clubes de países completos; busca e filtros por país e liga.
+- [ ] O objetivo mostrado no painel é o mesmo que aparece na Diretoria depois de iniciar a carreira.
+- [ ] Os três passos cabem na janela, sem barra de rolagem da página (só a lista de países, a lista de clubes, o painel do clube e o formulário rolam por dentro em janelas pequenas); o painel de divisões da última linha abre para cima e não é cortado; as interrogações da barra inferior e da lista de clubes abrem para cima.
+- [ ] Painel do clube: a imagem do estádio não cobre mais as caixas de informação (objetivo, força, reputação).
+- [ ] Lista de clubes: o clube selecionado fica alinhado (linhas não se sobrepõem). Painel em duas colunas (imagem e história | informações, destaques e estrutura) cabe inteiro, sem barra de rolagem, em 1920×1080.
+- [ ] Painel do clube: caixa inicial coerente com o porte (o maior da Série A ~€ 34 mi) e com o símbolo €.
+- [ ] Valores em € em todas as telas (Visão geral, Finanças, Transferências, negociação, Contratos, Diretoria, Comissão, Olheiros, Infraestrutura, ficha, partida) e nas mensagens/notícias.
+- [ ] Passo 3: card "Atributos" com 6 atributos em 5 e "12 pontos restantes"; + e − funcionam (não passa de 15, não desce de 5, + trava sem pontos); "Redistribuir" zera; "Iniciar carreira" só com os 12 pontos usados.
+- [ ] Logo do FOOTERA no topo dos três passos; no painel do clube, imagem ilustrativa do estádio (com a etiqueta) e "História e identidade" com a etiqueta "Texto de exemplo"; trocar de clube muda imagem e texto; conferir o encaixe em janela menor.
+- [ ] Ao clicar em outro clube, a tela muda suavemente para a cor dele (fundo, faixa do estádio, borda do painel e linha selecionada), nos temas escuro e claro.
+- [ ] Criar duas carreiras com o mesmo clube: elencos idênticos (base fixa); resultados diferentes ao jogar (sorte própria de cada carreira).
+- [ ] Em jogo: Competições mostra as ligas de todos os países; partidas de país simplificado mostram "só placar" (sem relatório).
+- [ ] Visão geral: resultados da rodada só dos países completos (com o aviso).
+- [ ] Transferências: jogadores de países simplificados aparecem e podem ser contratados.
+- [ ] Tempo de avanço aceitável com o(s) país(es) escolhido(s) (anotar quantos países completos e a sensação de ritmo).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

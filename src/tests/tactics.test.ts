@@ -157,7 +157,7 @@ test('Saves em arquivo: esquemas são criados/reparados ao abrir e persistem ent
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'fmsim-tac-'));
   const prof = createProfile(base, 'Teste');
   const world = generateWorld({ seed: 'tac-file' });
-  const c = await createCareerSave(base, { profileId: prof.id, seed: 'tac-file', clubId: world.clubs[0]!.id,
+  const c = await createCareerSave(base, { profileId: prof.id, clubId: world.clubs[0]!.id, universe: { world, applied: [] },
     coach: { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession' } });
   const db = await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db'));
   db.exec('UPDATE career SET active_scheme_id = NULL; DELETE FROM tactic_schemes;'); db.close();

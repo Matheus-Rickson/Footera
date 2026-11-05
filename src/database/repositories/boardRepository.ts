@@ -14,12 +14,14 @@ import type { BoardOverviewDto, BoardStatus, MatchSummaryDto } from '../../share
 import { getCareerState } from './careerRepository.ts';
 import { loadClubEcon } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
+import { FULL_CLUBS } from './simLevelRepository.ts';
+import { fmtMoney } from '../../shared/money.ts';
 
 export class BoardError extends UserError {}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const br = (d: string) => d.split('-').reverse().join('/');
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
 const clubName = (db: SqlDb, id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)?.name ?? '?');
@@ -232,7 +234,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
   const now = getCareerState(db);
   if (date.slice(8) === '01') {
     const rng = createRng(`ai-sack:${seed}:${date}`);
-    for (const c of db.prepare('SELECT id FROM clubs ORDER BY rowid').all()) {
+    for (const c of db.prepare(`SELECT id FROM clubs WHERE id IN ${FULL_CLUBS} ORDER BY rowid`).all()) {
       const id = S(c.id);
       if (id === now.clubId || db.prepare('SELECT 1 AS x FROM job_vacancies WHERE club_id = ?').get(id)) { rng.next(); continue; }
       const sit = leagueSituation(db, id, now.season);
@@ -259,7 +261,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
     if (unemployed && pending === 0 && !db.prepare("SELECT 1 AS x FROM job_offers WHERE status = 'pending'").get()) {
       const lastEnd = S(db.prepare('SELECT MAX(end_date) AS d FROM coach_spells').get()!.d ?? date);
       if (daysBetween(lastEnd, date) >= 15 && daysBetween(lastEnd, date) % 15 === 0) {
-        const small = db.prepare('SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id ORDER BY l.tier DESC, c.reputation, c.id LIMIT 6').all().map((r) => S(r.id));
+        const small = db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.id IN ${FULL_CLUBS} ORDER BY l.tier DESC, c.reputation, c.id LIMIT 6`).all().map((r) => S(r.id));
         const pick = createRng(`job-fallback:${seed}:${date}`).pick(small);
         db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(pick, date);
         offerJob(db, pick, date);
@@ -281,7 +283,8 @@ function offerJob(db: SqlDb, clubId: string, date: string): void {
 export function reviewSeason(db: SqlDb, date: string, a: { position: number; champion: boolean; promoted: boolean; relegated: boolean } | null, relegatedClubs: string[]): { verdict: SeasonVerdict; sacked: boolean } | null {
   const st = getCareerState(db);
   const rng = createRng(`ai-sack-turnover:${seedOf(db)}:${date}`);
-  for (const id of relegatedClubs) if (id !== st.clubId && rng.chance(0.5)) db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
+  const full = new Set(db.prepare(FULL_CLUBS.slice(1, -1)).all().map((r) => S(r.id)));
+  for (const id of relegatedClubs) if (id !== st.clubId && full.has(id) && rng.chance(0.5)) db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(id, date);
   const b = board(db);
   if (!st.clubId || !b || !a) return null;
   const verdict = evaluateSeason({ objective: S(b.objective) as Objective, target: N(b.target_position), ...a, balance: balanceOf(db, st.clubId), youthTarget: N(b.youth_target), youthPromoted: N(b.youth_promoted) });
