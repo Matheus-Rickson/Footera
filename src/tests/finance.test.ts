@@ -146,7 +146,7 @@ test('Bilheteria: público ≤ capacidade, renda vai só para o mandante e os li
 test('Temporada completa: saldo = saldo inicial + lançamentos para TODOS os clubes; salários e bilheteria somam certo', async () => {
   const { db, clubId, initial } = await setup(8, 'fin-season');
   for (let i = 0; i < 40; i++) {
-    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas (avançar levaria até a virada, 1º/jul)
+    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND tie_id IS NULL") === 0) break; // fim da liga (as copas seguem até maio)
     const a = advanceTime(db, 'nextMatchday');
     if (a.reason === 'season_complete') break;
     simulateMatchday(db);
@@ -212,7 +212,7 @@ test('Gráfico: composição de cada barra soma o total, ordena do maior para o 
 
 test('Gráfico: os itens de cada mês fechados com receitas/despesas; mês sem cobrança mensal é marcado como parcial', async () => {
   const { db } = await setup(8, 'fin-chart');
-  for (let i = 0; i < 40 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
+  for (let i = 0; i < 60 && !(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND tie_id IS NULL") === 0); i++) { const a = advanceTime(db, 'nextMatchday'); if (a.reason === 'season_complete') break; simulateMatchday(db); }
   const ov = getFinanceOverview(db);
   assert.equal(ov.last12.length, 4);
   for (const m of ov.last12) {

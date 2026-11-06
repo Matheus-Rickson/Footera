@@ -31,18 +31,30 @@ const pick = <T>(rng: Rng, xs: readonly T[]): T => xs[Math.floor(rng.next() * xs
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
 
 // ---------------------------------------------------------------- textos dos posts
-export function matchText(rng: Rng, a: { home: string; away: string; hg: number; ag: number; competition: string; round: number; upset: boolean }): string {
+/** `stage`: partida de copa (nome da fase); os textos não falam em rodada nem em pontos */
+export function matchText(rng: Rng, a: { home: string; away: string; hg: number; ag: number; competition: string; round: number; upset: boolean; stage?: string }): string {
   const { home, away, hg, ag } = a;
   const winner = hg > ag ? home : ag > hg ? away : null, loser = hg > ag ? away : ag > hg ? home : null;
-  const diff = Math.abs(hg - ag), s = fmtScore(hg, ag), v = { home, away, s, winner: winner ?? '', loser: loser ?? '', comp: a.competition, r: String(a.round) };
+  const diff = Math.abs(hg - ag), s = fmtScore(hg, ag), v = { home, away, s, winner: winner ?? '', loser: loser ?? '', comp: a.competition, r: String(a.round), stage: a.stage ?? '' };
+  if (a.stage) {
+    if (a.upset && winner) return fill(pick(rng, ['ZEBRA na {comp}! {winner} surpreende o {loser}: {home} {s} {away} ({stage}).', 'Ninguém esperava: {winner} vence o {loser} pela {stage} da {comp}. {home} {s} {away}.']), v);
+    if (diff >= 4) return fill(pick(rng, ['GOLEADA na {comp}! {home} {s} {away} pela {stage}.', 'Atropelo na {stage}: {winner} passa por cima do {loser}. {home} {s} {away}.']), v);
+    if (!winner) return fill(pick(rng, ['Tudo igual na {stage} da {comp}: {home} {s} {away}.', '{home} e {away} empatam por {s} na {comp} ({stage}).']), v);
+    return fill(pick(rng, ['{comp}: {home} {s} {away} pela {stage}.', '{winner} vence o {loser} por {s} na {stage} da {comp}.']), v);
+  }
   if (a.upset && winner) return fill(pick(rng, ['ZEBRA! {winner} surpreende e vence {loser}: {home} {s} {away}. ({comp}, {r}ª rodada)', 'Ninguém esperava: {winner} derruba {loser}. Final: {home} {s} {away}.']), v);
   if (diff >= 4) return fill(pick(rng, ['GOLEADA! {home} {s} {away}. Noite para esquecer para o {loser}.', 'Atropelo: {winner} passa por cima do {loser}. {home} {s} {away}.']), v);
   if (!winner && hg === 0) return fill(pick(rng, ['Jogo truncado e sem gols: {home} {s} {away}.', 'Tudo igual e sem gols entre {home} e {away}.']), v);
   if (!winner) return fill(pick(rng, ['Empate movimentado: {home} {s} {away}.', '{home} e {away} ficam no {s}. Pontos divididos na {r}ª rodada.']), v);
   return fill(pick(rng, ['FIM DE JOGO: {home} {s} {away}. {winner} leva os três pontos.', 'Resultado: {home} {s} {away}. Vitória do {winner} pela {r}ª rodada da {comp}.', '{winner} vence o {loser} por {s}. ({comp})']), v);
 }
-export function clubMatchText(rng: Rng, a: { mine: 'V' | 'E' | 'D'; opp: string; score: string }): string {
-  const v = { opp: a.opp, s: a.score };
+export function clubMatchText(rng: Rng, a: { mine: 'V' | 'E' | 'D'; opp: string; score: string; cup?: string }): string {
+  const v = { opp: a.opp, s: a.score, cup: a.cup ?? '' };
+  if (a.cup) {
+    if (a.mine === 'V') return fill(pick(rng, ['VITÓRIA na {cup}! 💪 {s} contra o {opp}.', 'Fim de jogo pela {cup}: {s} contra o {opp}. Obrigado, torcida!']), v);
+    if (a.mine === 'E') return fill(pick(rng, ['Fim de jogo pela {cup}: {s} contra o {opp}.', 'Empate em {s} com o {opp} pela {cup}.']), v);
+    return fill(pick(rng, ['Derrota para o {opp} ({s}) pela {cup}.', 'Fim de jogo pela {cup}: {s} contra o {opp}. Não era o resultado que queríamos.']), v);
+  }
   if (a.mine === 'V') return fill(pick(rng, ['VITÓRIA! 💪 Fim de jogo: {s} contra o {opp}. Obrigado, torcida!', 'É NOSSA! Três pontos importantes diante do {opp} ({s}).']), v);
   if (a.mine === 'E') return fill(pick(rng, ['Fim de jogo: {s} contra o {opp}. Seguimos trabalhando.', 'Um ponto diante do {opp} ({s}). Próximo jogo já é decisão.']), v);
   return fill(pick(rng, ['Fim de jogo: {s} contra o {opp}. Não era o resultado que queríamos. Vamos reagir.', 'Derrota para o {opp} ({s}). Cabeça erguida, a temporada é longa.']), v);
@@ -56,7 +68,8 @@ export function previewText(rng: Rng, a: { leader: string; second: string; gap: 
     ? pick(rng, ['Jogo do ano até aqui? {l} e {s} chegam empatados em pontos e decidem quem fica na ponta. Vale muito.', 'Empatados em pontos, {l} e {s} fazem hoje a final antecipada da rodada. Quem vacilar fica para trás.'])
     : pick(rng, ['{l} pode abrir vantagem hoje contra o {s}. Hoje são {g} ponto(s) de diferença entre os dois primeiros.', 'O {s} tem a chance de encostar no líder {l}: confronto direto hoje, {g} ponto(s) de distância.']), v);
 }
-export function userPreviewText(rng: Rng, a: { home: string; away: string; comp: string; round: number }): string {
+export function userPreviewText(rng: Rng, a: { home: string; away: string; comp: string; round: number; stage?: string }): string {
+  if (a.stage) return fill(pick(rng, ['É DIA DE {comp}! {home} x {away} hoje, pela {stage}.', 'Hoje tem {comp}: {home} x {away} ({stage}). Quem avança?']), { home: a.home, away: a.away, comp: a.comp, stage: a.stage });
   return fill(pick(rng, ['É DIA DE JOGO! {home} x {away} hoje pela {r}ª rodada da {comp}.', 'Hoje tem {home} x {away}. Quem leva? ({comp}, {r}ª rodada)']), { home: a.home, away: a.away, comp: a.comp, r: String(a.round) });
 }
 export function transferText(rng: Rng, a: { player: string; from: string | null; to: string; fee: string; free: boolean; scoop: boolean }): string {

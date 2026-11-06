@@ -75,7 +75,7 @@ export function getSeasonStatus(db: SqlDb): SeasonStatusDto {
   const turnover = turnoverDate(st.season);
   const matchesLeft = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'scheduled'").get(st.season)!.n);
   const comps = listCompetitions(db);
-  const leagues = comps.competitions.map((c) => {
+  const leagues = comps.competitions.filter((c) => c.kind === 'league').map((c) => {
     const t = getCompetitionTable(db, c.id);
     return { competitionId: c.id, name: c.name, country: c.country, tier: c.tier, leader: t.roundsPlayed > 0 ? t.rows[0]?.clubName ?? null : null, roundsPlayed: t.roundsPlayed, totalRounds: t.totalRounds };
   });
@@ -340,9 +340,10 @@ export function getHistory(db: SqlDb): HistoryRowDto[] {
 }
 
 export function getTrophies(db: SqlDb): TrophyRoomDto {
+  // ligas e copas (copa depois das divisões do país)
   const all: TrophyDto[] = db.prepare(`SELECT t.season, c.name AS comp, co.name AS country, cl.name AS club, t.won_by_user FROM trophies t
-    JOIN competitions c ON c.id = t.competition_id JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id JOIN clubs cl ON cl.id = t.club_id
-    ORDER BY t.season DESC, co.rowid, l.tier`).all()
+    JOIN competitions c ON c.id = t.competition_id LEFT JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = COALESCE(l.country_id, c.country_id) JOIN clubs cl ON cl.id = t.club_id
+    ORDER BY t.season DESC, co.rowid, COALESCE(l.tier, 99)`).all()
     .map((r) => ({ season: N(r.season), competitionName: S(r.comp), country: S(r.country), clubName: S(r.club), wonByUser: N(r.won_by_user) === 1 }));
   return { mine: all.filter((t) => t.wonByUser), champions: all };
 }

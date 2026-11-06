@@ -128,7 +128,8 @@ test('Saves: visão geral traz próxima partida, posição na liga e nacionalida
   const cal = await getCalendar(base, prof.id, c.id);
   assert.equal(cal.fixtures.length, 38);
   const comps = await listCompetitionsFor(base, prof.id, c.id);
-  assert.equal(comps.competitions.length, baseUniverse().world.leagues.length, 'uma competição por liga da base fixa');
+  assert.equal(comps.competitions.filter((x) => x.kind === 'league').length, baseUniverse().world.leagues.length, 'uma competição por liga da base fixa');
+  assert.equal(comps.competitions.filter((x) => x.kind === 'cup').length, 14, 'uma copa por país com formato (sem México e Rússia)');
   const table = await getTable(base, prof.id, c.id, comps.userCompetitionId!);
   assert.equal(table.rows.length, 20);
   await assert.rejects(() => getTable(base, prof.id, c.id, 'cmp_nao_existe'), /não encontrada/);
@@ -153,7 +154,7 @@ test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticam
   const base = tmp(); const prof = createProfile(base, 'Teste');
   const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const db = await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db'));
-  db.exec('DELETE FROM fixtures; DELETE FROM competitions;');
+  db.exec('DELETE FROM cup_ties; DELETE FROM fixtures; DELETE FROM competitions;');
   db.close();
   const ov = await openCareer(base, prof.id, c.id);
   assert.equal(ov.nextFixture?.date, '2026-08-01');

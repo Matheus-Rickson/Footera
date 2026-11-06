@@ -17,10 +17,18 @@ import { migration014 } from './migrations/014_league_sim_levels.ts';
 import { migration015 } from './migrations/015_social.ts';
 import { migration016 } from './migrations/016_inbox.ts';
 import { migration017 } from './migrations/017_ai_coaches.ts';
+import { migration018 } from './migrations/018_cups.ts';
 
-export interface Migration { version: number; name: string; sql: string }
+export interface Migration {
+  version: number; name: string; sql: string;
+  /**
+   * Reconstrução de tabela referenciada por chaves estrangeiras (procedimento oficial do SQLite): desliga as chaves antes da transação
+   * (não dá para desligar dentro dela), confere `foreign_key_check` antes do commit e religa no fim.
+   */
+  rebuildsTables?: boolean;
+}
 
-export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017];
+export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018];
 
 export function currentVersion(db: SqlDb): number {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');
@@ -42,11 +50,20 @@ export function migrate(db: SqlDb, migrations: Migration[] = MIGRATIONS): number
   const applied: number[] = [];
   for (const m of sorted) {
     if (m.version <= current) continue;
-    withTransaction(db, () => {
-      db.exec(m.sql);
-      db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
-        .run(m.version, m.name, new Date().toISOString());
-    });
+    if (m.rebuildsTables) db.exec('PRAGMA foreign_keys = OFF;');
+    try {
+      withTransaction(db, () => {
+        db.exec(m.sql);
+        if (m.rebuildsTables) {
+          const broken = db.prepare('PRAGMA foreign_key_check').all();
+          if (broken.length) throw new Error(`Migração ${m.version}: ${broken.length} referência(s) quebrada(s) (ex.: tabela ${String(broken[0]!.table)}).`);
+        }
+        db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
+          .run(m.version, m.name, new Date().toISOString());
+      });
+    } finally {
+      if (m.rebuildsTables) db.exec('PRAGMA foreign_keys = ON;');
+    }
     applied.push(m.version);
   }
   return applied;

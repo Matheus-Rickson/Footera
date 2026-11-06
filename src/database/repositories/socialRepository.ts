@@ -12,6 +12,7 @@ import type { SocialAccountDto, SocialCard, SocialFeedDto, SocialFilter, SocialP
 import { getCareerState } from './careerRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
+import { cupStateOf } from './cupRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -120,10 +121,15 @@ function tableOf(db: SqlDb, competitionId: string): { rows: TableRow[]; name: st
   return { rows, name: S(c.name), leagueId: S(c.league_id), tier: N(c.tier) };
 }
 const tableCard = (title: string, rows: TableRow[], n: number): SocialCard => ({ type: 'table', title, rows: rows.slice(0, n).map((r) => ({ clubId: r.clubId, name: r.name, points: r.points, played: r.played, rank: r.position })) });
+/** nome da fase de uma partida de copa (null = partida de liga) */
+function cupStage(db: SqlDb, fixtureId: string): string | null {
+  const t = db.prepare('SELECT t.stage, t.competition_id FROM fixtures f JOIN cup_ties t ON t.id = f.tie_id WHERE f.id = ?').get(fixtureId);
+  return t ? cupStateOf(db, S(t.competition_id)).format.stages[N(t.stage)]!.name : null;
+}
 const userCompetition = (db: SqlDb, date: string): string | null => {
   const st = getCareerState(db);
   if (!st.clubId) return null;
-  const r = db.prepare('SELECT competition_id FROM fixtures WHERE (home_club_id = ? OR away_club_id = ?) AND competition_id IN (SELECT id FROM competitions WHERE season = ?) LIMIT 1').get(st.clubId, st.clubId, st.season);
+  const r = db.prepare("SELECT competition_id FROM fixtures WHERE (home_club_id = ? OR away_club_id = ?) AND competition_id IN (SELECT id FROM competitions WHERE season = ? AND kind = 'league') LIMIT 1").get(st.clubId, st.clubId, st.season);
   return r ? S(r.competition_id) : null;
 };
 
@@ -141,7 +147,7 @@ export function processSocialDay(db: SqlDb, date: string): number {
   const drafts: Draft[] = [];
 
   // ---- confronto direto entre os dois primeiros (ligas completas)
-  for (const cr of db.prepare(`SELECT DISTINCT competition_id FROM fixtures WHERE match_date = ? AND status = 'scheduled' AND home_club_id IN ${FULL_CLUBS} ORDER BY competition_id`).all(date)) {
+  for (const cr of db.prepare(`SELECT DISTINCT f.competition_id FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.match_date = ? AND f.status = 'scheduled' AND c.kind = 'league' AND f.home_club_id IN ${FULL_CLUBS} ORDER BY f.competition_id`).all(date)) {
     const compId = S(cr.competition_id);
     const t = tableOf(db, compId);
     const [a, b] = t.rows;
@@ -157,10 +163,10 @@ export function processSocialDay(db: SqlDb, date: string): number {
 
   // ---- jogo do usuário hoje
   if (st.clubId) {
-    const f = db.prepare("SELECT f.home_club_id, f.away_club_id, f.round, c.name FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.match_date = ? AND f.status = 'scheduled' AND (f.home_club_id = ? OR f.away_club_id = ?)").get(date, st.clubId, st.clubId);
+    const f = db.prepare("SELECT f.id, f.home_club_id, f.away_club_id, f.round, c.name FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.match_date = ? AND f.status = 'scheduled' AND (f.home_club_id = ? OR f.away_club_id = ?)").get(date, st.clubId, st.clubId);
     if (f) {
       const h = clubRef(db, S(f.home_club_id)), aw = clubRef(db, S(f.away_club_id));
-      drafts.push({ kind: 'preview', author: 'out-arquibancada', text: userPreviewText(rng, { home: h.name, away: aw.name, comp: S(f.name), round: N(f.round) }),
+      drafts.push({ kind: 'preview', author: 'out-arquibancada', text: userPreviewText(rng, { home: h.name, away: aw.name, comp: S(f.name), round: N(f.round), stage: cupStage(db, S(f.id)) ?? undefined }),
         card: { type: 'fixture', homeId: h.id, homeName: h.name, awayId: aw.id, awayName: aw.name, competition: S(f.name) }, clubs: [h, aw], mood: { [h.id]: 1, [aw.id]: 1 }, priority: 80 });
     }
   }
@@ -226,12 +232,13 @@ export function processSocialMatchday(db: SqlDb, date: string, fixtureIds: reado
     const hg = N(f.home_goals), ag = N(f.away_goals);
     const card: SocialCard = { type: 'match', homeId: h.id, homeName: h.name, awayId: a.id, awayName: a.name, hg, ag, competition: S(f.comp) };
     const mood: Mood = { [h.id]: Math.sign(hg - ag), [a.id]: Math.sign(ag - hg) };
-    const base = { home: h.name, away: a.name, hg, ag, competition: S(f.comp), round: N(f.round) };
+    const stage = cupStage(db, S(f.id)) ?? undefined;
+    const base = { home: h.name, away: a.name, hg, ag, competition: S(f.comp), round: N(f.round), stage };
     if (st.clubId && (h.id === st.clubId || a.id === st.clubId)) {
       const me = h.id === st.clubId ? h : a, opp = me === h ? a : h;
       const my = me === h ? hg : ag, their = me === h ? ag : hg;
       drafts.push({ kind: 'match', author: 'out-placar', text: matchText(rng, { ...base, upset: false }), card, clubs: [h, a], mood, priority: 88 });
-      drafts.push({ kind: 'match', author: clubAccount(db, me.id), text: clubMatchText(rng, { mine: my > their ? 'V' : my < their ? 'D' : 'E', opp: opp.name, score: `${my} x ${their}` }), card: null, clubs: [me], mood: { [me.id]: Math.sign(my - their) }, priority: 87 });
+      drafts.push({ kind: 'match', author: clubAccount(db, me.id), text: clubMatchText(rng, { mine: my > their ? 'V' : my < their ? 'D' : 'E', opp: opp.name, score: `${my} x ${their}`, cup: stage ? S(f.comp) : undefined }), card: null, clubs: [me], mood: { [me.id]: Math.sign(my - their) }, priority: 87 });
       continue;
     }
     if (!full.has(h.id) && !full.has(a.id)) continue;
@@ -269,7 +276,8 @@ export function processSocialMatchday(db: SqlDb, date: string, fixtureIds: reado
   }
 
   // ---- fim de rodada (liga do usuário e primeiras divisões completas) e campeão
-  for (const cr of [...new Set(rows.map((f) => S(f.competition_id)))].sort()) {
+  const leagueComps = new Set(db.prepare("SELECT id FROM competitions WHERE kind = 'league'").all().map((r) => S(r.id)));
+  for (const cr of [...new Set(rows.map((f) => S(f.competition_id)))].filter((c) => leagueComps.has(c)).sort()) { // copas não têm tabela
     const round = N(rows.find((f) => S(f.competition_id) === cr)!.round);
     const left = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND status = 'scheduled'").get(cr)!.n);
     const roundLeft = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND round = ? AND status = 'scheduled'").get(cr, round)!.n);

@@ -101,8 +101,25 @@ export interface FixtureDto {
   homeId: string; homeName: string; awayId: string; awayName: string;
   status: 'scheduled' | 'played'; homeGoals: number | null; awayGoals: number | null;
   /** há relatório lance a lance (não há em países com simulação simplificada) */ hasReport: boolean;
+  /** partida de copa: nome da copa (sem a temporada), fase, jogo de ida/volta (null = jogo único) e campo neutro; null = liga */
+  cup: { name: string; stage: string; leg: 1 | 2 | null; neutral: boolean } | null;
 }
-export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number }
+export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' }
+/** Chave de uma copa: fases com os confrontos, a regra de cada fase e de onde veio cada regra. */
+export interface CupBracketDto {
+  id: string; name: string; country: string; countryCode: string; status: 'scheduled' | 'in_progress' | 'finished'; champion: { id: string; name: string } | null;
+  regulation: string; reward: string;
+  source: { structure: string; tiebreak: string; host: string; discipline: string; prizes: string };
+  discipline: { yellowLimit: number; resetAfter: string | null };
+  stages: Array<{
+    name: string; legs: 1 | 2; dates: string[]; rule: string; drawn: boolean;
+    ties: Array<{
+      id: string; a: { id: string; name: string }; b: { id: string; name: string } | null;
+      games: Array<{ fixtureId: string; date: string; homeId: string; homeGoals: number | null; awayGoals: number | null; neutral: boolean; hasReport: boolean }>;
+      winnerId: string | null; decidedIn: 'regular' | 'extra_time' | 'penalties' | 'bye' | null; shootout: [number, number] | null; aggregate: [number, number] | null; mine: boolean;
+    }>;
+  }>;
+}
 export type TableZone = 'promotion' | 'continental' | 'relegation' | null;
 export interface StandingRowDto {
   position: number; clubId: string; clubName: string; played: number; won: number; drawn: number; lost: number;
@@ -217,6 +234,9 @@ export interface MatchReportDto {
   home: { clubId: string; name: string; formation: string }; away: { clubId: string; name: string; formation: string };
   homeGoals: number; awayGoals: number; decidedIn: 'regular' | 'extra_time' | 'penalties';
   shootout: { home: number; away: number } | null;
+  /** houve prorrogação (pênaltis direto não têm) */ extraTime: boolean;
+  /** partida de copa: fase, jogo de ida/volta (null = jogo único), agregado (na volta) e campo neutro */
+  cup: { stage: string; leg: 1 | 2 | null; aggregate: [number, number] | null; neutral: boolean } | null;
   conditions: MatchConditions; duration: number;
   stats: [TeamStats, TeamStats]; players: PlayerReport[];
   lineups: Array<{ clubId: string; name: string; formation: string; slots: Array<{ slot: Position; x: number; y: number; playerId: string }> }>;
@@ -471,6 +491,7 @@ export interface GameApi {
   getCalendar(profileId: string, careerId: string): Promise<IpcResult<CalendarDto>>;
   listCompetitions(profileId: string, careerId: string): Promise<IpcResult<{ userCompetitionId: string | null; competitions: CompetitionInfoDto[] }>>;
   getCompetitionTable(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionTableDto>>;
+  getCupBracket(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CupBracketDto>>;
   advance(profileId: string, careerId: string, mode: AdvanceMode): Promise<IpcResult<AdvanceResultDto>>;
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;
   searchMarket(profileId: string, careerId: string, filter: MarketFilter): Promise<IpcResult<MarketPageDto>>;

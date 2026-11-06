@@ -259,6 +259,18 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Editar algumas linhas no Excel (salvar como CSV), Importar: relatório com criados/alterados/sem mudança; as mudanças aparecem na lista.
 - [ ] Planilha com erro (ex.: posição "XYZ" ou clube inexistente): relatório "Importação não realizada" com o número da linha; nada muda no pacote.
 
+## 13o. Copas nacionais
+- [ ] Competições → seletor com "Ligas" e "Copas nacionais"; a copa do seu país aparece primeiro entre as copas.
+- [ ] Copa: cabeçalho com situação, campeão (no fim), cartões e o que o campeão ganha; o (?) diz o regulamento usado e a origem de cada regra.
+- [ ] Fases com datas e regra (jogo único/ida e volta, desempate, mando, sorteio, folgas); fase futura: "Sorteio quando a fase anterior terminar".
+- [ ] Confrontos com placares (ida e volta), agregado, "na prorrogação", pênaltis, folga e campo neutro; o vencedor em negrito; seu clube destacado; clicar no clube abre a ficha.
+- [ ] Calendário: jogos de copa às quartas-feiras, sem coincidir com a liga, com faixa dourada, o nome da copa ("Fora · Copa do Brasil") e a fase ("5ª fase (ida)"); jogos de liga continuam "Liga". "Próximo jogo" mostra a competição.
+- [ ] Caixa de entrada: sorteio da fase (adversário, datas, casa/fora, regra de desempate), folga, título.
+- [ ] Partida de copa ao vivo/relatório: fase e "jogo de ida/volta" no cabeçalho, agregado na volta; jogo com pênaltis direto termina aos 90 (sem prorrogação) e vai aos pênaltis.
+- [ ] Finanças: cotas e prêmios da copa no extrato; final em campo neutro sem bilheteria.
+- [ ] Sala de troféus: títulos de copa.
+- [ ] Carreira antiga: ao abrir antes da 1ª fase, a copa da temporada aparece; depois dela, só na próxima temporada.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

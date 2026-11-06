@@ -26,10 +26,12 @@ const allFixtures = (db: SqlDb) => db.prepare('SELECT id, match_date FROM fixtur
 
 test('Temporada: criar carreira gera uma competição por liga e o calendário completo', async () => {
   const { db } = await setup(6);
-  assert.equal(count(db, 'SELECT COUNT(*) AS n FROM competitions'), 4);
-  assert.equal(count(db, 'SELECT COUNT(*) AS n FROM fixtures'), 4 * 6 * 5); // 6 times, turno e returno = 30 jogos por liga
-  for (const r of db.prepare('SELECT home_club_id AS c, COUNT(*) AS n FROM fixtures GROUP BY home_club_id').all()) assert.equal(Number(r.n), 5);
-  const cal = getClubCalendar(db);
+  // as copas nacionais (uma por país) também são criadas; aqui só o calendário das ligas
+  assert.equal(count(db, "SELECT COUNT(*) AS n FROM competitions WHERE kind = 'league'"), 4);
+  assert.equal(count(db, 'SELECT COUNT(*) AS n FROM fixtures WHERE tie_id IS NULL'), 4 * 6 * 5); // 6 times, turno e returno = 30 jogos por liga
+  for (const r of db.prepare('SELECT home_club_id AS c, COUNT(*) AS n FROM fixtures WHERE tie_id IS NULL GROUP BY home_club_id').all()) assert.equal(Number(r.n), 5);
+  const cal = { ...getClubCalendar(db) };
+  cal.fixtures = cal.fixtures.filter((f) => !f.competitionId.startsWith('cup_'));
   assert.equal(cal.fixtures.length, 10);
   assert.ok(cal.fixtures.every((f) => f.homeId === cal.clubId || f.awayId === cal.clubId));
   assert.ok(cal.fixtures.every((f, i, a) => i === 0 || a[i - 1]!.date <= f.date));
@@ -40,7 +42,7 @@ test('Temporada: ensureSeason é idempotente e recria deterministicamente um sav
   const { db } = await setup(6);
   const before = db.prepare('SELECT id, round, match_date, home_club_id, away_club_id FROM fixtures ORDER BY id').all();
   assert.deepEqual(ensureSeason(db, 2026), { created: 0 });
-  db.exec('DELETE FROM fixtures; DELETE FROM competitions;'); // simula save da Fase 2
+  db.exec('DELETE FROM cup_ties; DELETE FROM fixtures; DELETE FROM competitions;'); // simula save da Fase 2 (as copas são recriadas iguais)
   assert.deepEqual(ensureSeason(db, 2026), { created: 4 });
   assert.deepEqual(db.prepare('SELECT id, round, match_date, home_club_id, away_club_id FROM fixtures ORDER BY id').all(), before);
 });
@@ -116,15 +118,16 @@ test('Temporada completa: 4 ligas jogadas com resultados aleatórios ficam consi
   }
   assert.ok(guard < 200, 'terminou');
   assert.equal(count(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'"), 0);
-  assert.equal(count(db, "SELECT COUNT(*) AS n FROM competitions WHERE status <> 'finished'"), 0);
-  assert.equal(getCareerState(db).gameDate, '2026-10-31', '14 rodadas: 1º/ago + 13 semanas');
+  // placares gravados à mão (sem o motor) não decidem confrontos de copa: aqui só as ligas
+  assert.equal(count(db, "SELECT COUNT(*) AS n FROM competitions WHERE status <> 'finished' AND kind = 'league'"), 0);
+  assert.equal(String(db.prepare("SELECT MAX(match_date) AS d FROM fixtures WHERE tie_id IS NULL").get()!.d), '2026-10-31', '14 rodadas: 1º/ago + 13 semanas');
   // sem partidas, o avanço vai até a virada (1º/jul) e para lá até o usuário iniciar a nova temporada
   const toTurnover = advanceTime(db, 'nextMatchday');
   assert.deepEqual([toTurnover.advanced, toTurnover.toDate], [true, '2027-07-01']);
   assert.equal(advanceTime(db, 'day').reason, 'season_complete');
   assert.equal(advanceTime(db, 'nextMatchday').reason, 'season_complete');
   assert.equal(getCareerState(db).gameDate, '2027-07-01', 'nunca passa da virada');
-  for (const c of listCompetitions(db).competitions) {
+  for (const c of listCompetitions(db).competitions.filter((x) => x.kind === 'league')) {
     const t = getCompetitionTable(db, c.id);
     assert.equal(t.roundsPlayed, t.totalRounds);
     assert.equal(t.totalRounds, 14);
@@ -142,7 +145,7 @@ test('Temporada completa: 4 ligas jogadas com resultados aleatórios ficam consi
 
 test('Competições: zonas de promoção, vaga continental e rebaixamento seguem as regras da liga (20 times)', async () => {
   const { db } = await setup(20, 'zones');
-  const { competitions } = listCompetitions(db);
+  const competitions = listCompetitions(db).competitions.filter((c) => c.kind === 'league');
   assert.equal(competitions.length, 4);
   const zones = (name: string) => getCompetitionTable(db, competitions.find((c) => c.name.startsWith(name))!.id).rows.map((r) => r.zone);
   const serieA = zones('Série A');
@@ -154,7 +157,7 @@ test('Competições: zonas de promoção, vaga continental e rebaixamento seguem
   assert.deepEqual([...new Set(serieB.slice(4, 16))], [null]);
   assert.deepEqual([...new Set(serieB.slice(16))], ['relegation']);
   assert.equal(zones('Premier').filter((z) => z === 'relegation').length, 3);
-  assert.equal(count(db, 'SELECT COUNT(*) AS n FROM fixtures'), 4 * 380);
+  assert.equal(count(db, 'SELECT COUNT(*) AS n FROM fixtures WHERE tie_id IS NULL'), 4 * 380);
   const t = getCompetitionTable(db, competitions[0]!.id);
   assert.equal(seasonOutcome(t.rows.map((r) => ({ teamId: r.clubId, position: r.position, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 })), { promotionSlots: 0, relegationSlots: 4, continentalSlots: 7 }).relegated.length, 4);
 });

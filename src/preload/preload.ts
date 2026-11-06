@@ -85,6 +85,7 @@ const api: GameApi = {
   getInfrastructure: (profileId, careerId) => ipcRenderer.invoke('infra:get', { profileId, careerId }),
   startUpgrade: (profileId, careerId, kind) => ipcRenderer.invoke('infra:upgrade', { profileId, careerId, kind }),
   getBoard: (profileId, careerId) => ipcRenderer.invoke('board:get', { profileId, careerId }),
+  getCupBracket: (profileId, careerId, competitionId) => ipcRenderer.invoke('cup:bracket', { profileId, careerId, competitionId }),
   getClubInfo: (profileId, careerId, clubId) => ipcRenderer.invoke('club:info', { profileId, careerId, clubId }),
   getAiCoach: (profileId, careerId, coachId) => ipcRenderer.invoke('coach:info', { profileId, careerId, coachId }),
   listUnemployedCoaches: (profileId, careerId) => ipcRenderer.invoke('coach:unemployed', { profileId, careerId }),

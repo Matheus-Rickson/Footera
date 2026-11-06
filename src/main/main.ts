@@ -10,7 +10,7 @@ import {
   advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, aiCoachInfo, unemployedCoaches,
+  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, aiCoachInfo, unemployedCoaches, cupBracket,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -273,6 +273,7 @@ function registerHandlers(): void {
   handle('infra:get', ref, (i) => getInfrastructure(dataDir(), i.profileId, i.careerId));
   handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
+  handle('cup:bracket', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => cupBracket(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('club:info', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubInfo(dataDir(), i.profileId, i.careerId, i.clubId));
   handle('coach:info', ref.extend({ coachId: z.string().min(1).max(80) }), (i) => aiCoachInfo(dataDir(), i.profileId, i.careerId, i.coachId));
   handle('coach:unemployed', ref, (i) => unemployedCoaches(dataDir(), i.profileId, i.careerId));

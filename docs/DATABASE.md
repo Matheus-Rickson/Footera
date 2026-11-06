@@ -134,6 +134,10 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
    Pacote novo já entra ativo no fim da ordem de carga.
 5. **Técnicos da IA** — feito (sem commit): pessoas com nome, nacionalidade, idade, reputação e atributos, gerados pela semente na carreira
    (migração 017); não fazem parte dos pacotes por enquanto. Detalhes em `docs/BOARD_JOBS.md`.
+7. **Copas nacionais** (migração 018): `competitions.kind` (liga/copa), `country_id` e `format_json` (regra usada na edição);
+   `fixtures.tie_id/leg/neutral`; `cup_ties` e `cup_discipline`. A migração reconstrói `competitions` com as chaves estrangeiras
+   desligadas pelo migrador (`rebuildsTables`, procedimento oficial do SQLite) e confere `foreign_key_check` antes do commit. Ver
+   `docs/COPAS_NACIONAIS.md`.
 6. **Planilhas (CSV)** — feito (sem commit), no editor (jogadores e clubes): **Importar**, **Exportar** (universo base + pacote) e **Modelo** (só o cabeçalho).
    - Separador `;` (Excel em português) ou `,`; aspas duplas; UTF-8 (com ou sem BOM) ou Windows-1252. A exportação sai com `;` e BOM.
    - Cabeçalhos em português, sem diferença de maiúsculas/acentos (`Posição` = `posicao`), ou as chaves do JSON. Colunas desconhecidas viram aviso.

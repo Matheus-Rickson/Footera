@@ -33,6 +33,11 @@ export interface TeamSheet {
 export interface MatchConditions { weather: 'clear' | 'rain' | 'heat' | 'cold'; pitch: 'good' | 'poor' }
 export interface MatchOptions {
   seed: string; knockout?: boolean; neutral?: boolean; conditions?: MatchConditions;
+  /**
+   * Como o confronto se decide no empate (copas). Ausente com `knockout` = prorrogação e pênaltis (regra antiga do motor).
+   * Com `decider`, a partida é de mata-mata mesmo sem `knockout`.
+   */
+  decider?: MatchDecider;
   /** registra a linha do tempo minuto a minuto (só observa: não muda nenhum sorteio nem o resultado) */ timeline?: boolean;
   /**
    * Partida acompanhada pelo técnico: até o minuto registrado `until` (índice da linha do tempo, exclusivo) o time `team`
@@ -41,6 +46,21 @@ export interface MatchOptions {
   control?: { team: 0 | 1; until: number };
   /** decisões do técnico, aplicadas no início do minuto registrado `tick` (o que veio antes não muda) */
   interventions?: Intervention[];
+}
+
+/**
+ * Regra de desempate de uma partida de copa (por competição e por fase; ver docs/COPAS_NACIONAIS.md).
+ * - Jogo único: `extraTime` (2×15) e/ou `penalties`; os dois falsos = o empate fica (não use num jogo que precisa de vencedor).
+ * - Jogo de ida de um confronto de ida e volta: não passe `decider` (o empate é resultado válido).
+ * - Jogo de volta: `firstLeg` = placar da ida do ponto de vista dos times DESTA partida ([gols do mandante de hoje, gols do visitante de hoje]);
+ *   o vencedor sai do agregado (sem gol fora de casa); empatado o agregado, prorrogação e/ou pênaltis conforme a regra.
+ */
+export interface MatchDecider {
+  extraTime: boolean;
+  penalties: boolean;
+  firstLeg?: [number, number];
+  /** 6ª substituição permitida na prorrogação (Croácia, qualificação da FA Cup); ausente = continua o limite de 5 */
+  extraTimeSub?: boolean;
 }
 
 export type Intervention =
@@ -102,7 +122,10 @@ export interface PlayerReport {
 export interface MatchOutcome {
   seed: string;
   homeGoals: number; awayGoals: number;
+  /** como o vencedor saiu: no tempo normal (ou no agregado), na prorrogação ou nos pênaltis */
   decidedIn: 'regular' | 'extra_time' | 'penalties';
+  /** agregado do confronto (jogo de volta): [mandante de hoje, visitante de hoje], prorrogação incluída */
+  aggregate: [number, number] | null;
   shootout: { home: number; away: number } | null;
   winner: 0 | 1 | null;
   events: MatchEvent[];

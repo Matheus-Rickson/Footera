@@ -42,3 +42,10 @@ a `economia × (reputação/65)^2,35`, e as receitas foram ancoradas na mesma es
   Agora: melhor da Série A ~€ 34 mi; pior da Série A ~€ 13 mi; melhor da Premier ~€ 82 mi; Série D ~€ 2 mi. A regra vale para clubes
   criados por pacote sem caixa informado. Os fluxos mensais não mudaram (a margem anual não depende do saldo); todos os testes de finanças
   e mercado continuam passando. A base fixa foi regenerada com o novo caixa (ainda não havia sido publicada).
+
+## Copas nacionais (Fase 9)
+Prêmios das copas (cotas por fase, vitórias, semifinalista, vice e campeão) e bilheteria dos jogos de copa entram pelo `makePoster`
+(regra 1 conferida por teste com as copas). Medido em temporadas completas (mundo de teste, 2 países × 2 divisões de 20, 3 sementes):
+prêmios das copas ≈ 1,0% da receita dos clubes e bilheteria dos jogos de copa ≈ 1,6%; somados, ≈ 2,6% das despesas — a margem anual sobe
+cerca de 2,6 pontos em média (mediana +2% → ≈ +4,6%, dentro da faixa aceita de −4% a +8%), concentrados em quem avança mais. A calibração
+mensal (sem prêmios) não mudou.

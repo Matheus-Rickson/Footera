@@ -17,6 +17,7 @@ import { ageOn } from '../shared/date.ts';
 import { rowToPlayer } from '../database/repositories/worldRepository.ts';
 import type { SqlDb } from '../database/types.ts';
 import type { Coach } from '../shared/types.ts';
+import { cupPrizesPaid } from '../database/repositories/cupRepository.ts';
 
 const coach: Coach = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession', reputation: 20, photoPath: null };
 async function setup(seed = 'cycle', teams = 6) {
@@ -57,8 +58,9 @@ test('Virada: só com todas as partidas disputadas e no dia 1º/jul; a entressaf
   assert.equal(report.season, 2027);
   assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'finance_last_month'").get()!.value), '2027-07');
   assert.deepEqual([getCareerState(db).season, getCareerState(db).gameDate], [2027, '2027-07-01']);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM competitions WHERE season = 2027'), 4);
-  assert.equal(n(db, "SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = 2027 AND f.status = 'scheduled'"), 4 * 30);
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND kind = 'league'"), 4);
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND kind = 'cup'"), 2, 'copas nacionais da nova temporada');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = 2027 AND f.status = 'scheduled' AND c.kind = 'league'"), 4 * 30);
   assert.equal(advanceTime(db, 'nextMatchday').toDate.slice(0, 7), '2027-08', 'temporada nova segue normalmente');
   assert.throws(() => startNextSeason(db), SeasonError, 'não vira duas vezes');
 });
@@ -66,7 +68,7 @@ test('Virada: só com todas as partidas disputadas e no dia 1º/jul; a entressaf
 test('Virada: rebaixados e promovidos trocam de liga por país, troféus e registro batem com a tabela derivada das partidas', async () => {
   const { db, clubId } = await setup('cycle-moves');
   playSeason(db); toTurnover(db);
-  const comps = listCompetitions(db).competitions;
+  const comps = listCompetitions(db).competitions.filter((c) => c.kind === 'league');
   const before = new Map(comps.map((c) => [c.id, getCompetitionTable(db, c.id)]));
   const report = startNextSeason(db);
   const byName = (prefix: string) => before.get(comps.find((c) => c.name.startsWith(prefix))!.id)!;
@@ -92,8 +94,8 @@ test('Virada: rebaixados e promovidos trocam de liga por país, troféus e regis
   assert.equal(prev.position, report.previous!.position);
   assert.equal(prev.prize, report.previous!.prize);
   const room = getTrophies(db);
-  assert.equal(room.champions.length, 4);
-  assert.equal(room.mine.length, report.previous!.position === 1 ? 1 : 0);
+  assert.equal(room.champions.length, 6, '4 ligas + 2 copas nacionais');
+  assert.equal(room.mine.length, n(db, 'SELECT COUNT(*) AS n FROM trophies WHERE club_id = ?', clubId));
   assert.ok(room.mine.every((t) => t.clubName === String(db.prepare('SELECT name FROM clubs WHERE id = ?').get(clubId)!.name)));
 });
 
@@ -102,11 +104,14 @@ test('Virada: prêmios passam por makePoster e saldo = saldo inicial + lançamen
   playSeason(db); toTurnover(db);
   startNextSeason(db);
   assertBooksBalance(db, initial);
-  assert.equal(n(db, "SELECT SUM(amount) AS n FROM finance_months WHERE category = 'prize'"), n(db, 'SELECT SUM(prize) AS n FROM season_results'));
+  // prêmios = liga (registro da temporada) + copas (recalculados dos confrontos)
+  const cupPaid = db.prepare("SELECT id FROM competitions WHERE kind = 'cup'").all().reduce((s, r) => s + cupPrizesPaid(db, String(r.id)), 0);
+  assert.ok(cupPaid > 0);
+  assert.equal(n(db, "SELECT SUM(amount) AS n FROM finance_months WHERE category = 'prize'"), n(db, 'SELECT SUM(prize) AS n FROM season_results') + cupPaid);
   const champ = db.prepare(`SELECT sr.club_id, sr.prize, co.economy, l.tier FROM season_results sr JOIN competitions c ON c.id = sr.competition_id
     JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE sr.position = 1 AND l.tier = 1`).all();
   for (const r of champ) assert.equal(Number(r.prize), prizeMoney(Number(r.economy), 1, 1, 6));
-  const mine = n(db, "SELECT amount AS n FROM finance_ledger WHERE category = 'prize'");
+  const mine = n(db, "SELECT amount AS n FROM finance_ledger WHERE category = 'prize' AND description LIKE 'Premiação:%'");
   assert.equal(mine, n(db, 'SELECT prize AS n FROM season_results WHERE club_id = ?', clubId), 'prêmio no extrato do usuário');
   for (let i = 0; i < 6; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); }
   assertBooksBalance(db, initial);
@@ -245,7 +250,7 @@ test('Duas viradas seguidas: contabilidade, elencos e calendário continuam ínt
     for (const lg of db.prepare('SELECT id FROM leagues').all()) assert.equal(n(db, 'SELECT COUNT(*) AS n FROM clubs WHERE league_id = ?', String(lg.id)), 6);
   }
   assert.equal(getHistory(db).filter((h) => !h.current).length, 2);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM trophies'), 8);
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM trophies'), 12, '2 temporadas × (4 ligas + 2 copas)');
 });
 
 test('Contratos: a data exibida antes de renovar (renewBaseYear + N) é a mesma que a renovação grava', async () => {

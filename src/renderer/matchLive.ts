@@ -12,9 +12,9 @@ import type { Position } from '../shared/types.ts';
 export type Side = 0 | 1;
 export interface LiveTick { minute: number; label: string; ev: number; held: [number, number] | null; s: [number[], number[]] | null; p: [number[], number[]] | null }
 
-export function ticksOf(r: Pick<MatchReportDto, 'timeline' | 'commentary' | 'decidedIn'>): LiveTick[] {
+export function ticksOf(r: Pick<MatchReportDto, 'timeline' | 'commentary' | 'decidedIn' | 'extraTime'>): LiveTick[] {
   if (r.timeline?.length) return r.timeline;
-  const end = r.decidedIn === 'regular' ? 90 : 120;
+  const end = r.extraTime ? 120 : 90; // pênaltis direto (copas) terminam aos 90
   const lines = r.commentary.filter((l) => l.kind !== 'shootout');
   const out: LiveTick[] = [];
   let k = 0, ev = 0;

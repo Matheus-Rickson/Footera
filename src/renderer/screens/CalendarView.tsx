@@ -72,7 +72,8 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
           <div className="cl-box">
             <span className="cl-box-label"><CalendarClock size={14} aria-hidden="true" />Próximo jogo</span>
             <div className="cl-next"><ClubCrest id={o.id} name={o.name} size={34} src={img.url('clubs', o.id)} />
-              <div><strong>{o.name}</strong><span className="muted small">{next.homeId === cal.clubId ? 'Casa' : 'Fora'} · {fmtWeekday(next.date)} {fmtDate(next.date)}</span></div></div>
+              <div><strong>{o.name}</strong><span className="muted small">{next.cup?.neutral ? 'Campo neutro' : next.homeId === cal.clubId ? 'Casa' : 'Fora'} · {fmtWeekday(next.date)} {fmtDate(next.date)}</span>
+                <span className={`small ${next.cup ? 'cl-next-cup' : 'muted'}`}>{next.cup ? `${next.cup.name} · ${next.cup.stage}${next.cup.leg ? ` (${next.cup.leg === 1 ? 'ida' : 'volta'})` : ''}` : next.competitionName}</span></div></div>
             <span className="cl-big">{d <= 0 ? 'hoje' : plural(d, 'dia', 'dias')}</span>
           </div>); })()}
         <div className="cl-box">
@@ -94,8 +95,10 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
           {grid.map((d) => {
             const f = byDate.get(d), out = f ? outcome(f, cal.clubId) : null, o = f ? opp(f) : null;
             const other = !d.startsWith(current), isToday = d === today;
-            const cls = `cl-day ${other ? 'other' : ''} ${isToday ? 'today' : ''} ${out ? `res-${out.o}` : ''} ${f && !out ? 'upcoming' : ''}`;
-            const label = f && o ? `${fmtDate(d)}: ${f.homeId === cal.clubId ? 'Casa' : 'Fora'} contra ${o.name}, ${f.competitionName}${out ? `, ${out.o === 'V' ? 'vitória' : out.o === 'D' ? 'derrota' : 'empate'} por ${out.score}` : ''}` : fmtDate(d);
+            const cls = `cl-day ${other ? 'other' : ''} ${isToday ? 'today' : ''} ${out ? `res-${out.o}` : ''} ${f && !out ? 'upcoming' : ''} ${f?.cup ? 'cl-cup' : ''}`;
+            const where = f ? (f.cup?.neutral ? 'Campo neutro' : f.homeId === cal.clubId ? 'Casa' : 'Fora') : '';
+            const stage = f?.cup ? `${f.cup.stage}${f.cup.leg ? ` (${f.cup.leg === 1 ? 'ida' : 'volta'})` : ''}` : '';
+            const label = f && o ? `${fmtDate(d)}: ${where} contra ${o.name}, ${f.competitionName}${stage ? `, ${stage}` : ''}${out ? `, ${out.o === 'V' ? 'vitória' : out.o === 'D' ? 'derrota' : 'empate'} por ${out.score}` : ''}` : fmtDate(d);
             const content = (
               <>
                 <span className="cl-num">{Number(d.slice(8))}</span>
@@ -103,7 +106,8 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
                   <span className="cl-crest"><ClubCrest id={o.id} name={o.name} size={30} src={img.url('clubs', o.id)} /></span>
                   <span className="cl-info">
                     {out ? <span className="cl-score"><b className={`cl-res ${out.o}`}>{out.o}</b>{out.score}</span> : <span className="cl-vs">{o.name}</span>}
-                    <span className="cl-meta">{f.homeId === cal.clubId ? 'Casa' : 'Fora'} · Liga</span>
+                    <span className="cl-meta">{where} · {f.cup ? f.cup.name : 'Liga'}</span>
+                    {f.cup && <span className="cl-stage">{stage}</span>}
                   </span>
                 </>}
               </>

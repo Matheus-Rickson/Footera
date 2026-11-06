@@ -20,7 +20,8 @@ import { addFamiliarity, ROLE_MATCH_GAIN } from './roleRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
 import { applyMatchesToBoard } from './boardRepository.ts';
 import { processSocialMatchday } from './socialRepository.ts';
-import { quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
+import { quickKnockout, quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
+import { advanceCups, applyCupCards, cupFixtureRule, cupSuspensions, recordCupResult, serveCupSuspension } from './cupRepository.ts';
 import { lightClubIds } from './simLevelRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { aiCoachAttributes } from './aiCoachRepository.ts';
@@ -51,13 +52,14 @@ interface StoredReport {
   v: 1; detail: 'full' | 'compact';
   home: { clubId: string; name: string; formation: string }; away: { clubId: string; name: string; formation: string };
   homeGoals: number; awayGoals: number; decidedIn: MatchOutcome['decidedIn']; shootout: MatchOutcome['shootout']; winner: MatchOutcome['winner'];
+  /** copas (ausente em partidas de liga e em saves anteriores) */ cup?: MatchReportDto['cup']; extraTime?: boolean;
   conditions: MatchConditions; duration: number; stats: MatchOutcome['stats']; players: Array<Partial<PlayerReport>>;
   lineups: MatchOutcome['lineups']; events: MatchEvent[]; manOfTheMatch: string | null;
   tactics?: [TeamTactics, TeamTactics];
   /** só nas partidas do usuário (relatório completo); ausente em saves anteriores à lapidação */ timeline?: MatchTick[];
 }
 
-interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string }
+interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string; cup?: ReturnType<typeof cupFixtureRule> }
 
 function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasReport = true): MatchSummaryDto {
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
@@ -69,7 +71,8 @@ export interface LiveOptions { interventions: LiveInterventionInput[]; controlUn
 
 /** Monta os dois times (escalação, táticas) exatamente como na simulação definitiva. Só lê o banco. */
 function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
-  const home = loadSquad(db, f.homeId, f.date), away = loadSquad(db, f.awayId, f.date);
+  const cupId = f.cup?.competitionId;
+  const home = loadSquad(db, f.homeId, f.date, cupId ? cupSuspensions(db, cupId, f.homeId) : undefined), away = loadSquad(db, f.awayId, f.date, cupId ? cupSuspensions(db, cupId, f.awayId) : undefined);
   const hs = clubState(db, f.homeId), as = clubState(db, f.awayId);
   const mk = (sq: Squad, id: string, name: string, st: ReturnType<typeof clubState>): TeamSheet => {
     const mine = id === ctx.userClub ? ctx.scheme : null;
@@ -101,6 +104,7 @@ function runFixture(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixt
   const ivs: Intervention[] = (live?.interventions ?? []).map((iv) => ({ ...iv, team: side }));
   return simulateMatch(prep.hSheet, prep.aSheet, {
     seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves,
+    ...(f.cup ? { neutral: f.cup.neutral, ...(f.cup.decider ? { decider: f.cup.decider } : {}) } : {}),
     ...(live && involves ? { control: { team: side, until: live.controlUntil ?? Number.MAX_SAFE_INTEGER }, interventions: ivs } : {}),
   });
 }
@@ -111,6 +115,8 @@ function storedOf(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixtur
     v: 1, detail: involves ? 'full' : 'compact',
     home: { clubId: f.homeId, name: f.homeName, formation: formationLabel(prep.hSheet.formation) }, away: { clubId: f.awayId, name: f.awayName, formation: formationLabel(prep.aSheet.formation) },
     homeGoals: out.homeGoals, awayGoals: out.awayGoals, decidedIn: out.decidedIn, shootout: out.shootout, winner: out.winner,
+    extraTime: out.events.some((e) => e.type === 'period_end' && e.detail === 'extra1'),
+    ...(f.cup ? { cup: { stage: f.cup.stageName, leg: f.cup.leg, aggregate: out.aggregate, neutral: f.cup.neutral } } : {}),
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
     lineups: out.lineups, events: involves ? out.events : out.events.filter((e) => COMPACT_TYPES.has(e.type)), manOfTheMatch: out.manOfTheMatch,
@@ -124,10 +130,12 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   const out = runFixture(f, ctx, prep, live);
 
   applyResult(db, f.id, out.homeGoals, out.awayGoals);
+  if (f.cup) recordCupResult(db, f.id, out, ctx.post);
   const report = storedOf(f, ctx, prep, out);
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
-  recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
+  // campo neutro: a renda é do organizador (final da Copa do Brasil, Copa Argentina), não de um dos clubes
+  if (!f.cup?.neutral) recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
 
   // ---- consequências nos jogadores ----
   const byId = new Map([...home.players, ...away.players].map((p) => [p.id, p]));
@@ -151,14 +159,25 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
     upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating);
     if (r.role && r.minutes > 0) addFamiliarity(db, p, r.role, (ROLE_MATCH_GAIN * r.minutes) / 90); // aprende a função jogando
     const st = statusOf(sq, p.id);
-    let y = st.yellows + r.yellow, susp = st.suspension;
-    if (r.red > 0) susp += redKind.get(p.id) ?? 1;
-    if (y >= 5) { susp += 1; y -= 5; }
-    // quem estava suspenso e jogou (escalação de emergência) cumpre a suspensão
-    if (st.suspension > 0 && sq.suspendedOut.indexOf(p.id) < 0) susp = Math.max(0, susp - 1);
+    const LEAGUE_YELLOWS = 5;
+    let y = st.yellows, susp = st.suspension, cupSusp: { before: number; after: number; byYellow: boolean } | null = null;
+    if (f.cup) { // copa: cartões e suspensões valem só nela, com o limite do regulamento
+      const before = st.suspension;
+      const res = applyCupCards(db, f.cup.competitionId, p.id, r.yellow, r.red > 0 ? ((redKind.get(p.id) ?? 1) as 1 | 2) : 0, before > 0 && sq.suspendedOut.indexOf(p.id) < 0, f.cup.yellowLimit);
+      cupSusp = { before, after: res.suspension, byYellow: res.byYellow };
+      const ps = db.prepare('SELECT yellow_cards, suspension_matches FROM player_status WHERE player_id = ?').get(p.id);
+      y = N(ps?.yellow_cards ?? 0); susp = N(ps?.suspension_matches ?? 0);
+    } else {
+      y += r.yellow;
+      if (r.red > 0) susp += redKind.get(p.id) ?? 1;
+      if (y >= LEAGUE_YELLOWS) { susp += 1; y -= LEAGUE_YELLOWS; }
+      // quem estava suspenso e jogou (escalação de emergência) cumpre a suspensão
+      if (st.suspension > 0 && sq.suspendedOut.indexOf(p.id) < 0) susp = Math.max(0, susp - 1);
+    }
+    const leagueStatus = f.cup ? { yellows: y, suspension: susp } : st;
     const injuredDays = r.injuredDays > 0 ? Math.max(1, Math.round(r.injuredDays * medical.get(clubId)!)) : 0; // médico e departamento médico encurtam
     const injuryUntil = injuredDays > 0 ? addDays(f.date, injuredDays) : st.injuryUntil;
-    if (y !== st.yellows || susp !== st.suspension || injuryUntil !== st.injuryUntil) {
+    if (y !== leagueStatus.yellows || susp !== leagueStatus.suspension || injuryUntil !== st.injuryUntil || (f.cup && injuredDays > 0)) {
       upStatus.run(p.id, injuryUntil, injuredDays > 0 ? `Lesão (${injuredDays} dias)` : null, susp, y);
     }
     if (clubId === ctx.userClub) {
@@ -166,14 +185,18 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
       if (injuredDays > 0) addNews(db, f.date, 'medical', `Lesão: ${name} fora por ${injuredDays} dias`,
         `${name} (${POS_NAME[p.position].toLowerCase()}) se lesionou na partida contra o ${opp}. Previsão de retorno: ${injuryUntil!.split('-').reverse().join('/')} (${injuredDays} dias), já considerando o trabalho do departamento médico.\n\nAté lá ele fica fora das partidas. Revise a escalação e a função da vaga dele em Táticas.`,
         { actionLabel: 'Ajustar a escalação em Táticas' });
-      if (susp > st.suspension && sq.suspendedOut.indexOf(p.id) < 0) addNews(db, f.date, 'squad', `Suspensão: ${name} cumpre ${susp} jogo(s)`,
-        `${name} ${r.red > 0 ? 'foi expulso' : 'recebeu o quinto cartão amarelo'} na partida contra o ${opp} e está suspenso por ${susp} jogo(s).\n\nEle não pode ser escalado na(s) próxima(s) partida(s). Defina o substituto em Táticas.`,
+      const newSusp = cupSusp ? (cupSusp.after > Math.max(0, cupSusp.before - 1) ? cupSusp.after : 0) : susp > st.suspension && sq.suspendedOut.indexOf(p.id) < 0 ? susp : 0;
+      if (newSusp > 0) addNews(db, f.date, 'squad', `Suspensão: ${name} cumpre ${newSusp} jogo(s)${cupSusp ? ` na ${f.competitionName}` : ''}`,
+        `${name} ${r.red > 0 ? 'foi expulso' : `atingiu o limite de cartões amarelos (${cupSusp ? f.cup!.yellowLimit : LEAGUE_YELLOWS})`} na partida contra o ${opp} e está suspenso por ${newSusp} jogo(s)${cupSusp ? ` da ${f.competitionName} (a suspensão vale só nesta copa)` : ''}.\n\nEle não pode ser escalado na(s) próxima(s) partida(s)${cupSusp ? ' desta competição' : ''}. Defina o substituto em Táticas.`,
         { actionLabel: 'Ajustar a escalação em Táticas' });
     }
   }
   // a conversa no vestiário vale só durante esta partida (out.moraleDelta não é gravado)
   for (const [sq, id] of [[home, f.homeId], [away, f.awayId]] as const) {
-    for (const pid of sq.suspendedOut) { const st = statusOf(sq, pid); upStatus.run(pid, st.injuryUntil, null, Math.max(0, st.suspension - 1), st.yellows); }
+    for (const pid of sq.suspendedOut) {
+      if (f.cup) { serveCupSuspension(db, f.cup.competitionId, pid); continue; } // cumpriu a suspensão da copa (a da liga continua)
+      const st = statusOf(sq, pid); upStatus.run(pid, st.injuryUntil, null, Math.max(0, st.suspension - 1), st.yellows);
+    }
     const sheet = id === f.homeId ? hSheet : aSheet;
     db.prepare('INSERT INTO club_state (club_id, formation, last_lineup_json) VALUES (?,?,?) ON CONFLICT(club_id) DO UPDATE SET formation = excluded.formation, last_lineup_json = excluded.last_lineup_json')
       .run(id, sheet.formation, JSON.stringify(sheet.lineup.map((l) => l.player.id)));
@@ -185,9 +208,18 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
  * Partida de país com simulação simplificada: só o placar, pela força dos elencos (sem relatório, sem efeitos nos jogadores, sem bilheteria).
  * A classificação continua derivada das partidas (regra 4).
  */
-function simulateLight(db: SqlDb, f: FixtureRow, ctx: Ctx, strengthOf: (clubId: string) => number): MatchSummaryDto {
-  const r = quickResult(strengthOf(f.homeId), strengthOf(f.awayId), createRng(`quick:${ctx.seed}:${f.id}`));
+function simulateLight(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, strengthOf: (clubId: string) => number): MatchSummaryDto {
+  const rng = createRng(`quick:${ctx.seed}:${f.id}`);
+  // copa: mesma regra de desempate e de campo neutro das partidas completas
+  if (f.cup?.decider) {
+    const k = quickKnockout(strengthOf(f.homeId), strengthOf(f.awayId), rng, f.cup.decider, f.cup.neutral);
+    applyResult(db, f.id, k.homeGoals, k.awayGoals);
+    recordCupResult(db, f.id, k, ctx.post);
+    return summaryOf(f, k.homeGoals, k.awayGoals, ctx.userClub, false);
+  }
+  const r = quickResult(strengthOf(f.homeId), strengthOf(f.awayId), rng);
   applyResult(db, f.id, r.homeGoals, r.awayGoals);
+  if (f.cup) recordCupResult(db, f.id, { winner: null, decidedIn: 'regular', shootout: null }, ctx.post); // ida: só a cota
   return summaryOf(f, r.homeGoals, r.awayGoals, ctx.userClub, false);
 }
 
@@ -197,7 +229,7 @@ function pendingFixtures(db: SqlDb, date: string): FixtureRow[] {
        FROM fixtures f JOIN competitions c ON c.id = f.competition_id JOIN clubs h ON h.id = f.home_club_id JOIN clubs a ON a.id = f.away_club_id
       WHERE f.status = 'scheduled' AND f.match_date <= ? ORDER BY f.match_date, f.id`).all(date)
     .map((r): FixtureRow => ({ id: S(r.id), competitionId: S(r.competition_id), competitionName: S(r.competition_name), round: N(r.round), date: S(r.match_date),
-      homeId: S(r.home_club_id), awayId: S(r.away_club_id), homeName: S(r.home_name), awayName: S(r.away_name) }));
+      homeId: S(r.home_club_id), awayId: S(r.away_club_id), homeName: S(r.home_name), awayName: S(r.away_name), cup: cupFixtureRule(db, S(r.id)) }));
 }
 function contextOf(db: SqlDb): Ctx {
   return {
@@ -224,7 +256,8 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
   };
   const results = withTransaction(db, () => {
     const post = makePoster(db, st.clubId);
-    const out = rows.map((f) => (light.has(f.homeId) && light.has(f.awayId) ? simulateLight(db, f, ctx, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
+    const out = rows.map((f) => (light.has(f.homeId) && light.has(f.awayId) ? simulateLight(db, f, { ...ctx, post }, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
+    advanceCups(db, st.gameDate); // copas: fase encerrada → sorteio da próxima (ou título), na mesma transação
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
     processSocialMatchday(db, st.gameDate, out.map((r) => r.fixtureId)); // rede social: resultados, zebras, hat-tricks, lesões, rodada
     return out;
@@ -255,6 +288,7 @@ function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'f
   return {
     ...meta, detail: r.detail, home: r.home, away: r.away,
     homeGoals: r.homeGoals, awayGoals: r.awayGoals, decidedIn: r.decidedIn, shootout: r.shootout, conditions: r.conditions, duration: r.duration,
+    extraTime: r.extraTime ?? r.decidedIn !== 'regular', cup: r.cup ?? null,
     stats: r.stats, players, lineups: r.lineups, commentary, manOfTheMatch: mom, tactics: r.tactics ?? null, timeline: r.timeline ?? null, levels, userClubId: userClub,
   };
 }
@@ -276,7 +310,7 @@ export function previewUserMatch(db: SqlDb, live: LiveOptions): LiveMatchDto {
   const squad = [...mine.lineup.map((l) => l.player), ...mine.bench];
   return {
     report: dtoFromStored(db, storedOf(f, ctx, prep, out), { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, attendance: null }),
-    side, subsMax: 5, notes: ctx.notes,
+    side, subsMax: f.cup?.decider?.extraTimeSub ? 6 : 5, notes: ctx.notes,
     bench: mine.bench.map((p) => ({ id: p.id, name: p.name, position: p.position, overall: overall.get(p.id) ?? 0, condition: Math.round(p.condition) })),
     morale: Object.fromEntries(squad.map((p) => [p.id, { before: Math.round(p.morale), delta: out.moraleDelta[p.id] ?? 0 }])),
     suggestions: out.suggestions.map(({ team: _t, ...s }) => s),

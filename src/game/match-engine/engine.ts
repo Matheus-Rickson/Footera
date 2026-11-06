@@ -145,6 +145,11 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const hAdv = opts.neutral ? 0 : 1;
   const events: MatchEvent[] = [];
   const clock = { minute: 0, label: "0'" };
+  // regra de desempate: `decider` explícito, ou o padrão antigo do mata-mata (prorrogação + pênaltis)
+  const decider = opts.decider ?? (opts.knockout ? { extraTime: true, penalties: true } : null);
+  const first = decider?.firstLeg ?? [0, 0];
+  /** limite de substituições (5; 6 na prorrogação quando a competição permite) */
+  const subCap = (): number => (clock.minute > 90 && decider?.extraTimeSub ? 6 : 5);
 
   const mk = (sheet: TeamSheet, idx: Side): TeamState => {
     const all = sheet.lineup.map((l) => {
@@ -226,14 +231,14 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   const ensureGoalkeeper = (t: TeamState): void => {
     if (t.active.some((l) => l.slot === 'GK') || t.active.length === 0) return;
     const gkBench = t.bench.filter((b) => b.position === 'GK');
-    if (gkBench.length && t.subsUsed < 5 && controlled(t)) {
+    if (gkBench.length && t.subsUsed < subCap() && controlled(t)) {
       // o técnico decide: alguém de linha vai para o gol improvisado e o auxiliar sugere pôr o goleiro reserva
       const emergency = [...t.active].sort((a, b) => b.p.attributes.technical.goalkeeping - a.p.attributes.technical.goalkeeping)[0]!;
       emergency.slot = 'GK'; setRole(emergency);
       suggestions.push(suggestion(t, emergency, gkBench[0]!, 'GK', 'goalkeeper'));
       return;
     }
-    if (gkBench.length && t.subsUsed < 5) {
+    if (gkBench.length && t.subsUsed < subCap()) {
       const victim = [...t.active].sort((a, b) => effective(a.p, a.slot) - effective(b.p, b.slot))[0]!;
       doSub(t, victim, gkBench[0]!, 'GK', 'gk_replacement');
       return;
@@ -275,8 +280,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     emit('injury', t.idx, { player: l.p.id, days });
     const wasGk = l.slot === 'GK';
     const repl = bestBenchFor(t, l.slot);
-    if (repl && t.subsUsed < 5 && controlled(t)) suggestions.push(suggestion(t, l, repl, l.slot, 'injury', days));
-    if (repl && t.subsUsed < 5 && !controlled(t)) doSub(t, l, repl, l.slot, 'injury');
+    if (repl && t.subsUsed < subCap() && controlled(t)) suggestions.push(suggestion(t, l, repl, l.slot, 'injury', days));
+    if (repl && t.subsUsed < subCap() && !controlled(t)) doSub(t, l, repl, l.slot, 'injury');
     else { l.rep.subbedOutAt = clock.minute; removeFromPitch(t, l); if (wasGk) ensureGoalkeeper(t); }
   };
 
@@ -479,7 +484,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
 
   const aiSubs = (t: TeamState, minute: number): void => {
     if (controlled(t)) { suggestions.push(...suggestFor(t, minute)); return; } // o técnico decide: o auxiliar só sugere
-    if (t.subsUsed >= 5 || !t.bench.length) return;
+    if (t.subsUsed >= subCap() || !t.bench.length) return;
     const o = T[1 - t.idx as Side];
     const lead = t.goals - o.goals;
     let limit = minute <= 62 ? 1 : 2;
@@ -493,7 +498,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       const inP = t.bench.filter((b) => b.position === 'CB' || b.position === 'DM' || b.position === 'LB' || b.position === 'RB' || b.position === 'LWB' || b.position === 'RWB').sort((a, b) => effective(b, b.position) - effective(a, a.position))[0];
       if (out && inP) { doSub(t, out, inP, inP.position); limit--; refresh(t, o); }
     }
-    while (limit > 0 && t.subsUsed < 5 && t.bench.length) {
+    while (limit > 0 && t.subsUsed < subCap() && t.bench.length) {
       const cands = t.active.filter((l) => l.slot !== 'GK')
         .map((l) => ({ l, cur: effective(l.p, l.slot) * fatigueMul(l), bench: bestBenchFor(t, l.slot) }))
         .filter((c) => c.bench && effective(c.bench, c.l.slot) > c.cur * 1.02)
@@ -549,7 +554,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
 
   const suggestFor = (t: TeamState, minute: number): SubSuggestion[] => {
     const out: SubSuggestion[] = [];
-    if (t.subsUsed >= 5 || !t.bench.length) return out;
+    if (t.subsUsed >= subCap() || !t.bench.length) return out;
     const lead = t.goals - T[1 - t.idx as Side].goals;
     let limit = minute <= 62 ? 1 : 2, used = t.subsUsed;
     const active = [...t.active], bench = [...t.bench];
@@ -651,7 +656,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const inP = t.bench.find((b) => b.id === iv.in);
     if (!out) throw new MatchInterventionError('O jogador escolhido para sair não está mais em campo.');
     if (!inP) throw new MatchInterventionError('O jogador escolhido para entrar não está disponível no banco.');
-    if (t.subsUsed >= 5) throw new MatchInterventionError('O time já fez as 5 substituições permitidas.');
+    if (t.subsUsed >= subCap()) throw new MatchInterventionError(`O time já fez as ${subCap()} substituições permitidas.`);
     doSub(t, out, inP, iv.slot ?? out.slot, 'coach', iv.role);
     if (iv.reshape) reorganize(t, inP.id);
     // adaptabilidade do treinador: quem entra rende um pouco mais na função nova (quem mudou de posição: em reorganize)
@@ -714,16 +719,20 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   runPeriod(46, 90, 'fulltime', 1);
   let decidedIn: MatchOutcome['decidedIn'] = 'regular';
   let shootout: MatchOutcome['shootout'] = null;
-  let winner: 0 | 1 | null = T[0].goals > T[1].goals ? 0 : T[1].goals > T[0].goals ? 1 : null;
+  /** vencedor pelo placar (com o jogo de ida somado, no jogo de volta) */
+  const leader = (): 0 | 1 | null => { const h = T[0].goals + first[0], a = T[1].goals + first[1]; return h > a ? 0 : a > h ? 1 : null; };
+  let winner: 0 | 1 | null = decider ? leader() : T[0].goals > T[1].goals ? 0 : T[1].goals > T[0].goals ? 1 : null;
   let endMinute = 90;
 
-  if (winner === null && opts.knockout) {
-    decidedIn = 'extra_time';
-    runPeriod(91, 105, 'extra1', 1.3);
-    runPeriod(106, 120, 'extra2', 1.3);
-    endMinute = 120;
-    winner = T[0].goals > T[1].goals ? 0 : T[1].goals > T[0].goals ? 1 : null;
-    if (winner === null) {
+  if (winner === null && decider) {
+    if (decider.extraTime) {
+      decidedIn = 'extra_time';
+      runPeriod(91, 105, 'extra1', 1.3);
+      runPeriod(106, 120, 'extra2', 1.3);
+      endMinute = 120;
+      winner = leader();
+    }
+    if (winner === null && decider.penalties) {
       decidedIn = 'penalties';
       const res = { 0: 0, 1: 0 } as Record<Side, number>;
       const order = ([0, 1] as Side[]).map((s) => {
@@ -744,11 +753,13 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
         emit('shootout_kick', s, { player: taker.p.id, scored });
         return scored;
       };
-      let round = 0;
-      for (; round < 5; round++) {
-        kick(0, round); kick(1, round);
-        const left0 = 5 - round - 1, left1 = left0;
-        if (res[0] > res[1] + left1 || res[1] > res[0] + left0) break;
+      // série de 5: termina assim que um time não consegue mais alcançar o outro (Regras do Jogo, Lei 10)
+      series: for (let round = 0; round < 5; round++) {
+        for (const s of [0, 1] as Side[]) {
+          kick(s, round);
+          const left0 = 5 - (round + 1), left1 = 5 - (s === 1 ? round + 1 : round);
+          if (res[0] > res[1] + left1 || res[1] > res[0] + left0) break series;
+        }
       }
       for (let n = 5; res[0] === res[1] && n < 60; n++) { kick(0, n); kick(1, n); }
       if (res[0] === res[1]) res[rng.chance(0.5) ? 0 : 1]++;
@@ -776,6 +787,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
 
   return {
     seed: opts.seed, homeGoals: T[0].goals, awayGoals: T[1].goals, decidedIn, shootout, winner, events,
+    aggregate: decider?.firstLeg ? [T[0].goals + first[0], T[1].goals + first[1]] : null,
     stats: [T[0].stats, T[1].stats], players: reports,
     lineups: T.map((t) => ({
       clubId: t.sheet.clubId, name: t.sheet.name, formation: formationLabel(t.sheet.formation),

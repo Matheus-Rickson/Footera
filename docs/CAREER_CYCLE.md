@@ -23,7 +23,8 @@
 7. **Categorias de base** (desde a Fase 8B, ver `docs/SCOUTING_YOUTH.md`): a IA promove jovens prontos; quem tem 19 anos e não foi promovido sai da base. A safra chega na peneira de 15/mar, não mais na virada.
 8. **Elencos da IA:** acima de 28 libera os mais fracos (veteranos primeiro) sem abrir carência; abaixo da composição mínima (22 jogadores; 3 GK, 7 DEF, 6 MEI, 4 ATA)
    contrata livres compatíveis com o próprio nível e, se faltar, promove jovens. Elenco do usuário abaixo do mínimo para jogar (18; 2/6/4/3) recebe jovens às pressas (avisado).
-9. Suspensões e cartões amarelos zeram (lesões continuam). `season + 1`, calendário novo (`createSeason`), mercado e cobrança do dia 1º/jul.
+9. Suspensões e cartões amarelos zeram (lesões continuam). `season + 1`, calendário novo (`createSeason`, que também cria as copas nacionais
+   da temporada e sorteia a 1ª fase), mercado e cobrança do dia 1º/jul. A temporada só termina depois da final das copas (maio; no Japão, 1º/jan).
 
 ## Contratos
 - Todo contrato novo (transferência, livre, renovação, jovem) termina em **30/jun**, para vencer exatamente numa virada. Saves antigos têm fins em 1º/jul ou no meio

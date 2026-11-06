@@ -16,6 +16,7 @@ import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
 import { processBoardDay } from './boardRepository.ts';
 import { processSocialDay } from './socialRepository.ts';
+import { createCups } from './cupRepository.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type {
   AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionTableDto, FixtureDto, StandingRowDto, TableZone,
@@ -39,7 +40,7 @@ export function ensureSeason(db: SqlDb, season: number): { created: number } {
 export function createSeason(db: SqlDb, season: number): { created: number } {
   const seed = S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
   let created = 0;
-  const insComp = db.prepare('INSERT INTO competitions (id, league_id, season, name) VALUES (?, ?, ?, ?)');
+  const insComp = db.prepare("INSERT INTO competitions (id, kind, league_id, country_id, season, name) VALUES (?, 'league', ?, (SELECT country_id FROM leagues WHERE id = ?), ?, ?)");
   const insFix = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id) VALUES (?, ?, ?, ?, ?, ?)');
   for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues ORDER BY rowid').all()) {
     const leagueId = S(lg.id);
@@ -49,7 +50,7 @@ export function createSeason(db: SqlDb, season: number): { created: number } {
     const rules = JSON.parse(S(lg.rules_json)) as LeagueRules;
     const games = scheduleLeague(teams, rules.rounds, season, rules.calendar ?? DEFAULT_CALENDAR, createRng(`schedule:${seed}:${season}:${leagueId}`));
     const compId = `cmp_${leagueId}_${season}`;
-    insComp.run(compId, leagueId, season, `${S(lg.name)} ${season}/${String(season + 1).slice(2)}`);
+    insComp.run(compId, leagueId, leagueId, season, `${S(lg.name)} ${season}/${String(season + 1).slice(2)}`);
     const perRound = new Map<number, number>();
     for (const g of games) {
       const idx = (perRound.get(g.round) ?? 0) + 1;
@@ -58,13 +59,16 @@ export function createSeason(db: SqlDb, season: number): { created: number } {
     }
     created++;
   }
+  createCups(db, season); // copas nacionais: depois do calendário das ligas (as datas evitam os jogos da liga)
   return { created };
 }
 
 export const FIXTURE_SELECT = `
   SELECT f.id, f.competition_id, c.name AS competition_name, f.round, f.match_date, f.home_club_id, h.name AS home_name,
          f.away_club_id, a.name AS away_name, f.status, f.home_goals, f.away_goals,
-         EXISTS (SELECT 1 FROM matches m WHERE m.fixture_id = f.id) AS has_report
+         EXISTS (SELECT 1 FROM matches m WHERE m.fixture_id = f.id) AS has_report,
+         f.leg, f.neutral, json_extract(c.format_json, '$.format.name') AS cup_name,
+         (SELECT json_extract(c.format_json, '$.format.stages[' || t.stage || '].name') FROM cup_ties t WHERE t.id = f.tie_id) AS cup_stage
     FROM fixtures f
     JOIN competitions c ON c.id = f.competition_id
     JOIN clubs h ON h.id = f.home_club_id
@@ -77,6 +81,7 @@ export function toFixture(r: Record<string, unknown>): FixtureDto {
     status: S(r.status) as FixtureDto['status'],
     homeGoals: r.home_goals == null ? null : N(r.home_goals), awayGoals: r.away_goals == null ? null : N(r.away_goals),
     hasReport: N(r.has_report ?? 0) === 1,
+    cup: r.cup_stage == null ? null : { name: S(r.cup_name), stage: S(r.cup_stage), leg: (r.leg == null ? null : N(r.leg)) as 1 | 2 | null, neutral: N(r.neutral ?? 0) === 1 },
   };
 }
 
@@ -100,7 +105,13 @@ export function listCompetitions(db: SqlDb): { userCompetitionId: string | null;
     `SELECT c.id, c.name, c.league_id, l.tier, l.team_count, co.name AS country
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id
       WHERE c.season = ? ORDER BY co.name, l.tier`).all(st.season)
-    .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count) }));
+    .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count), kind: 'league' }) as CompetitionInfoDto);
+  // copas nacionais (depois das divisões do país; a do país do usuário primeiro entre as copas)
+  const myCountry = st.clubId ? S(db.prepare('SELECT country_id FROM clubs WHERE id = ?').get(st.clubId)?.country_id ?? '') : '';
+  const cups = db.prepare(`SELECT c.id, c.name, c.country_id, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.clubs'))) AS n
+      FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'cup' AND c.season = ? ORDER BY c.country_id = ? DESC, co.name`).all(st.season, myCountry)
+    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'cup' as const }));
+  competitions.push(...cups);
   const mine = db.prepare(
     'SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(st.season, st.clubId);
   return { userCompetitionId: mine ? S(mine.id) : null, competitions };
@@ -137,7 +148,7 @@ export function getCompetitionTable(db: SqlDb, competitionId: string): Competiti
     zone: zoneFor(r.position, table.length, rules), isUserClub: r.teamId === st.clubId,
   }));
   return {
-    competition: { id: S(c.id), leagueId: S(c.league_id), name: S(c.name), country: S(c.country), tier: N(c.tier), teamCount: rows.length },
+    competition: { id: S(c.id), leagueId: S(c.league_id), name: S(c.name), country: S(c.country), tier: N(c.tier), teamCount: rows.length, kind: 'league' },
     rows, roundsPlayed, totalRounds, tiebreakers: rules.tiebreakers,
   };
 }
@@ -154,7 +165,9 @@ export function applyResult(db: SqlDb, fixtureId: string, homeGoals: number, awa
   if (S(f.status) !== 'scheduled') throw new ResultError('Esta partida já foi disputada.');
   db.prepare("UPDATE fixtures SET status = 'played', home_goals = ?, away_goals = ? WHERE id = ?").run(homeGoals, awayGoals, fixtureId);
   const left = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND status = 'scheduled'").get(S(f.competition_id))!.n);
-  db.prepare('UPDATE competitions SET status = ? WHERE id = ?').run(left === 0 ? 'finished' : 'in_progress', S(f.competition_id));
+  // copa: as fases seguintes só existem depois do sorteio; quem encerra a copa é a final (advanceCups)
+  const isCup = S(db.prepare('SELECT kind FROM competitions WHERE id = ?').get(S(f.competition_id))!.kind) === 'cup';
+  db.prepare('UPDATE competitions SET status = ? WHERE id = ?').run(left === 0 && !isCup ? 'finished' : 'in_progress', S(f.competition_id));
 }
 
 /** Versão transacional de `applyResult` (usada em testes e ferramentas). */

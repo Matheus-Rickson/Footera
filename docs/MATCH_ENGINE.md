@@ -2,6 +2,14 @@
 
 ## Modelo
 Simulação minuto a minuto (90 + acréscimos; prorrogação e pênaltis quando `knockout`), com ~2,6 **fases de posse** por minuto.
+
+**Desempate de copas (`MatchOptions.decider`, etapa 2 das copas):** cada partida recebe a regra da sua competição/fase —
+`extraTime` (2×15, com ritmo 1,3× e acréscimos de 1 a 3 min), `penalties`, `firstLeg` (placar da ida, do ponto de vista dos times do
+jogo de volta: o vencedor sai do agregado, **sem gol fora de casa**) e `extraTimeSub` (6ª substituição só na prorrogação). Jogo de ida não
+recebe regra (empate vale). `knockout` sem `decider` continua = prorrogação + pênaltis. Disputa de pênaltis pela Lei 10: série de 5
+alternada que termina assim que um time não alcança mais o outro, depois alternadas uma a uma; cobradores por finalização + compostura,
+goleiro pela força na posição. O resultado rápido (`quickKnockout`) aplica a mesma regra: prorrogação = 1/3 dos gols esperados de 90 e
+pênaltis com 75% de acerto ±5 pontos pela diferença de força.
 Cada fase: (1) decide quem tem a bola pelo controle de meio-campo; (2) registra passes (volume e precisão dependem de passe/visão,
 estilo de saída, pressão adversária, clima e gramado); (3) sorteia um desfecho: falta, impedimento, chance de gol ou nada.
 

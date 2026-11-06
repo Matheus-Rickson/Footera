@@ -258,7 +258,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const tick = step > 0 ? ticks[Math.min(step, ticks.length) - 1]! : null;
   const prevTick = step > 1 ? ticks[Math.min(step, ticks.length) - 2]! : null;
   const status = busy && live && !saved ? 'Gravando' : finished ? 'Encerrado' : !st.started ? 'Pré-jogo' : playing ? 'Ao vivo' : 'Pausado';
-  const progress = Math.min(100, (st.minute / (r.decidedIn === 'regular' ? 90 : 120)) * 100);
+  const progress = Math.min(100, (st.minute / (r.extraTime ? 120 : 90)) * 100);
   const subsUsed = ivs.filter((i) => i.kind === 'sub').length;
   const entered = new Set(r.players.filter((p) => p.team === side && !p.starter).map((p) => p.id));
   const benchLeft = (preview?.bench ?? []).filter((b) => !entered.has(b.id) && !ivs.some((i) => i.kind === 'sub' && i.in === b.id));
@@ -287,7 +287,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           <button className="secondary" disabled={busy} onClick={leave}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
         </div>
         <div className="mc-meta muted small">
-          <span>{r.competitionName} · rodada {r.round} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
+          <span>{r.competitionName} · {r.cup ? `${r.cup.stage}${r.cup.leg ? ` (jogo de ${r.cup.leg === 1 ? 'ida' : 'volta'})` : ''}${r.cup.neutral ? ' · campo neutro' : ''}${r.cup.aggregate ? ` · agregado ${r.cup.aggregate[0]} x ${r.cup.aggregate[1]}` : ''}` : `rodada ${r.round}`} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
           {finished && <span>{DECIDED[r.decidedIn] ? `Encerrado${DECIDED[r.decidedIn]}` : 'Encerrado'}{r.manOfTheMatch ? ` · Craque: ${r.manOfTheMatch.name}` : ''}{r.attendance ? ` · Público ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%) · renda ${fmtMoney(r.attendance.revenue)}` : ''}</span>}
           {!finished && deciding && <span>Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
           {r.detail === 'compact' && <span className="notice-text">Relatório resumido (jogo de outros clubes): só eventos-chave.</span>}

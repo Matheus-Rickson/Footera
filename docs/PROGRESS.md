@@ -924,3 +924,23 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   Correção: o canal do editor no processo principal recusava o tipo `coaches` ("Dados inválidos"); teste de guarda novo compara as listas de
   tipos do processo principal (editor e imagens) com as do motor (mutação 2/2). 243 testes.
   Não feito: técnicos na planilha CSV.
+- **Copas nacionais — etapa 1 (verificação dos regulamentos):** `docs/COPAS_NACIONAIS.md` consolida o que foi lido nos regulamentos
+  oficiais (Brasil REC 2026, FA Cup 2026-27, KNVB 2025/26, AFA 2026, JFA 2026, HNS 2026/27, FIGC C.U. 103/A, DFB Durchführungsbestimmungen)
+  e o que segue aberto (Espanha, França, Portugal e Áustria sem regulamento obtido; Bélgica, Irlanda e Rússia para depois). Corrigida a fonte
+  RFEF do levantamento original (era a Copa del Rey de futsal). Nada implementado.
+- **Copas nacionais — etapa 2 (motor):** regra de desempate por partida (`MatchDecider`: prorrogação sim/não, pênaltis, agregado com o
+  jogo de ida sem gol fora, 6ª troca na prorrogação) no motor completo e no resultado rápido (`quickKnockout`); `MatchOutcome.aggregate`;
+  disputa de pênaltis corrigida para parar assim que um time não alcança mais o outro (antes conferia só a cada par de cobranças).
+  Decisão do usuário: onde não há regulamento oficial lido, vale o PDF revisado. Testes: `match-decider.test.ts` (4); mutação 11/11.
+  247 testes. Sem tela nova (as copas ainda não existem no jogo).
+- **Copas nacionais — etapa 3 (estrutura, banco, telas):** 14 copas (formatos em `game/cup-engine/formats.ts`; México sem copa, Rússia
+  bloqueada), chaveamento puro (`bracket.ts`: entradas por divisão, folgas declaradas ou calculadas, sorteios, mando, datas, premiação),
+  migração 018 (competições liga/copa, confrontos, cartões por copa; migrador com `rebuildsTables`), `cupRepository.ts` (criação com o
+  calendário, sorteio de cada fase na mesma transação da rodada, regra de cada partida, cartões, prêmios, título, chave para a tela), rodada
+  integrada (motor e resultado rápido com a regra da fase, campo neutro sem bilheteria, suspensões da copa só na copa), rede social e
+  sala de troféus com copas, Competições com a chave, relatório/ao vivo com fase, ida/volta e agregado (e correção: pênaltis direto
+  terminam aos 90). Testes ajustados onde supunham só ligas (temporada termina na final das copas; troféus; prêmios = liga + copas).
+  Testes: `cups.test.ts` (6); mutação 23/23. Impacto financeiro medido (≈ +2,6 pontos na margem, ver `docs/FINANCE.md`). 253 testes.
+  Telas NÃO verificadas. Não feito: supercopas, continentais, Rússia, convidados amadores, suspensões pendentes para a edição seguinte.
+  Ajuste pedido pelo usuário: o calendário mostrava "Liga" em todo jogo; agora o jogo de copa traz o nome da copa, a fase e ida/volta
+  (`FixtureDto.cup`), com destaque dourado; "Próximo jogo" mostra a competição.

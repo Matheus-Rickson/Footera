@@ -129,29 +129,31 @@ test('Relatórios: completo para o clube do usuário, compacto para os demais; c
 test('Temporada simulada: lesionados e suspensos não são escalados, tabelas e estatísticas fecham', async () => {
   const { db } = await setup(8, 'season-sim');
   let rounds = 0;
-  for (; rounds < 40; rounds++) {
-    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas (avançar levaria até a virada, 1º/jul)
+  for (; rounds < 80; rounds++) {
+    if (n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'") === 0) break; // fim das partidas, copas incluídas (avançar levaria até a virada, 1º/jul)
     const a = advanceTime(db, 'nextMatchday');
     if (a.reason === 'season_complete') break;
     if (!a.advanced) { simulateMatchday(db); continue; }
     simulateMatchday(db);
   }
-  assert.equal(rounds, 14);
+  assert.equal(n(db, "SELECT COUNT(DISTINCT match_date) AS n FROM fixtures WHERE tie_id IS NULL"), 14, '14 rodadas de liga');
+  assert.ok(rounds > 14, 'mais os dias de copa');
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled'"), 0);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM matches'), 4 * 56);
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM matches m JOIN fixtures f ON f.id = m.fixture_id WHERE f.tie_id IS NULL'), 4 * 56);
   assert.equal(n(db, 'SELECT SUM(goals) AS n FROM player_season_stats'), n(db, 'SELECT SUM(home_goals + away_goals) AS n FROM fixtures'));
-  for (const c of listCompetitions(db).competitions) {
+  for (const c of listCompetitions(db).competitions.filter((x) => x.kind === 'league')) {
     const t = getCompetitionTable(db, c.id);
     assert.deepEqual(t.rows.map((r) => r.played), Array(8).fill(14));
   }
 
   // reconstrói, só a partir dos relatórios, quem estava lesionado/suspenso em cada data
-  const reports = db.prepare('SELECT m.fixture_id, m.played_on, f.home_club_id, f.away_club_id FROM matches m JOIN fixtures f ON f.id = m.fixture_id ORDER BY m.played_on, m.fixture_id').all()
-    .map((r) => ({ id: String(r.fixture_id), date: String(r.played_on), home: String(r.home_club_id), away: String(r.away_club_id), rep: getMatchReport(db, String(r.fixture_id)) }));
+  // suspensões valem na competição onde aconteceram: liga (todas as ligas) ou cada copa
+  const reports = db.prepare("SELECT m.fixture_id, m.played_on, f.home_club_id, f.away_club_id, CASE WHEN f.tie_id IS NULL THEN 'liga' ELSE f.competition_id END AS scope FROM matches m JOIN fixtures f ON f.id = m.fixture_id ORDER BY m.played_on, m.fixture_id").all()
+    .map((r) => ({ id: String(r.fixture_id), date: String(r.played_on), home: String(r.home_club_id), away: String(r.away_club_id), scope: String(r.scope), rep: getMatchReport(db, String(r.fixture_id)) }));
   const injuredUntil = new Map<string, string>(), bans = new Map<string, number>();
   let violations = 0, injuries = 0, redCards = 0, bannedChecks = 0, emergencyGk = 0;
   for (const r of reports) {
-    const unavailable = (id: string) => (injuredUntil.get(id) ?? '') > r.date || (bans.get(id) ?? 0) > 0;
+    const unavailable = (id: string) => (injuredUntil.get(id) ?? '') > r.date || (bans.get(`${r.scope}|${id}`) ?? 0) > 0;
     for (const p of r.rep.players) {
       if (!unavailable(p.id)) continue;
       if (p.position === 'GK') {
@@ -163,15 +165,17 @@ test('Temporada simulada: lesionados e suspensos não são escalados, tabelas e 
       violations++;
     }
     for (const club of [r.home, r.away]) {
-      for (const [pid, k] of [...bans]) {
+      for (const [key, k] of [...bans]) {
+        const [scope, pid] = key.split('|') as [string, string];
+        if (scope !== r.scope) continue;
         const owner = db.prepare('SELECT club_id FROM players WHERE id = ?').get(pid)!.club_id;
-        if (owner === club && k > 0) { bans.set(pid, k - 1); bannedChecks++; }
+        if (owner === club && k > 0) { bans.set(key, k - 1); bannedChecks++; }
       }
     }
     for (const p of r.rep.players) if (p.injuredDays > 0) { injuredUntil.set(p.id, addDays(r.date, p.injuredDays)); injuries++; }
     const full = db.prepare('SELECT report_json FROM matches WHERE fixture_id = ?').get(r.id)!;
     for (const e of (JSON.parse(String(full.report_json)) as { events: Array<{ type: string; player?: string; detail?: string }> }).events) {
-      if (e.type === 'red_card') { bans.set(e.player!, (bans.get(e.player!) ?? 0) + (e.detail === 'second_yellow' ? 1 : 2)); redCards++; }
+      if (e.type === 'red_card') { const key = `${r.scope}|${e.player!}`; bans.set(key, (bans.get(key) ?? 0) + (e.detail === 'second_yellow' ? 1 : 2)); redCards++; }
     }
   }
   assert.equal(violations, 0, 'jogador indisponível foi escalado sem que fosse emergência de goleiro');
