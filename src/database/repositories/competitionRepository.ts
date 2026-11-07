@@ -3,7 +3,8 @@ import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { DEFAULT_CALENDAR, firstMatchday, scheduleLeague } from '../../game/competition-engine/schedule.ts';
 import { leagueFormat } from '../../game/format-engine/formats.ts';
-import { createFormatCompetition } from './formatRepository.ts';
+import { brazilCalendar, createFormatCompetition } from './formatRepository.ts';
+import { brazilLeagueDates } from '../../game/career-engine/brazilCalendar.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
 import { addDays, daysBetween } from '../../shared/date.ts';
 import { turnoverDate } from '../../game/career-engine/contracts.ts';
@@ -80,6 +81,9 @@ function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
     // ano civil: liga depois da pré-temporada de janeiro
     const cal = cs.start === '01-01' && !rules.calendar ? { ...DEFAULT_CALENDAR, seasonStart: CALENDAR_YEAR_LEAGUE_START } : base;
     const games = scheduleLeague(teams, rules.rounds, cs.season, cal, createRng(`schedule:${seed}:${cs.season}:${leagueId}`));
+    // Brasil no ano civil: Séries A e B nas datas do modelo 2026 (Série A a partir de 28/01 com pausa na Copa do Mundo; B de 21/03 a 28/11)
+    const brDates = brazilCalendar(db, cs) ? brazilLeagueDates(leagueId, cs.season, Math.max(...games.map((g) => g.round))) : null;
+    if (brDates) for (const g of games) g.date = brDates[g.round - 1]!;
     const name = `${S(lg.name)} ${seasonLabelFor(cs.season, cs.start)}`;
     insComp.run(compId, leagueId, cs.countryId, cs.season, name);
     const perRound = new Map<number, number>();

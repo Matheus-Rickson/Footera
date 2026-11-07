@@ -12,6 +12,13 @@ import {
 } from '../../game/format-engine/engine.ts';
 import { formatById, regionalGroups, SERIE_D_SPOTS } from '../../game/format-engine/formats.ts';
 import type { MatchDecider } from '../../game/match-engine/types.ts';
+import { brazilStageDates } from '../../game/career-engine/brazilCalendar.ts';
+
+/** O país segue o calendário brasileiro do modelo 2026 (Brasil no ano civil). */
+export function brazilCalendar(db: SqlDb, cs: { countryId: string }): boolean {
+  const r = db.prepare('SELECT code, season_start FROM countries WHERE id = ?').get(cs.countryId);
+  return !!r && S(r.code) === 'BRA' && S(r.season_start) === '01-01';
+}
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -75,12 +82,17 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
       // rodadas continuam a numeração da competição (um clube não tem dois jogos na mesma rodada); um jogo por semana no dia do calendário
       const offset = N(db.prepare('SELECT COALESCE(MAX(round), 0) AS n FROM fixtures WHERE competition_id = ?').get(compId)!.n);
       const first = nextWeekdayOnOrAfter(notBefore, fs.meta.weekday);
+      // Brasil no ano civil: datas do modelo 2026 (Série D pela tabela básica; Série C pelas datas-âncora), se ainda não passaram
+      const comp = db.prepare('SELECT season, country_id FROM competitions WHERE id = ?').get(compId)!;
+      const rounds = Math.max(...b.fixtures.map((f) => f.round));
+      const planned = brazilCalendar(db, { countryId: S(comp.country_id) }) ? brazilStageDates(fs.meta.formatId, id, N(comp.season), rounds, fs.def.size) : null;
+      const dateOf = (r: number) => (planned && planned[0]! >= notBefore ? planned[r - 1]! : addDays(first, (r - 1) * fs.meta.intervalDays));
       const ins = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id, stage, stage_tie, leg, neutral) VALUES (?,?,?,?,?,?,?,?,?,?)');
       const perRound = new Map<number, number>();
       for (const f of b.fixtures) {
         const idx = (perRound.get(f.round) ?? 0) + 1;
         perRound.set(f.round, idx);
-        ins.run(`${compId}_${id}_r${String(f.round).padStart(2, '0')}_m${idx}`, compId, offset + f.round, addDays(first, (f.round - 1) * fs.meta.intervalDays),
+        ins.run(`${compId}_${id}_r${String(f.round).padStart(2, '0')}_m${idx}`, compId, offset + f.round, dateOf(f.round),
           f.home, f.away, id, f.tie ?? null, f.tie !== undefined ? (f.leg ?? 1) : null, f.neutral ? 1 : 0);
       }
       built++;

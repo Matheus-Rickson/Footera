@@ -330,6 +330,11 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Jogo de volta empatado no agregado (C ou D): vai para os pênaltis; o relatório mostra a fase e o agregado.
 - [ ] Na virada para 2027: Série C com 24 clubes; Série D com 96 (alguns clubes antes sem divisão entram).
 
+## 13x. Calendário 2026 (séries nacionais)
+- [ ] Carreira no Brasil: Calendário mostra a Série A a partir de 28/01, sem jogos entre o fim de maio e 22/07 (Copa do Mundo), última rodada em 02/12.
+- [ ] Série D: 1ª rodada em 04/04, final em setembro; Série C: final em outubro.
+- [ ] Nenhum jogo do seu clube com menos de 3 dias de intervalo (copa e liga).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

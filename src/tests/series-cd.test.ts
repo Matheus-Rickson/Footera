@@ -8,6 +8,7 @@ import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { startNextSeason } from '../database/repositories/seasonRepository.ts';
 import { formatOutcomesOf, formatStateOf } from '../database/repositories/formatRepository.ts';
 import { regionalGroups } from '../game/format-engine/formats.ts';
+import { brazilLeagueDates, brazilStageDates, spreadDates, worldCupYear } from '../game/career-engine/brazilCalendar.ts';
 import { tieOutcome } from '../game/format-engine/engine.ts';
 import type { SqlDb } from '../database/types.ts';
 import type { Coach } from '../shared/types.ts';
@@ -15,6 +16,28 @@ import type { Coach } from '../shared/types.ts';
 const coach: Coach = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession', reputation: 20, photoPath: null };
 const n = (db: SqlDb, sql: string, ...p: unknown[]) => Number(db.prepare(sql).get(...p)!.n);
 const leagueCount = (db: SqlDb, id: string) => n(db, 'SELECT COUNT(*) AS n FROM clubs WHERE league_id = ?', id);
+
+test('Calendário brasileiro (modelo 2026): Série A com pausa na Copa do Mundo, Série B, Série C pelas âncoras e Série D pela tabela básica', () => {
+  const a = brazilLeagueDates('bra-1', 2026, 38)!;
+  assert.deepEqual([a.length, a[0], a[18], a[37]], [38, '2026-01-28', '2026-07-22', '2026-12-02']);
+  assert.ok(a[17]! <= '2026-05-31' && a.every((d, i) => i === 0 || d > a[i - 1]!), '18 rodadas até 31/05, em ordem');
+  assert.ok(!a.some((d) => d > '2026-05-31' && d < '2026-07-22'), 'pausa da Copa do Mundo');
+  assert.equal(worldCupYear(2027), false);
+  const a27 = brazilLeagueDates('bra-1', 2027, 38)!;
+  assert.ok(a27.some((d) => d > '2027-06-01' && d < '2027-07-21'), 'sem Copa do Mundo, sem pausa');
+  const b = brazilLeagueDates('bra-2', 2026, 38)!;
+  assert.deepEqual([b[0], b[37], new Set(b).size], ['2026-03-21', '2026-11-28', 38]);
+  assert.deepEqual(brazilStageDates('bra-serie-d', 'f1', 2026, 10, 96)!.map((d) => d.slice(5)), ['04-04', '04-11', '04-18', '04-25', '05-02', '05-09', '05-16', '05-23', '05-30', '06-13']);
+  assert.deepEqual(brazilStageDates('bra-serie-d', 'final', 2026, 2, 96), ['2026-09-05', '2026-09-12']);
+  assert.deepEqual(brazilStageDates('bra-serie-c', 'final', 2026, 2, 20), ['2026-10-17', '2026-10-24']);
+  assert.deepEqual(brazilStageDates('bra-serie-c', 'final', 2028, 2, 28), ['2028-10-03', '2028-10-10']);
+  for (const n of [19, 23, 26]) { const c = brazilStageDates('bra-serie-c', 'f1', 2026, n, 20)!; assert.deepEqual([c.length, new Set(c).size, c[0], c[n - 1]! <= '2026-08-29'], [n, n, '2026-04-04', true]); }
+  // sábados primeiro; quartas só quando faltam datas
+  const few = spreadDates(2026, '04-04', '05-30', 5);
+  assert.ok(few.every((d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 6));
+  const many = spreadDates(2026, '04-04', '05-30', 12);
+  assert.ok(many.some((d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 3) && new Set(many).size === 12);
+});
 
 test('Grupos regionais da Série D: 16 grupos de 6, no máximo 3 clubes do mesmo estado, em ordem geográfica', () => {
   const ufs = ['RJ', 'RJ', 'RJ', 'RJ', 'RJ', 'RJ', 'SP', 'SP', 'SP', 'SP', 'SP', 'AC', 'AC', 'AC'];
@@ -58,6 +81,13 @@ test('Séries C e D reais na carreira (base fixa): fases montadas conforme avan�
   assert.ok(n(db, 'SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND pens_winner IS NOT NULL', d) > 0, 'houve decisão por pênaltis');
   const oc = formatOutcomesOf(db, c)!, od = formatOutcomesOf(db, d)!;
   assert.deepEqual([oc.complete, oc.promoted.length, oc.relegated.length, od.complete, od.promoted.length], [true, 4, 2, true, 6]);
+  // calendário: nenhum clube brasileiro joga duas vezes com menos de 3 dias de intervalo (todas as competições); Série D nas datas oficiais
+  const close = n(db, `WITH m AS (SELECT home_club_id c, match_date d FROM fixtures f JOIN competitions k ON k.id = f.competition_id WHERE k.country_id = 'bra'
+    UNION ALL SELECT away_club_id, match_date FROM fixtures f JOIN competitions k ON k.id = f.competition_id WHERE k.country_id = 'bra')
+    SELECT COUNT(*) AS n FROM m a JOIN m b ON a.c = b.c AND b.d > a.d AND julianday(b.d) - julianday(a.d) < 3`);
+  assert.equal(close, 0, 'jogos com menos de 3 dias de intervalo');
+  assert.deepEqual({ ...db.prepare('SELECT MIN(match_date) AS a, MAX(match_date) AS b FROM fixtures WHERE competition_id = ?').get(d) }, { a: '2026-04-04', b: '2026-09-12' });
+  assert.equal(String(db.prepare("SELECT MIN(match_date) AS a FROM fixtures WHERE competition_id = 'cmp_bra-1_2026'").get()!.a), '2026-01-28');
   // virada: Série C com 24 (20 − 4 + 4 − 2 + 6); Série D remontada com 96; os rebaixados da C estão nela; quem sobe da D está na C
   startNextSeason(db);
   assert.deepEqual(['bra-1', 'bra-2', 'bra-3', 'bra-4'].map((l) => leagueCount(db, l)), [20, 20, 24, 96]);

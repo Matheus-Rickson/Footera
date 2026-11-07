@@ -91,7 +91,11 @@ vão para o grupo "sem divisão" do estado e sobem, no lugar deles, os clubes se
    estaduais: os clubes de melhor reputação da elite estadual fora das Séries A–C — ADAPT), até 28 da D anterior (5º–32º) e o restante pela
    classificação da D e pela reputação; quem fica de fora vai para a "Sem divisão". Base real: Série C 2026 com 216 jogos e Série D com 610
    (como no regulamento). Datas ainda provisórias (um jogo por semana a partir do fim de janeiro: C até agosto, D até junho) — etapa 4.
-4. Calendário 2026 (Série A a partir de 28/01; estaduais nas datas livres; sem jogos com menos de 2 dias de intervalo) — pendente.
+4. **Calendário 2026** — feito para as séries nacionais (`game/career-engine/brazilCalendar.ts`, Brasil no ano civil): Série A de 28/01 a
+   02/12 com 18 rodadas até 31/05 e pausa da Copa do Mundo (só em anos de Copa) até 22/07; Série B de 21/03 a 28/11; Série C com a 1ª fase
+   de 04/04 a 29/08, 2ª fase em setembro/outubro e final em outubro (âncoras da imprensa; rodadas distribuídas aos sábados, quartas quando
+   faltam datas — ADAPT); Série D nas datas da tabela básica oficial (05/04 a 13/09, REG). Base real: nenhum clube joga duas vezes com
+   menos de 3 dias de intervalo numa temporada inteira (todas as competições). Os estaduais entram nas datas livres na etapa 5.
 5. Estaduais completos (finanças, diretoria, troféus, telas) — pendente.
 
 ## Fontes

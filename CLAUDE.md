@@ -58,6 +58,6 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   líderes com jogos sem sofrer gols — migração 020 —, jogos da rodada) e botão Continuar (`continueDay`, caixa de tempo que para no jogo do
   clube e em decisões); ficha completa do clube, Visão geral no esboço e conversas/promessas com jogadores e diretoria (migração 021,
   `docs/PROMISES.md`). **Estaduais e Séries C/D reais** (`docs/ESTADUAIS.md`): etapa 1 (motor de formatos, `game/format-engine`)
-  commitada (`5cc0f4f`); etapa 2 (estados, "Sem divisão", base 1.1.0 com +299 clubes, Copa do Brasil de 126) commitada (`0d6bdca`); etapa 3 (Séries C e D em fases no jogo, Série D remontada na virada, migração 023) sem commit. Continentais e Rússia depois.
+  commitada (`5cc0f4f`); etapa 2 (estados, "Sem divisão", base 1.1.0 com +299 clubes, Copa do Brasil de 126) commitada (`0d6bdca`); etapa 3 (Séries C e D em fases no jogo, Série D remontada na virada, migração 023) commitada (`bfb5923`); etapa 4 (calendário 2026 das séries, `brazilCalendar.ts`) sem commit. Continentais e Rússia depois.
   Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

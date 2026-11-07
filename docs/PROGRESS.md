@@ -1085,3 +1085,12 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     sobrevivente na primeira rodada — desempate na partida completa — passou a ser detectada com a Série D lance a lance no teste).
   - Pendente: telas das fases (grupos da D, mata-mata) em Competições (etapa 5); datas do calendário 2026 (etapa 4); vagas da D pelos
     estaduais (etapa 5). Telas NÃO verificadas no Electron.
+- **Estaduais — etapa 4: calendário 2026 das séries nacionais (pedido do usuário, 07/11/2026; sem commit):**
+  - `brazilCalendar.ts` (puro): `brazilLeagueDates` (A e B), `brazilStageDates` (fases da C e da D), `spreadDates` (sábados, quartas quando
+    faltam datas, última rodada na data final quando é dia de jogo), `worldCupYear`. Aplicado na criação das ligas e na montagem das fases
+    quando o Brasil está no ano civil; se a data prevista de uma fase já passou, uma rodada por semana a partir da data mínima.
+  - Base real (temporada simulada): A 28/01–02/12, B 21/03–28/11, C 04/04–24/10, D 04/04–12/09, Copa do Brasil 18/02–06/12; 0 pares de
+    jogos do mesmo clube com menos de 3 dias.
+  - Testes: calendário puro e intervalo mínimo no `series-cd.test.ts`; `calendar-year.test.ts` ajustado (Série A começa em 28/01).
+    Mutação 5/5. 284 testes. Fontes das datas: tabela básica da Série D (CBF); âncoras das Séries A, B e C pela imprensa (PDF da tabela
+    básica da Série A não obtido).

@@ -62,7 +62,7 @@ test('Clube de ano civil: a carreira começa em 1º/jan/2026 com as divisões da
   for (const c of w.clubs.filter((x) => x.countryId === bra)) assert.equal(String(db.prepare('SELECT league_id FROM clubs WHERE id = ?').get(c.id)!.league_id), c.leagueId, `divisão da base: ${c.id}`);
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.country_id = ? AND f.status = 'played'", bra), 0);
   const firstLeague = String(db.prepare("SELECT MIN(f.match_date) AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.country_id = ? AND c.season = 2026 AND c.kind = 'league'").get(bra)!.d);
-  assert.ok(firstLeague >= '2026-01-31' && firstLeague <= '2026-02-06', `liga começa depois da pré-temporada (${firstLeague})`);
+  assert.equal(firstLeague, '2026-01-28', 'Série A no calendário brasileiro de 2026 (começa em 28/01; estaduais nas datas livres)');
   // países de julho: temporada 2025/26 normal (ida e volta), com o 1º turno disputado e nada pendente antes de hoje
   for (const cs of allCountrySeasons(db).filter((x) => x.countryId !== bra)) {
     assert.deepEqual([cs.season, cs.starts, cs.turnover, cs.transition, cs.label], [2025, '2025-07-01', '2026-07-01', false, '2025/26']);
