@@ -84,7 +84,7 @@ export function leagueSituation(db: SqlDb, clubId: string, season: number): Leag
  * esperada pela reputação entre os participantes; "acesso" = os promovidos da A2 e "rebaixamento" = os rebaixados do formato.
  */
 function estadualSituation(db: SqlDb, clubId: string): LeagueSituation | null {
-  const e = db.prepare(`SELECT c.id FROM competitions c WHERE c.kind = 'state' AND ${CURRENT_COMP}
+  const e = db.prepare(`SELECT c.id FROM competitions c WHERE c.kind = 'state' AND c.id LIKE 'est\\_%' ESCAPE '\\' AND ${CURRENT_COMP}
     AND c.id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1`).get(clubId, clubId);
   if (!e) return null;
   const fs = formatStateOf(db, S(e.id));

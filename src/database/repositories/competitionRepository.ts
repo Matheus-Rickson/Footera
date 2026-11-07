@@ -3,7 +3,7 @@ import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { DEFAULT_CALENDAR, firstMatchday, scheduleLeague } from '../../game/competition-engine/schedule.ts';
 import { leagueFormat } from '../../game/format-engine/formats.ts';
-import { brazilCalendar, createEstaduais, createFormatCompetition } from './formatRepository.ts';
+import { brazilCalendar, createCopasEstaduais, createEstaduais, createFormatCompetition, createRegionais } from './formatRepository.ts';
 import { brazilLeagueDates } from '../../game/career-engine/brazilCalendar.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
 import { addDays, daysBetween } from '../../shared/date.ts';
@@ -95,7 +95,7 @@ function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
     created++;
   }
   // estaduais (Brasil): antes das copas, para a Copa do Brasil evitar as datas deles
-  if (created > 0) createEstaduais(db, cs.countryId, cs.season);
+  if (created > 0) { createEstaduais(db, cs.countryId, cs.season); createRegionais(db, cs.countryId, cs.season); createCopasEstaduais(db, cs.countryId, cs.season); }
   // copas e supercopa: depois da liga (as datas evitam os jogos da liga); só numa temporada nova (saves antigos: saveService, com data mínima)
   if (created > 0) { createCups(db, { countryId: cs.countryId }); createSupercup(db, cs.countryId); }
   return created;
@@ -157,12 +157,13 @@ export function listCompetitions(db: SqlDb): { userCompetitionId: string | null;
   const states = db.prepare(`SELECT c.id, c.name, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.seeds'))) AS n,
       EXISTS (SELECT 1 FROM fixtures f WHERE f.competition_id = c.id AND (f.home_club_id = ? OR f.away_club_id = ?)) AS mine
       FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'state' AND ${CURRENT_COMP} ORDER BY mine DESC, c.name`).all(st.clubId, st.clubId)
-    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'state' as const, staged: true, mine: N(r.mine) === 1 }));
+    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'state' as const, staged: true,
+      scope: (S(r.id).startsWith('reg_') ? 'regional' : S(r.id).startsWith('cest_') ? 'copa' : 'estadual') as 'estadual' | 'regional' | 'copa', mine: N(r.mine) === 1 }));
   competitions.push(...states.map(({ mine: _m, ...c }) => c));
   const mine = db.prepare(
     `SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND cl.id = ?`).get(st.clubId);
   // clube sem divisão: abre no estadual dele
-  return { userCompetitionId: mine ? S(mine.id) : states.find((x) => x.mine)?.id ?? null, competitions };
+  return { userCompetitionId: mine ? S(mine.id) : states.find((x) => x.mine && x.scope === 'estadual')?.id ?? states.find((x) => x.mine)?.id ?? null, competitions };
 }
 
 function zoneFor(position: number, total: number, rules: LeagueRules): TableZone {

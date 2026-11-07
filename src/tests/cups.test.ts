@@ -238,8 +238,13 @@ test('Base real na criação da carreira: 14 copas sorteadas; folgas da 1ª fase
     if (byes.length) { checkedByes++; assert.ok(Math.max(...byes) < Math.min(...play), `${state.format.name}: folgas para os melhores`); }
     const st = state.format.stages[first]!;
     for (const t of ties.filter((x) => x.club_b != null)) {
-      const games = db.prepare('SELECT home_club_id, away_club_id, neutral, match_date FROM fixtures WHERE tie_id = ? ORDER BY leg').all(String(t.id));
-      assert.ok(games.every((g) => !leagueDates.has(`${String(c.country_id)}|${String(g.match_date)}`)), 'não coincide com a liga');
+      const games = db.prepare('SELECT id, home_club_id, away_club_id, neutral, match_date FROM fixtures WHERE tie_id = ? ORDER BY leg').all(String(t.id));
+      // nenhum dos dois clubes tem outro jogo a menos de 3 dias (liga, estadual, regional); o Brasil usa as quartas da Série A durante os
+      // estaduais porque ela só entra na 5ª fase
+      for (const g of games) for (const club of [g.home_club_id, g.away_club_id]) {
+        assert.equal(n(db, 'SELECT COUNT(*) AS n FROM fixtures WHERE id <> ? AND (home_club_id = ? OR away_club_id = ?) AND ABS(julianday(match_date) - julianday(?)) < 3', g.id, club, club, g.match_date), 0, `${state.format.name}: ${String(club)} sem outro jogo perto de ${String(g.match_date)}`);
+      }
+      void leagueDates;
       const decisive = games.at(-1)!;
       if (st.host === 'neutral') assert.equal(Number(decisive.neutral), 1);
       if (st.host === 'lower' && tierOf.get(String(t.club_a)) !== tierOf.get(String(t.club_b))) {

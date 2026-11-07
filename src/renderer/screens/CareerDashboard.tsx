@@ -139,7 +139,11 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>
-            <span className="date-pill"><CalendarDays size={14} aria-hidden="true" />Temporada {summary.seasonLabel} · {fmtWeekday(summary.gameDate)} {fmtDate(summary.gameDate)}</span>
+            <span className="date-pill" aria-label={`Hoje: ${fmtWeekday(summary.gameDate)}, ${fmtDate(summary.gameDate)}. Temporada ${summary.seasonLabel}`}>
+              <span className="dpill-icon"><CalendarDays size={18} aria-hidden="true" /></span>
+              <span className="dpill-day"><small>{fmtWeekday(summary.gameDate)}</small><b>{fmtDate(summary.gameDate)}</b></span>
+              <span className="dpill-season"><small>Temporada</small><b>{summary.seasonLabel}</b></span>
+            </span>
           </div>
           <div className="row">
             {season.canStart ? (

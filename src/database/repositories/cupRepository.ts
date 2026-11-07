@@ -8,7 +8,7 @@
  */
 import type { SqlDb } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
-import type { CupFormat } from '../../game/cup-engine/formats.ts';
+import { copaDoBrasilFormat, type CupFormat } from '../../game/cup-engine/formats.ts';
 import { defaultCups, resolveCup, resolveSupercup } from '../../game/cup-engine/catalog.ts';
 import type { WorldCup } from '../../shared/types.ts';
 import { cupDates, cupPrizes, drawPairs, entryStages, hostOf, planByes, rankCupClubs, type CupClub, type CupPrizeTable } from '../../game/cup-engine/bracket.ts';
@@ -22,6 +22,7 @@ import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.
 import { supercupEntrants, supercupFormat, type SupercupInputs } from '../../game/cup-engine/supercups.ts';
 import { addDays } from '../../shared/date.ts';
 import { estadualPool } from '../../game/career-engine/brazilCalendar.ts';
+import { copaDoBrasilOrder, regionalPool } from './formatRepository.ts';
 import { ESTADUAIS } from '../../game/format-engine/formats.ts';
 import { formatRounds } from '../../game/format-engine/engine.ts';
 
@@ -68,26 +69,34 @@ export function createCups(db: SqlDb, opts: { countryId?: string; notBefore?: st
     if (cs.transition) continue; // torneio de transição: só a liga
     const season = cs.season, start = cs.start;
     const def = cupDefOf(db, S(co.id), S(co.code), 'cup');
-    const format = def ? resolveCup(def, S(co.code)) : null;
+    let format = def ? resolveCup(def, S(co.code)) : null;
     if (!format) continue;
     const compId = `cup_${S(co.id)}_${season}`;
     if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;
     const prev = new Map(db.prepare('SELECT club_id, position FROM season_results WHERE season = ?').all(season - 1).map((r) => [S(r.club_id), N(r.position)]));
     const clubs = db.prepare('SELECT c.id, c.reputation, l.tier FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? ORDER BY c.id').all(S(co.id))
       .map((r) => ({ id: S(r.id), tier: N(r.tier), reputation: N(r.reputation), prevPosition: prev.get(S(r.id)) ?? null }));
-    const ranked = rankCupClubs(clubs);
+    let ranked = rankCupClubs(clubs);
+    // Copa do Brasil pelos critérios reais (Série A, campeões do ano anterior, vagas das federações pelos estaduais): reordena o ranking
+    // para as faixas de entrada do formato; com 6 campeões (2027 em diante), as faixas mudam
+    const cdb = S(co.code) === 'BRA' && (def?.stagesFrom ?? 'BRA') === 'BRA' ? copaDoBrasilOrder(db, S(co.id), season, ranked) : null;
+    if (cdb) { ranked = cdb.ranked; format = copaDoBrasilFormat(format, cdb.champions); }
     const entry = entryStages(format, ranked);
     const entrants = format.stages.map((_, i) => [...entry.values()].filter((s) => s === i).length);
     if (entry.size < 2) continue;
     let plan: ReturnType<typeof planByes>, dates: string[][];
     try {
       plan = planByes(format, entrants);
-      const avoid = new Set(db.prepare(`SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id
-        WHERE c.season = ? AND c.kind = 'league' AND c.country_id = ?`).all(season, S(co.id)).map((r) => S(r.d)));
+      // Brasil: as quartas da Série A durante os estaduais (até meados de março) não contam — a Série A só entra na 5ª fase
+      const aMidweekUntil = cdb ? addDays(estadualPool(season, 'sp-a1')[11]!, 4) : '';
+      const avoid = new Set(db.prepare(`SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id JOIN leagues l ON l.id = c.league_id
+        WHERE c.season = ? AND c.kind = 'league' AND c.country_id = ? AND NOT (l.tier = 1 AND f.match_date < ?)`).all(season, S(co.id), aMidweekUntil).map((r) => S(r.d)));
       // estaduais: todas as datas possíveis deles (as fases seguintes ainda não existem)
       for (const e of db.prepare("SELECT DISTINCT json_extract(format_json, '$.formatId') AS f FROM competitions WHERE kind = 'state' AND season = ? AND country_id = ?").all(season, S(co.id))) {
-        const def = ESTADUAIS.find((x) => x.id === S(e.f))?.format(season);
-        for (const d of estadualPool(season, S(e.f)).slice(0, def ? formatRounds(def) : 0)) avoid.add(d);
+        if (S(e.f).startsWith('reg_')) { for (const d of regionalPool(db, S(co.id), season).slice(0, 10)) avoid.add(d); continue; } // regionais: 10 quartas
+        const est = ESTADUAIS.find((x) => x.id === S(e.f));
+        if (!est || est.division === 2) continue; // segundas divisões (A2 de SP e RJ): clubes que não entram na Copa do Brasil pelo estadual
+        for (const d of estadualPool(season, S(e.f)).slice(0, formatRounds(est.format(season)))) avoid.add(d);
       }
       dates = cupDates(format, season, avoid, start);
     } catch { continue; } // formato que não fecha com os clubes do universo (pacote): o país fica sem copa nesta temporada

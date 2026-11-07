@@ -377,7 +377,9 @@ export function leagueFormat(leagueId: string, clubs: number): FormatDef | null 
 export function formatById(id: string, clubs: number, season = 2026): FormatDef | null {
   if (id === 'bra-serie-c') return leagueFormat('bra-3', clubs);
   if (id === 'bra-serie-d') return leagueFormat('bra-4', clubs);
-  const f = ESTADUAIS.find((e) => e.id === id)?.format(season) ?? null;
+  const reg = REGIONAIS.find((r) => r.id === id);
+  if (id.startsWith('cest_')) return clubs >= COPA_ESTADUAL_SIZE.min && clubs <= COPA_ESTADUAL_SIZE.max && clubs % 2 === 0 ? copaEstadual(id.slice(5).toUpperCase(), clubs) : clubs >= COPA_ESTADUAL_SIZE.min && clubs <= 8 ? copaEstadual(id.slice(5).toUpperCase(), clubs) : null;
+  const f = reg ? reg.format() : ESTADUAIS.find((e) => e.id === id)?.format(season) ?? null;
   return f && f.size === clubs ? f : null;
 }
 
@@ -413,4 +415,97 @@ export function regionalGroups(clubs: ReadonlyArray<{ id: string; state: string 
     if (!swapped) break; // impossível respeitar o limite (estado com clubes demais): fica como está
   }
   return out.map((x) => x.map((c) => c.id));
+}
+
+/** Vagas de cada federação na Copa do Brasil pelos estaduais (102; RNF 2026, Lance 22/12/2025). */
+export const COPA_DO_BRASIL_SPOTS: Readonly<Record<string, number>> = {
+  SP: 6, RJ: 6, MG: 5, RS: 5, PR: 5, SC: 4, BA: 4, PA: 4, CE: 4, PE: 4, AL: 4, MT: 4, AM: 4, GO: 4,
+  SE: 3, RN: 3, MA: 3, PB: 3, DF: 3, PI: 3, ES: 3, AC: 3, MS: 3, RR: 3, RO: 3, AP: 3, TO: 3,
+};
+
+// ---------------------------------------------------------------- copas regionais (docs/COPAS_REGIONAIS.md)
+
+/** Copa do Nordeste 2026 (SEC): 4 grupos de 5, A × B e C × D em turno único; quartas em jogo único; semifinais e final em ida e volta. */
+export function copaNordeste(): FormatDef {
+  return {
+    id: 'reg_ne', name: 'Copa do Nordeste', regulation: 'CBF — Copa do Nordeste 2026 (TNH1, Band)', source: { structure: 'SEC', tiebreak: 'ADAPT', national: 'SEC' }, size: 20, tiebreakers: TB,
+    stages: [
+      league('f1', 'Primeira fase', seeds(20), { groups: 4, assign: 'snake', play: 'cross', crossPairs: true }),
+      ko('qf', 'Quartas de final', [gp('f1', 0, 1), gp('f1', 2, 2), gp('f1', 1, 1), gp('f1', 3, 2), gp('f1', 2, 1), gp('f1', 0, 2), gp('f1', 3, 1), gp('f1', 1, 2)], { legs: 1, host: 'first' }),
+      ko('sf', 'Semifinal', Ws('qf', [0, 1, 2, 3])),
+      final2('sf'),
+    ],
+    champion: W('final', 0),
+  };
+}
+/**
+ * Copa Verde 2026 (REC): os 12 primeiros participantes são da Copa Norte (grupos A e B), os 12 seguintes da Copa Centro-Oeste (C e D);
+ * turno único dentro do grupo; quartas em jogo único (mando do 1º); final de cada bloco em ida e volta; final da Copa Verde entre os
+ * campeões dos blocos, em ida e volta.
+ */
+export function copaVerde(): FormatDef {
+  return {
+    id: 'reg_cv', name: 'Copa Verde', regulation: 'CBF — REC Copa Verde 2026 (Copa Norte e Copa Centro-Oeste)', source: { structure: 'REG', tiebreak: 'ADAPT', national: 'REG' }, size: 24, tiebreakers: TB,
+    stages: [
+      league('f1', 'Primeira fase', seeds(24), { groups: 4 }),
+      ko('qf', 'Quartas de final', [gp('f1', 0, 1), gp('f1', 1, 2), gp('f1', 1, 1), gp('f1', 0, 2), gp('f1', 2, 1), gp('f1', 3, 2), gp('f1', 3, 1), gp('f1', 2, 2)], { legs: 1, host: 'first' }),
+      ko('fn', 'Final da Copa Norte', [W('qf', 0), W('qf', 1)]),
+      ko('fco', 'Final da Copa Centro-Oeste', [W('qf', 2), W('qf', 3)]),
+      ko('final', 'Final da Copa Verde', [W('fn', 0), W('fco', 0)]),
+    ],
+    champion: W('final', 0),
+    titles: [{ name: 'Copa Norte', ref: W('fn', 0) }, { name: 'Copa Centro-Oeste', ref: W('fco', 0) }],
+  };
+}
+/** Copa Sul-Sudeste 2026 (REC): 2 grupos de 6 que se enfrentam em turno único; semifinal dentro do grupo (1º × 2º) e final em ida e volta. */
+export function copaSulSudeste(): FormatDef {
+  return {
+    id: 'reg_ss', name: 'Copa Sul-Sudeste', regulation: 'CBF — REC Copa Sul-Sudeste 2026', source: { structure: 'REG', tiebreak: 'ADAPT', national: 'REG' }, size: 12, tiebreakers: TB,
+    stages: [
+      league('f1', 'Primeira fase', seeds(12), { groups: 2, assign: 'snake', play: 'cross' }),
+      ko('sf', 'Semifinal', [gp('f1', A, 1), gp('f1', A, 2), gp('f1', B, 1), gp('f1', B, 2)], { host: 'first' }),
+      final2('sf'),
+    ],
+    champion: W('final', 0),
+  };
+}
+
+/** Copas regionais do Brasil: estados e vagas por estado (campeão, vice… do estadual do ano anterior). */
+export const REGIONAIS: ReadonlyArray<{ id: string; name: string; format: () => FormatDef; spots: Readonly<Record<string, number>>; blocks?: ReadonlyArray<readonly string[]> }> = [
+  { id: 'reg_ne', name: 'Copa do Nordeste', format: copaNordeste, spots: { BA: 3, CE: 3, AL: 2, MA: 2, PB: 2, PE: 2, PI: 2, RN: 2, SE: 2 } },
+  // Copa Verde: campeão dos 12 estados, vice de 10 (não AP e MS) e mais um da federação mais bem ranqueada de cada bloco (PA e GO)
+  { id: 'reg_cv', name: 'Copa Verde', format: copaVerde, spots: { PA: 3, AM: 2, AC: 2, RO: 2, RR: 2, AP: 1, GO: 3, DF: 2, ES: 2, MT: 2, TO: 2, MS: 1 },
+    blocks: [['PA', 'AM', 'AC', 'RO', 'RR', 'AP'], ['GO', 'DF', 'ES', 'MT', 'TO', 'MS']] },
+  { id: 'reg_ss', name: 'Copa Sul-Sudeste', format: copaSulSudeste, spots: { SP: 2, RJ: 2, MG: 2, RS: 2, PR: 2, SC: 2 } },
+];
+
+// ---------------------------------------------------------------- copas estaduais do 2º semestre (torneios seletivos)
+
+/** Nomes reais das copas estaduais conhecidas (docs/COPAS_REGIONAIS.md); nos demais estados, "Copa <estado>". */
+export const COPA_ESTADUAL_NOMES: Readonly<Record<string, string>> = {
+  SP: 'Copa Paulista', RJ: 'Copa Rio', RS: 'Copa FGF', SC: 'Copa Santa Catarina', BA: 'Copa Governador do Estado da Bahia', AL: 'Copa Alagoas',
+  ES: 'Copa Espírito Santo', SE: 'Copa Governo do Estado de Sergipe', MS: 'Copa MS', CE: 'Copa Fares Lopes', PB: 'Copa Paraíba',
+};
+/** O que o campeão da copa estadual ganha no ano seguinte: uma vaga do estado na Série D (ES, SE) ou a última vaga na Copa do Brasil. */
+export const copaEstadualPrize = (uf: string): 'serie-d' | 'copa-do-brasil' => (uf === 'ES' || uf === 'SE' ? 'serie-d' : 'copa-do-brasil');
+/** Participantes de uma copa estadual: mínimo e máximo. */
+export const COPA_ESTADUAL_SIZE = { min: 4, max: 16 } as const;
+
+/**
+ * Copa estadual do 2º semestre (ADAPT — formatos não encontrados): até 8 clubes, turno único e final em ida e volta entre os 2 primeiros;
+ * de 9 a 16, 2 grupos (serpentina) em turno único, semifinais cruzadas (1º × 2º do outro grupo) e final em ida e volta.
+ */
+export function copaEstadual(uf: string, n: number): FormatDef {
+  const id = `cest_${uf.toLowerCase()}`, name = COPA_ESTADUAL_NOMES[uf] ?? `Copa ${uf}`;
+  const source = { structure: 'ADAPT', tiebreak: 'ADAPT', national: uf === 'BA' || uf === 'AL' || uf === 'ES' || uf === 'SE' || uf === 'MS' ? 'SEC' : 'ADAPT' } as const;
+  if (n <= 8) {
+    return { id, name, regulation: 'Copa estadual do 2º semestre (formato adaptado)', source, size: n, tiebreakers: TB,
+      stages: [league('f1', 'Primeira fase', seeds(n)), ko('final', 'Final', [pos('f1', 1), pos('f1', 2)], { host: 'first' })], champion: W('final', 0) };
+  }
+  return { id, name, regulation: 'Copa estadual do 2º semestre (formato adaptado)', source, size: n, tiebreakers: TB,
+    stages: [
+      league('f1', 'Primeira fase', seeds(n), { groups: 2, assign: 'snake' }),
+      ko('sf', 'Semifinal', [gp('f1', A, 1), gp('f1', B, 2), gp('f1', B, 1), gp('f1', A, 2)], { host: 'first' }),
+      final2('sf'),
+    ], champion: W('final', 0) };
 }

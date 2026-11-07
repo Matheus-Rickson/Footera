@@ -1108,3 +1108,14 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - Telas NÃO verificadas no Electron (Competições com estaduais, visão por fases, "Ver fases").
   - Escolha do clube (pedido do usuário): painel com o estado e o estadual ("SP · Campeonato Paulista (elite)", "fora do estadual" para a
     reserva), estado na lista e filtro "Estado". Clubes de reserva continuam jogáveis (terão calendário com as copas estaduais da etapa 6).
+- **Etapa 6: Copa do Brasil pelos estaduais, copas regionais e copas estaduais (pedido do usuário, 07/11/2026):** ver
+  `docs/COPAS_REGIONAIS.md` (levantamento: REC Copa Verde e REC Copa Sul-Sudeste lidos; Copa do Nordeste, vagas da Copa do Brasil e copas
+  estaduais por fontes secundárias; o resto ADAPT).
+  - Correções no caminho: o id do formato da Copa do Brasil é o do cadastro (`cupDefId`), não "bra" — a seleção por critérios não estava
+    ativa no primeiro teste (os campeões entravam por reputação); com 128 clubes a conta das fases não fechava (o motor de copas punha todos
+    na mesma fase): 1ª fase com 36 em 2027; a Copa do Brasil começava em agosto por evitar datas demais.
+  - Testes no `series-cd.test.ts` (regionais: vagas por estado, datas, títulos, Copa do Nordeste em pares; copas estaduais; Copa do Brasil
+    2027: 128, 6 campeões na 3ª fase, vagas por federação pela classificação do estadual; copa estadual → Copa do Brasil e Série D) e
+    `states.test.ts`; o teste das copas passou a conferir, por clube, que não há outro jogo a menos de 3 dias. Mutação 7/7 (três
+    sobreviventes na primeira rodada — pares da Copa do Nordeste, campeões na 3ª fase, vagas pela classificação — passaram a ser detectadas).
+  - Verificado pelo usuário: Séries C e D por fases em Competições; calendário com o nome da competição (estadual/regional/copa estadual) no lugar de "Liga". Data do topo redesenhada (ícone, data em destaque, temporada à parte). Grupos novos de copas em Competições ainda não verificados.

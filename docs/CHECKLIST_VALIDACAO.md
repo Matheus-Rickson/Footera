@@ -344,6 +344,12 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Clube sem divisão (elite do estadual): a carreira tem jogos; Competições abre no estadual; Diretoria com objetivo do estadual.
 - [ ] Virada para 2027: rebaixados do estadual saem (SP: para a A2), promovidos da A2 sobem; a Série D tem os melhores do estadual fora das séries.
 
+## 13z. Copa do Brasil, regionais e copas estaduais
+- [ ] Competições → "Copas regionais": Copa do Nordeste (20), Copa Verde (24, títulos Copa Norte e Copa Centro-Oeste), Copa Sul-Sudeste (12), de abril a junho.
+- [ ] Competições → "Copas estaduais": uma por estado no 2º semestre (domingos); um clube de reserva tem jogos nela.
+- [ ] Copa do Brasil: 1ª fase em fevereiro; em 2027, os campeões de 2026 (Séries C e D e regionais) na 3ª fase.
+- [ ] Com um clube sem divisão: ser campeão da copa estadual do seu estado dá vaga na Copa do Brasil do ano seguinte (ES e SE: Série D).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

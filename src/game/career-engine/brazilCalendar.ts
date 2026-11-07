@@ -48,6 +48,8 @@ export function spreadDates(year: number, from: string, to: string, n: number, f
  * abril a agosto, às quartas. Cada fase usa as próximas datas livres da lista a partir do dia mínimo.
  */
 export function estadualPool(year: number, id: string): IsoDate[] {
+  // copas estaduais do 2º semestre: domingos a partir de agosto (os clubes sem divisão nacional não têm outros jogos)
+  if (id.startsWith('cest_')) { const out: IsoDate[] = []; for (let d = nextWeekdayOnOrAfter(`${year}-08-02`, 0); out.length < 30; d = addDays(d, 7)) out.push(d); return out; }
   if (id === 'rj-a2') { const out: IsoDate[] = []; for (let d = nextWeekdayOnOrAfter(`${year}-04-29`, WED); out.length < 40; d = addDays(d, 7)) out.push(d); return out; }
   const s0 = nextWeekdayOnOrAfter(`${year}-01-10`, SAT);
   const out: IsoDate[] = [s0, addDays(s0, 4), addDays(s0, 8), addDays(s0, 11), addDays(s0, 15)];

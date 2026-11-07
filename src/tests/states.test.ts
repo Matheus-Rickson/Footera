@@ -102,7 +102,9 @@ test('Base real: a escolha do clube lista os sem divisão do Brasil e uma carrei
   assert.equal(String(db.prepare("SELECT sim_level AS s FROM leagues WHERE id = 'bra-sd'").get()!.s), 'full', 'a divisão do clube escolhido é sempre completa');
   // o clube joga o estadual: Competições lista os 29 estaduais e abre no dele; ele tem jogos marcados
   const comps = listCompetitions(db);
-  assert.equal(comps.competitions.filter((c) => c.kind === 'state').length, 29);
+  assert.equal(comps.competitions.filter((c) => c.scope === 'estadual').length, 29);
+  assert.equal(comps.competitions.filter((c) => c.scope === 'regional').length, 3);
+  assert.ok(comps.competitions.filter((c) => c.scope === 'copa').length > 20, 'copas estaduais do 2º semestre');
   const mine = comps.competitions.find((c) => c.id === comps.userCompetitionId)!;
   assert.equal(mine.kind, 'state');
   assert.ok(Number(db.prepare('SELECT COUNT(*) AS n FROM fixtures WHERE home_club_id = ? OR away_club_id = ?').get(pick.id, pick.id)!.n) > 0, 'clube sem divisão com jogos (estadual)');

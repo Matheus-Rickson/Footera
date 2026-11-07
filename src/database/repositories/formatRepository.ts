@@ -10,7 +10,7 @@ import {
   buildableStages, buildStage, deciderFor, finalRanking, formatComplete, outcomes, stageEntrants, stageOf, stageTables, tieOutcome,
   type FormatDef, type FormatState, type FxResult, type StageState,
 } from '../../game/format-engine/engine.ts';
-import { ESTADUAIS, formatById, regionalGroups, SERIE_D_SPOTS } from '../../game/format-engine/formats.ts';
+import { COPA_DO_BRASIL_SPOTS, COPA_ESTADUAL_NOMES, COPA_ESTADUAL_SIZE, copaEstadual, copaEstadualPrize, ESTADUAIS, formatById, REGIONAIS, regionalGroups, SERIE_D_SPOTS } from '../../game/format-engine/formats.ts';
 import type { MatchDecider } from '../../game/match-engine/types.ts';
 import { makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
@@ -91,8 +91,8 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
       const comp = db.prepare('SELECT season, country_id, kind FROM competitions WHERE id = ?').get(compId)!;
       const rounds = Math.max(...b.fixtures.map((f) => f.round));
       let planned = brazilCalendar(db, { countryId: S(comp.country_id) }) ? brazilStageDates(fs.meta.formatId, id, N(comp.season), rounds, fs.def.size) : null;
-      if (S(comp.kind) === 'state') { // estadual: as próximas datas da lista a partir do dia mínimo
-        const pool = estadualPool(N(comp.season), fs.meta.formatId), i = pool.findIndex((d) => d >= notBefore);
+      if (S(comp.kind) === 'state') { // estadual ou regional: as próximas datas da lista a partir do dia mínimo
+        const pool = fs.meta.formatId.startsWith('reg_') ? regionalPool(db, S(comp.country_id), N(comp.season)) : estadualPool(N(comp.season), fs.meta.formatId), i = pool.findIndex((d) => d >= notBefore);
         planned = i >= 0 && i + rounds <= pool.length ? pool.slice(i, i + rounds) : null;
       }
       const dateOf = (r: number) => (planned && planned[0]! >= notBefore ? planned[r - 1]! : addDays(first, (r - 1) * fs.meta.intervalDays));
@@ -183,8 +183,12 @@ export function rebuildSerieD(db: SqlDb, countryId: string, dLeague: string, ran
     const cand = clubs.filter((c) => S(c.state ?? '') === uf && !national.has(S(c.id)))
       .sort((a, b) => (rank.get(S(a.id)) ?? 999) - (rank.get(S(b.id)) ?? 999)
         || (a.state_division == null ? 9 : N(a.state_division)) - (b.state_division == null ? 9 : N(b.state_division)) || N(b.reputation) - N(a.reputation) || S(a.id).localeCompare(S(b.id)));
+    // ES e SE: a última vaga é do campeão da copa estadual da temporada (se não estiver nas Séries A–C nem já classificado)
+    const copa = copaEstadualPrize(uf) === 'serie-d' ? copaEstadualChampion(db, uf, season) : null;
+    const viaCopa = copa && !national.has(copa) && !next.includes(copa) ? copa : null;
     let taken = 0;
-    for (const c of cand) { if (taken >= spots) break; if (!next.includes(S(c.id))) { add(S(c.id)); taken++; } }
+    for (const c of cand) { if (taken >= spots - (viaCopa ? 1 : 0)) break; if (!next.includes(S(c.id)) && S(c.id) !== viaCopa) { add(S(c.id)); taken++; } }
+    if (viaCopa) add(viaCopa);
   }
   let fromD = 0;
   for (const id of ranking.slice(4, 32)) { if (fromD >= 28) break; if (!promoted.has(id) && !next.includes(id)) { add(id); fromD++; } }
@@ -220,10 +224,10 @@ export function createEstaduais(db: SqlDb, countryId: string, season: number): n
 }
 
 /**
- * Premiação dos estaduais (ADAPT — sem tabela oficial no levantamento): campeão = economia × 400 mil, vice = metade; na segunda divisão
- * (A2 de SP e RJ), metade disso. Em euros, pelo extrato (regra 1).
+ * Premiação dos estaduais, copas regionais e copas estaduais (ADAPT — sem tabela oficial no levantamento): campeão = economia × 400 mil,
+ * vice = metade; segunda divisão (A2 de SP e RJ) × 0,5; copa estadual × 0,25; copa regional × 1,5. Em euros, pelo extrato (regra 1).
  */
-export const ESTADUAL_PRIZE = { champion: 400_000, runnerUp: 200_000, secondDivision: 0.5 } as const;
+export const ESTADUAL_PRIZE = { champion: 400_000, runnerUp: 200_000, secondDivision: 0.5, stateCup: 0.25, regional: 1.5 } as const;
 
 /** Estadual encerrado: troféu do campeão, premiação de campeão e vice e notícia para o clube do usuário. NÃO abre transação. */
 function finishEstadual(db: SqlDb, compId: string, fs: NonNullable<ReturnType<typeof formatStateOf>>, date: string): void {
@@ -235,7 +239,8 @@ function finishEstadual(db: SqlDb, compId: string, fs: NonNullable<ReturnType<ty
   const user = getCareerState(db).clubId;
   db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(N(c.season), champ, compId, champ === user ? 1 : 0);
   const economy = N(db.prepare('SELECT economy FROM countries WHERE id = ?').get(S(c.country_id))!.economy);
-  const div = ESTADUAIS.find((e) => e.id === fs.meta.formatId)?.division === 2 ? ESTADUAL_PRIZE.secondDivision : 1;
+  const div = fs.meta.formatId.startsWith('cest_') ? ESTADUAL_PRIZE.stateCup : fs.meta.formatId.startsWith('reg_') ? ESTADUAL_PRIZE.regional
+    : ESTADUAIS.find((e) => e.id === fs.meta.formatId)?.division === 2 ? ESTADUAL_PRIZE.secondDivision : 1;
   const post = makePoster(db, user);
   const name = S(c.name);
   post(champ, date, 'prize', Math.round((economy * ESTADUAL_PRIZE.champion * div) / 1000) * 1000, `Premiação: campeão — ${name}`);
@@ -331,9 +336,157 @@ export function getStagedView(db: SqlDb, compId: string): StagedViewDto {
 
 /** Resultado do clube no estadual (concluído) da temporada: posição final, título, acesso (A2) e rebaixamento; null se não disputou. */
 export function estadualResultOf(db: SqlDb, clubId: string, season: number): { position: number; champion: boolean; promoted: boolean; relegated: boolean } | null {
-  const c = db.prepare("SELECT id FROM competitions WHERE kind = 'state' AND season = ? AND id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1").get(season, clubId, clubId);
+  const c = db.prepare("SELECT id FROM competitions WHERE kind = 'state' AND id LIKE 'est\\_%' ESCAPE '\\' AND season = ? AND id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1").get(season, clubId, clubId);
   if (!c) return null;
   const o = formatOutcomesOf(db, S(c.id));
   if (!o || !o.complete) return null;
   return { position: o.ranking.indexOf(clubId) + 1, champion: o.champion === clubId, promoted: o.promoted.includes(clubId), relegated: o.relegated.includes(clubId) };
+}
+
+/**
+ * Campeões do ano anterior que vão à 3ª fase da Copa do Brasil (critério 2), na ordem do regulamento: Séries C e D, Copa do Nordeste e Copa
+ * Verde (2026); de 2027 em diante, Copa Norte e Copa Centro-Oeste no lugar da Copa Verde, mais a Copa Sul-Sudeste.
+ */
+function copaDoBrasilChampions(db: SqlDb, season: number): string[] {
+  const p = season - 1;
+  const champ = (id: string) => { const o = formatOutcomesOf(db, id); return o?.complete ? o.champion : null; };
+  const title = (id: string, name: string) => { const o = formatOutcomesOf(db, id); return o?.complete ? o.titles.find((t) => t.name === name)?.club ?? null : null; };
+  const list = season <= 2026
+    ? [champ(`cmp_bra-3_${p}`), champ(`cmp_bra-4_${p}`), champ(`reg_ne_${p}`), champ(`reg_cv_${p}`)]
+    : [champ(`cmp_bra-3_${p}`), champ(`cmp_bra-4_${p}`), champ(`reg_ne_${p}`), title(`reg_cv_${p}`, 'Copa Norte'), title(`reg_cv_${p}`, 'Copa Centro-Oeste'), champ(`reg_ss_${p}`)];
+  return list.filter((c): c is string => !!c);
+}
+
+/**
+ * Participantes da Copa do Brasil pelos critérios (REC 2026; docs/COPAS_REGIONAIS.md), como uma ordem de ranking para as faixas de entrada:
+ * os 20 da Série A; os campeões do ano anterior (4 em 2026 — Série C, Série D, Copa do Nordeste, Copa Verde —, 6 a partir de 2027 com a
+ * Copa Norte, a Copa Centro-Oeste e a Copa Sul-Sudeste); e as vagas de cada federação (`COPA_DO_BRASIL_SPOTS`) pela classificação da elite
+ * do estadual do ano anterior. Sem histórico (primeira temporada), os campeões e as vagas saem do ranking do jogo. Clube já classificado
+ * por outro critério cede a vaga ao próximo. Só para o Brasil com estados; senão null.
+ */
+export function copaDoBrasilOrder(db: SqlDb, countryId: string, season: number, ranked: ReadonlyArray<{ id: string; tier: number; rank: number }>): { ranked: Array<{ id: string; tier: number; rank: number }>; champions: number } | null {
+  const co = db.prepare('SELECT code, states_json FROM countries WHERE id = ?').get(countryId);
+  if (!co || S(co.code) !== 'BRA' || co.states_json == null) return null;
+  const k = season >= 2027 ? 6 : 4;
+  const rankOf = new Map(ranked.map((c) => [c.id, c.rank]));
+  const taken = new Set<string>();
+  const serieA = ranked.filter((c) => c.tier === 1).map((c) => c.id);
+  serieA.forEach((id) => taken.add(id));
+  const champions: string[] = [];
+  for (const id of copaDoBrasilChampions(db, season)) if (!taken.has(id) && champions.length < k) { champions.push(id); taken.add(id); }
+  const states = new Map(db.prepare('SELECT id, state, state_division FROM clubs WHERE country_id = ?').all(countryId).map((r) => [S(r.id), { uf: r.state == null ? null : S(r.state), div: r.state_division == null ? 9 : N(r.state_division) }]));
+  const fed: string[] = [];
+  for (const [uf, spots] of Object.entries(COPA_DO_BRASIL_SPOTS)) {
+    const elite = ESTADUAIS.find((e) => e.uf === uf && e.division === 1);
+    const prev = elite ? formatOutcomesOf(db, `est_${elite.id}_${season - 1}`) : null;
+    const order = prev?.complete ? prev.ranking
+      : ranked.filter((c) => states.get(c.id)?.uf === uf).sort((a, b) => states.get(a.id)!.div - states.get(b.id)!.div || a.rank - b.rank).map((c) => c.id);
+    // a última vaga vai ao campeão da copa estadual do ano anterior (exceto ES e SE, cuja copa dá vaga na Série D), se ele ainda não tem vaga
+    const copa = copaEstadualPrize(uf) === 'copa-do-brasil' ? copaEstadualChampion(db, uf, season - 1) : null;
+    const viaCopa = copa && !taken.has(copa) ? copa : null;
+    let n = 0;
+    for (const id of order) { if (n >= spots - (viaCopa ? 1 : 0)) break; if (!taken.has(id) && id !== viaCopa) { fed.push(id); taken.add(id); n++; } }
+    if (viaCopa) { fed.push(viaCopa); taken.add(viaCopa); }
+  }
+  // campeões que faltaram (primeira temporada ou campeão já classificado): os mais bem ranqueados ainda fora, depois das federações
+  for (const c of ranked) { if (champions.length >= k) break; if (!taken.has(c.id)) { champions.push(c.id); taken.add(c.id); } }
+  const byRank = (a: string, b: string) => (rankOf.get(a) ?? 1e9) - (rankOf.get(b) ?? 1e9);
+  const order = [...serieA, ...champions, ...fed.sort(byRank), ...ranked.map((c) => c.id).filter((id) => !taken.has(id))];
+  const tierOf = new Map(ranked.map((c) => [c.id, c.tier]));
+  return { ranked: order.map((id, i) => ({ id, tier: tierOf.get(id) ?? 9, rank: i })), champions: k };
+}
+
+/**
+ * Datas das copas regionais: quartas-feiras a partir de 15/04, sem as quartas já usadas pelas ligas do país (as regionais começam depois
+ * dos estaduais mais longos; no real, 25/03 a 07/06 — ADAPT). Dez datas por copa; a lista traz folga.
+ */
+export function regionalPool(db: SqlDb, countryId: string, season: number): string[] {
+  const used = new Set(db.prepare("SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.kind = 'league' AND c.season = ? AND c.country_id = ?").all(season, countryId).map((r) => S(r.d)));
+  const out: string[] = [];
+  for (let d = nextWeekdayOnOrAfter(`${season}-04-15`, 3); out.length < 20; d = addDays(d, 7)) if (![-1, 0, 1, 2].some((k) => used.has(addDays(d, k)))) out.push(d);
+  return out;
+}
+
+/**
+ * Clubes "em competições Conmebol", que não jogam as regionais (ADAPT: o jogo ainda não tem continentais): os da Série A que terminaram a
+ * temporada anterior entre os 12 primeiros; na primeira temporada, os 12 de maior reputação da Série A.
+ */
+function conmebolClubs(db: SqlDb, countryId: string, season: number): Set<string> {
+  const prev = db.prepare(`SELECT r.club_id FROM season_results r JOIN competitions c ON c.id = r.competition_id JOIN leagues l ON l.id = c.league_id
+    WHERE c.country_id = ? AND l.tier = 1 AND l.active = 1 AND r.season = ? AND r.position <= 12`).all(countryId, season - 1).map((r) => S(r.club_id));
+  if (prev.length) return new Set(prev);
+  return new Set(db.prepare("SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND l.tier = 1 AND l.active = 1 ORDER BY c.reputation DESC, c.id LIMIT 12").all(countryId).map((r) => S(r.id)));
+}
+
+/** Classificação da elite do estadual do ano anterior (ou, sem ela, os clubes do estado pela divisão estadual, série e reputação). */
+function estadualOrder(db: SqlDb, countryId: string, uf: string, season: number): string[] {
+  const elite = ESTADUAIS.find((e) => e.uf === uf && e.division === 1);
+  const prev = elite ? formatOutcomesOf(db, `est_${elite.id}_${season - 1}`) : null;
+  if (prev?.complete) return prev.ranking;
+  return db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND c.state = ?
+    ORDER BY COALESCE(c.state_division, 9), (l.active = 0), l.tier, c.reputation DESC, c.id`).all(countryId, uf).map((r) => S(r.id));
+}
+
+/**
+ * Copas regionais da temporada (Copa do Nordeste, Copa Verde, Copa Sul-Sudeste): vagas por estado pela classificação do estadual do ano
+ * anterior, sem os clubes "em competições Conmebol". Copa Verde: os 12 da Copa Norte primeiro, divididos nos grupos A e B em serpentina,
+ * depois os 12 da Copa Centro-Oeste (C e D). Devolve quantas criou. NÃO abre transação.
+ */
+export function createRegionais(db: SqlDb, countryId: string, season: number): number {
+  const co = db.prepare('SELECT code, states_json FROM countries WHERE id = ?').get(countryId);
+  if (!co || S(co.code) !== 'BRA' || co.states_json == null) return 0;
+  const out = conmebolClubs(db, countryId, season);
+  const rep = new Map(db.prepare('SELECT id, reputation FROM clubs WHERE country_id = ?').all(countryId).map((r) => [S(r.id), N(r.reputation)]));
+  let created = 0;
+  for (const r of REGIONAIS) {
+    const compId = `${r.id}_${season}`;
+    if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;
+    const def = r.format();
+    const pick = (uf: string) => estadualOrder(db, countryId, uf, season).filter((id) => !out.has(id)).slice(0, r.spots[uf] ?? 0);
+    const byRep = (a: string, b: string) => (rep.get(b) ?? 0) - (rep.get(a) ?? 0) || a.localeCompare(b);
+    let seeds: string[];
+    if (r.blocks) {
+      seeds = [];
+      for (const block of r.blocks) {
+        const clubs = block.flatMap(pick).sort(byRep);
+        const ga: string[] = [], gb: string[] = [];
+        clubs.forEach((c, i) => ((i % 4 === 0 || i % 4 === 3) ? ga : gb).push(c));
+        seeds.push(...ga, ...gb);
+      }
+    } else seeds = Object.keys(r.spots).flatMap(pick).sort(byRep);
+    if (seeds.length !== def.size || new Set(seeds).size !== seeds.length) continue;
+    const pool = regionalPool(db, countryId, season);
+    createFormatCompetition(db, { compId, leagueId: null, countryId, season, name: `${r.name} ${season}`, def, seeds, start: pool[0]!, weekday: 3, intervalDays: 7 });
+    created++;
+  }
+  return created;
+}
+
+/** Campeão da copa estadual do 2º semestre de um estado numa temporada (null se não houve ou não terminou). */
+export function copaEstadualChampion(db: SqlDb, uf: string, season: number): string | null {
+  const o = formatOutcomesOf(db, `cest_${uf.toLowerCase()}_${season}`);
+  return o?.complete ? o.champion : null;
+}
+
+/**
+ * Copas estaduais do 2º semestre (ADAPT, docs/COPAS_REGIONAIS.md): em cada estado, os clubes sem divisão nacional (inclusive a reserva),
+ * do mais forte ao mais fraco, até 16 (número par a partir de 9); com menos de 4, não há copa. Domingos a partir de agosto.
+ * Devolve quantas criou. NÃO abre transação.
+ */
+export function createCopasEstaduais(db: SqlDb, countryId: string, season: number): number {
+  const co = db.prepare('SELECT code, states_json FROM countries WHERE id = ?').get(countryId);
+  if (!co || S(co.code) !== 'BRA' || co.states_json == null) return 0;
+  let created = 0;
+  for (const st of JSON.parse(S(co.states_json)) as Array<{ code: string; name: string }>) {
+    const compId = `cest_${st.code.toLowerCase()}_${season}`;
+    if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;
+    let clubs = db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND c.state = ? AND l.active = 0
+      ORDER BY COALESCE(c.state_division, 9), c.reputation DESC, c.id`).all(countryId, st.code).map((r) => S(r.id)).slice(0, COPA_ESTADUAL_SIZE.max);
+    if (clubs.length > 8 && clubs.length % 2 === 1) clubs = clubs.slice(0, -1);
+    if (clubs.length < COPA_ESTADUAL_SIZE.min) continue;
+    const def = copaEstadual(st.code, clubs.length), pool = estadualPool(season, def.id);
+    createFormatCompetition(db, { compId, leagueId: null, countryId, season, name: `${COPA_ESTADUAL_NOMES[st.code] ?? `Copa ${st.name}`} ${season}`, def: { ...def, name: COPA_ESTADUAL_NOMES[st.code] ?? `Copa ${st.name}` }, seeds: clubs, start: pool[0]!, weekday: 0, intervalDays: 7 });
+    created++;
+  }
+  return created;
 }

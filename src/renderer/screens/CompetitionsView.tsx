@@ -50,7 +50,9 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
         <optgroup label="Ligas">{comps.filter((c) => c.kind === 'league').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         <optgroup label="Copas nacionais">{comps.filter((c) => c.kind === 'cup' && !c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         {comps.some((c) => c.supercup) && <optgroup label="Supercopas">{comps.filter((c) => c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>}
-        {comps.some((c) => c.kind === 'state') && <optgroup label="Estaduais">{comps.filter((c) => c.kind === 'state').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
+        {comps.some((c) => c.scope === 'estadual') && <optgroup label="Estaduais">{comps.filter((c) => c.scope === 'estadual').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
+        {comps.some((c) => c.scope === 'regional') && <optgroup label="Copas regionais">{comps.filter((c) => c.scope === 'regional').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
+        {comps.some((c) => c.scope === 'copa') && <optgroup label="Copas estaduais">{comps.filter((c) => c.scope === 'copa').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
       </select>
     </label>
   );

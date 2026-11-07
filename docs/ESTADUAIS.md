@@ -111,7 +111,8 @@ vão para o grupo "sem divisão" do estado e sobem, no lugar deles, os clubes se
    - Telas: Competições lista os estaduais; visão por fases (abas, tabelas dos grupos, confrontos com ida/volta, agregado, pênaltis e
      vencedor; campeão, títulos paralelos, acessos e rebaixados); Séries C e D com o botão "Ver fases"; clube sem divisão abre no estadual.
    - Ainda ADAPT/pendente: cartões do estadual contam como os da liga (suspensão vale para a Série A); o playoff do penúltimo do Grupo X
-     com o vice da A2 carioca não é disputado; as vagas da Copa do Brasil (critério 3) ainda saem do ranking do jogo, não dos estaduais.
+     com o vice da A2 carioca não é disputado. As vagas da Copa do Brasil pelos estaduais, as copas regionais e as copas estaduais do 2º
+     semestre estão em `docs/COPAS_REGIONAIS.md` (etapa 6).
 
 ## Fontes
 - REC Série C 2026 e REC Série D 2026 (CBF; PDFs oficiais).

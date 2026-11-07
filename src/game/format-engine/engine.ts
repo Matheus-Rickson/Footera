@@ -34,6 +34,8 @@ export interface LeagueStage {
   /** within = só dentro do grupo; cross = só contra os outros grupos; pots = dentro do grupo + `crossGames` contra outros grupos */
   play: 'within' | 'cross' | 'pots';
   crossGames?: number;
+  /** cross: cada grupo só enfrenta o seu par (A × B, C × D…), como na Copa do Nordeste */
+  crossPairs?: boolean;
   legs: 1 | 2;
   /** pontos de bonificação no início da fase */
   bonus?: Array<{ ref: Ref; points: number }>;
@@ -234,8 +236,9 @@ function leagueFixtures(stage: LeagueStage, groups: string[][], rng: Rng): Fixtu
   }
   if (stage.play === 'cross' || stage.play === 'pots') {
     const cross: Array<[string, string]> = [];
-    for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) if (groupOf.get(teams[i]!) !== groupOf.get(teams[j]!)) cross.push([teams[i]!, teams[j]!]);
-    const want = stage.play === 'pots' ? stage.crossGames ?? 0 : teams.length - Math.max(...groups.map((g) => g.length));
+    const facing = (a: number, b: number) => a !== b && (!stage.crossPairs || Math.floor(a / 2) === Math.floor(b / 2));
+    for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) if (facing(groupOf.get(teams[i]!)!, groupOf.get(teams[j]!)!)) cross.push([teams[i]!, teams[j]!]);
+    const want = stage.play === 'pots' ? stage.crossGames ?? 0 : stage.crossPairs ? Math.max(...groups.map((g) => g.length)) : teams.length - Math.max(...groups.map((g) => g.length));
     if (want > 0) single = single.concat(matchingRounds(teams, cross, want, rng.fork('cross'), homes));
   }
   const rounds = stage.legs === 2 ? single.concat(single.map((r) => r.map(([h, a]) => [a, h] as [string, string]))) : single;
@@ -351,7 +354,7 @@ export function formatRounds(def: FormatDef): number {
     if (s.side) continue;
     if (s.kind === 'knockout') { total += s.legs; continue; }
     const n = s.entrants.length, g = n / s.groups;
-    const single = s.play === 'cross' ? n - g : s.play === 'pots' ? (g % 2 === 0 ? g - 1 : g) + (s.crossGames ?? 0) : g % 2 === 0 ? g - 1 : g;
+    const single = s.play === 'cross' ? (s.crossPairs ? g : n - g) : s.play === 'pots' ? (g % 2 === 0 ? g - 1 : g) + (s.crossGames ?? 0) : g % 2 === 0 ? g - 1 : g;
     total += single * s.legs;
   }
   return total;

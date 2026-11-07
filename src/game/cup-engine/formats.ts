@@ -290,3 +290,17 @@ export const CUP_FORMATS: CupFormat[] = [
 ];
 
 export const cupFormatFor = (countryCode: string): CupFormat | null => CUP_FORMATS.find((f) => f.countryCode === countryCode) ?? null;
+
+/**
+ * Copa do Brasil com `champions` vagas do critério 2 (4 em 2026, 6 de 2027 em diante — docs/COPAS_REGIONAIS.md): as faixas de entrada
+ * se deslocam (Série A na 5ª fase, campeões na 3ª, as vagas das federações na 2ª e as de pior ranking na 1ª: 28 em 2026, 36 com 6
+ * campeões, para a conta fechar sem folgas — fases de 2027 não publicadas, ADAPT).
+ */
+export function copaDoBrasilFormat(format: CupFormat, champions: number): CupFormat {
+  if (champions === 4) return format;
+  // 6 campeões (2027, ADAPT): 1ª fase com as 36 vagas de federação de pior ranking (→ 18), 2ª com as outras 66 (84 → 42), 3ª com os
+  // campeões (48 → 24), 4ª (24 → 12), 5ª com a Série A (32): a conta fecha sem folgas
+  const c = 20 + champions, first = champions === 6 ? 36 : 28;
+  const ranges: Record<string, [number, number]> = { '1ª fase': [c + 102 - first, c + 102], '2ª fase': [c, c + 102 - first], '3ª fase': [20, c], '5ª fase': [0, 20] };
+  return { ...format, regulation: `${format.regulation}; ${20 + champions + 102} clubes`, stages: format.stages.map((st) => (ranges[st.name] ? { ...st, enterRanks: ranges[st.name] } : st)) };
+}

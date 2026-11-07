@@ -159,9 +159,15 @@ table.pick tbody tr { cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--border);
 }
 .date-pill {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--border);
-  color: var(--text-muted); font-size: .84rem; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 12px; padding: 6px 14px 6px 6px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border-strong);
+  white-space: nowrap; line-height: 1.15;
 }
+.dpill-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; background: var(--primary-soft); color: var(--primary-text); }
+.dpill-day, .dpill-season { display: grid; gap: 1px; }
+.dpill-season { padding-left: 12px; border-left: 1px solid var(--border-strong); }
+.date-pill small { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+.date-pill b { font-size: 1.05rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.dpill-season b { font-size: .95rem; color: var(--text-muted); }
 
 /* ---------- indicadores ---------- */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
