@@ -6,7 +6,7 @@
  * versão nova (BASE_VERSION) e decisão explícita, porque patches feitos para a anterior podem deixar de funcionar.
  */
 export const BASE_ID = 'footera-base';
-export const BASE_VERSION = '1.0.0';
+export const BASE_VERSION = '1.1.0';
 /** semente usada UMA vez para gerar a base (`npm run pack -- build-base`); a carreira tem semente própria só para o acaso dos jogos */
 export const BASE_SEED = 'footera-base-1';
 export const BASE_NAME = 'FOOTERA — base fictícia';

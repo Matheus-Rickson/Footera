@@ -350,7 +350,24 @@ function CountryForm({ r, set, errors, isNew }: { r: Rec; set: (r: Rec) => void;
         <Field label="Temporada" help="Julho a junho (Europa) ou ano civil (janeiro a dezembro, com pré-temporada em janeiro: Brasil, Argentina, Irlanda). Quem escolhe um clube de ano civil começa a carreira em 01/01/2026, com os países de julho na metade da temporada 2025/26; quem escolhe um clube de julho começa em 01/07/2026, com os de ano civil na metade da temporada 2026. Os seis meses são simulados ao criar a carreira.">
           <select value={String(r.seasonStart ?? '07-01')} onChange={(e) => set({ ...r, seasonStart: e.target.value })}><option value="07-01">Julho a junho</option><option value="01-01">Ano civil (janeiro a dezembro)</option></select></Field>
       </fieldset>
+      <fieldset className="ed-section"><legend>Estados</legend>
+        <Field label="Estados com estadual" help="Um por linha, no formato SIGLA=Nome (ex.: SP=São Paulo). Os clubes do país escolhem o estado nesta lista; em branco, o país não tem estaduais." error={errors.states} wide>
+          <StatesIn r={r} set={set} /></Field>
+      </fieldset>
     </>
+  );
+}
+
+/** Estados do país em texto (SIGLA=Nome por linha); guarda o texto enquanto se digita e converte para a lista do pacote. */
+function StatesIn({ r, set }: { r: Rec; set: (r: Rec) => void }) {
+  const toText = (v: unknown) => (Array.isArray(v) ? (v as Array<{ code: string; name: string }>).map((s) => `${s.code}=${s.name}`).join('\n') : '');
+  const [text, setText] = useState(() => toText(r.states));
+  return (
+    <textarea className="ed-states" rows={6} value={text} onChange={(e) => {
+      setText(e.target.value);
+      const states = e.target.value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [code = '', ...name] = l.split('='); return { code: code.trim().toUpperCase(), name: name.join('=').trim() }; });
+      set({ ...r, states });
+    }} />
   );
 }
 
@@ -362,6 +379,8 @@ function LeagueForm({ r, set, errors, opts, isNew, logo }: { r: Rec; set: (r: Re
         <Field label="País" error={errors.country}>
           <select value={String(r.country ?? '')} disabled={!isNew} onChange={(e) => set({ ...r, country: e.target.value })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Divisão" help="1 = primeira divisão. As divisões de um país precisam ser 1, 2, 3… sem pular." error={errors.tier}><NumIn r={r} set={set} path="tier" min={1} max={10} /></Field>
+        <Field label="Disputada" help="Desmarcado = divisão sem jogos próprios (ex.: &quot;Sem divisão&quot; do Brasil, com os clubes fora das séries nacionais, que jogam só o estadual e sobem por ele).">
+          <label className="mf-check"><input type="checkbox" checked={r.active !== false} onChange={(e) => set({ ...r, active: e.target.checked })} />Tem jogos</label></Field>
       </fieldset>
       <fieldset className="ed-section"><legend>Regras</legend>
         <Field label="Sobem para a divisão de cima" help="Precisa ser igual ao número de rebaixados da divisão de cima."><NumIn r={r} set={set} path="rules.promotionSlots" min={0} max={10} /></Field>
@@ -378,6 +397,7 @@ function LeagueForm({ r, set, errors, opts, isNew, logo }: { r: Rec; set: (r: Re
 
 function ClubForm({ r, set, stadium, setStadium, errors, opts, images }: { r: Rec; set: (r: Rec) => void; stadium: Rec | null; setStadium: (s: Rec) => void; errors: Errors; opts: EditorOptionsDto; images: ReactNode }) {
   const leagues = opts.leagues.filter((l) => l.countryId === r.country).sort((a, b) => a.tier - b.tier);
+  const states = opts.countries.find((c) => c.id === r.country)?.states ?? [];
   return (
     <>
       <fieldset className="ed-section"><legend>Identificação</legend>
@@ -387,7 +407,11 @@ function ClubForm({ r, set, stadium, setStadium, errors, opts, images }: { r: Re
         <Field label="País" error={errors.country}>
           <select value={String(r.country ?? '')} onChange={(e) => set({ ...r, country: e.target.value, league: '' })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Liga" error={errors.league}>
-          <select value={String(r.league ?? '')} onChange={(e) => set({ ...r, league: e.target.value })}><option value="">Escolha…</option>{leagues.map((l) => <option key={l.id} value={l.id}>{l.tier}ª · {l.name}</option>)}</select></Field>
+          <select value={String(r.league ?? '')} onChange={(e) => set({ ...r, league: e.target.value })}><option value="">Escolha…</option>{leagues.map((l) => <option key={l.id} value={l.id}>{l.active ? `${l.tier}ª · ` : ''}{l.name}</option>)}</select></Field>
+        {states.length > 0 && <Field label="Estado" help="O estado define o estadual que o clube disputa." error={errors.state}>
+          <select value={String(r.state ?? '')} onChange={(e) => set({ ...r, state: e.target.value || null, ...(e.target.value ? {} : { stateDivision: null }) })}><option value="">Sem estado</option>{states.map((s) => <option key={s.code} value={s.code}>{s.code} · {s.name}</option>)}</select></Field>}
+        {states.length > 0 && <Field label="Divisão do estadual" help="Elite (1ª divisão do estadual) ou segunda divisão (SP e RJ). Fora: o clube fica na reserva do estado e sobe quando alguém cai.">
+          <select value={String(r.stateDivision ?? '')} disabled={!r.state} onChange={(e) => set({ ...r, stateDivision: e.target.value ? Number(e.target.value) : null })}><option value="">Fora do estadual</option><option value="1">Elite (1ª divisão)</option><option value="2">Segunda divisão</option></select></Field>}
       </fieldset>
       <fieldset className="ed-section"><legend>Porte</legend>
         <Field label="Reputação" help="1 a 100 (valor do motor; no jogo aparece em estrelas, de 0 a 5, de meia em meia: 10 pontos = meia estrela). Define a expectativa da diretoria e o nível dos jogadores gerados para completar o elenco." error={errors.reputation}>

@@ -15,17 +15,26 @@ export function saveWorld(db: SqlDb, w: World): void {
     const hasStart = db.prepare('PRAGMA table_info(countries)').all().some((r) => String(r.name) === 'season_start');
     const insCountry = db.prepare(hasStart ? 'INSERT INTO countries (id, code, name, economy, season_start) VALUES (?, ?, ?, ?, ?)' : 'INSERT INTO countries (id, code, name, economy) VALUES (?, ?, ?, ?)');
     for (const c of w.countries) insCountry.run(...[c.id, c.code, c.name, c.economy, ...(hasStart ? [c.seasonStart ?? '07-01'] : [])]);
+    // estados, divisão estadual e divisões inativas vêm da migração 22
+    const hasStates = db.prepare('PRAGMA table_info(clubs)').all().some((r) => String(r.name) === 'state');
+    if (hasStates) {
+      const upCountry = db.prepare('UPDATE countries SET states_json = ? WHERE id = ?');
+      for (const c of w.countries) if (c.states?.length) upCountry.run(JSON.stringify(c.states), c.id);
+    }
 
-    const insLeague = db.prepare('INSERT INTO leagues (id, country_id, name, tier, team_count, rules_json) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const l of w.leagues) insLeague.run(l.id, l.countryId, l.name, l.tier, l.teamCount, JSON.stringify(l.rules));
+    const insLeague = db.prepare(hasStates ? 'INSERT INTO leagues (id, country_id, name, tier, team_count, rules_json, active) VALUES (?, ?, ?, ?, ?, ?, ?)' : 'INSERT INTO leagues (id, country_id, name, tier, team_count, rules_json) VALUES (?, ?, ?, ?, ?, ?)');
+    // team_count tem CHECK >= 2 desde a migração 1; uma divisão sem jogos pode ter menos clubes (o valor só aparece nas competições de liga, que ela não tem)
+    for (const l of w.leagues) insLeague.run(...[l.id, l.countryId, l.name, l.tier, l.active === false ? Math.max(2, l.teamCount) : l.teamCount, JSON.stringify(l.rules), ...(hasStates ? [l.active === false ? 0 : 1] : [])]);
 
     const insStadium = db.prepare('INSERT INTO stadiums (id, name, city, capacity) VALUES (?, ?, ?, ?)');
     for (const s of w.stadiums) insStadium.run(s.id, s.name, s.city, s.capacity);
 
     const insClub = db.prepare(
       'INSERT INTO clubs (id, name, short_name, country_id, city, league_id, stadium_id, reputation, balance, fans, facilities_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+    const upClubState = hasStates ? db.prepare('UPDATE clubs SET state = ?, state_division = ? WHERE id = ?') : null;
     for (const c of w.clubs) {
       insClub.run(c.id, c.name, c.shortName, c.countryId, c.city, c.leagueId, c.stadiumId, c.reputation, c.balance, c.fans, JSON.stringify(c.facilities));
+      if (upClubState && c.state) upClubState.run(c.state, c.stateDivision ?? null, c.id);
     }
 
     const insPlayer = playerInserter(db);
@@ -64,10 +73,11 @@ export function loadWorld(db: SqlDb): World {
     return s(r.value);
   };
   const countries: Country[] = db.prepare('SELECT * FROM countries ORDER BY rowid').all()
-    .map((r) => ({ id: s(r.id), code: s(r.code), name: s(r.name), economy: n(r.economy), ...(r.season_start === '01-01' ? { seasonStart: '01-01' as const } : {}) }));
+    .map((r) => ({ id: s(r.id), code: s(r.code), name: s(r.name), economy: n(r.economy), ...(r.season_start === '01-01' ? { seasonStart: '01-01' as const } : {}),
+      ...(r.states_json ? { states: JSON.parse(s(r.states_json)) as Country['states'] } : {}) }));
   const leagues: League[] = db.prepare('SELECT * FROM leagues ORDER BY rowid').all().map((r) => ({
     id: s(r.id), countryId: s(r.country_id), name: s(r.name), tier: n(r.tier), teamCount: n(r.team_count),
-    rules: JSON.parse(s(r.rules_json)),
+    rules: JSON.parse(s(r.rules_json)), ...(r.active !== undefined && n(r.active) === 0 ? { active: false } : {}),
   }));
   const stadiums: Stadium[] = db.prepare('SELECT * FROM stadiums ORDER BY rowid').all()
     .map((r) => ({ id: s(r.id), name: s(r.name), city: s(r.city), capacity: n(r.capacity) }));
@@ -75,6 +85,7 @@ export function loadWorld(db: SqlDb): World {
     id: s(r.id), name: s(r.name), shortName: s(r.short_name), countryId: s(r.country_id), city: s(r.city),
     leagueId: s(r.league_id), stadiumId: s(r.stadium_id), reputation: n(r.reputation), balance: n(r.balance),
     fans: n(r.fans), facilities: JSON.parse(s(r.facilities_json)),
+    ...(r.state != null ? { state: s(r.state), ...(r.state_division != null ? { stateDivision: n(r.state_division) as 1 | 2 } : {}) } : {}),
   }));
   const players: Player[] = db.prepare('SELECT * FROM players ORDER BY rowid').all().map(rowToPlayer);
   // copas e supercopas gravadas (saves anteriores ao editor de copas não têm: ficam de fora, e a criação usa as padrão)

@@ -1337,3 +1337,5 @@ button.cs-title-btn:hover:not(:disabled) { background: none; color: var(--primar
 .nc-start > svg { flex: none; color: var(--info-text); margin-top: 2px; }
 .nc-start > div { display: grid; gap: 3px; font-size: .88rem; }
 .nc-start strong { color: var(--info-text); font-size: .95rem; }
+/* editor: estados do país */
+.ed-states { width: 100%; font-family: inherit; font-size: .85rem; resize: vertical; }

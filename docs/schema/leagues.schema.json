@@ -109,6 +109,9 @@
           }
         },
         "additionalProperties": false
+      },
+      "active": {
+        "type": "boolean"
       }
     },
     "required": [

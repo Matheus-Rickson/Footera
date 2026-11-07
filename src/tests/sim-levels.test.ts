@@ -116,11 +116,21 @@ test('Base fixa (data/base): 16 países com as divisões pedidas, válida, igual
   const { BASE_ID, BASE_VERSION } = await import('../game/data-pack/base.ts');
   const { world, applied } = baseUniverse();
   assert.deepEqual(applied, [`${BASE_ID}@${BASE_VERSION}`]);
-  const tiers = (code: string) => world.leagues.filter((l) => l.countryId === world.countries.find((c) => c.code === code)!.id).length;
+  const tiers = (code: string) => world.leagues.filter((l) => l.active !== false && l.countryId === world.countries.find((c) => c.code === code)!.id).length;
   assert.deepEqual(world.countries.map((c) => c.code).sort(), ['ARG', 'AUT', 'BEL', 'BRA', 'CRO', 'ENG', 'ESP', 'FRA', 'GER', 'IRL', 'ITA', 'JPN', 'MEX', 'NED', 'POR', 'RUS']);
   assert.equal(tiers('BRA'), 4); assert.equal(tiers('ENG'), 4); assert.equal(tiers('ESP'), 3); assert.equal(tiers('GER'), 3);
   for (const c of ['ITA', 'FRA', 'POR', 'NED', 'ARG', 'BEL', 'JPN', 'AUT', 'MEX', 'IRL', 'CRO', 'RUS']) assert.equal(tiers(c), 2, c);
   for (const c of world.clubs) assert.ok(world.players.filter((p) => p.clubId === c.id).length >= 22, c.id);
+  // base 1.1.0: Brasil com os 27 estados, Série D de 96 clubes e "Sem divisão" (inativa) com os clubes que disputam só o estadual
+  const bra = world.countries.find((c) => c.code === 'BRA')!;
+  assert.equal(bra.states?.length, 27);
+  const count = (id: string) => world.clubs.filter((c) => c.leagueId === id).length;
+  assert.deepEqual(['bra-1', 'bra-2', 'bra-3', 'bra-4'].map(count), [20, 20, 20, 96]);
+  assert.equal(world.leagues.find((l) => l.id === 'bra-sd')!.active, false);
+  assert.ok(count('bra-sd') > 150);
+  assert.ok(world.clubs.filter((c) => c.countryId === bra.id).every((c) => c.state && bra.states!.some((s) => s.code === c.state)), 'todo clube brasileiro tem estado');
+  const { ESTADUAIS } = await import('../game/format-engine/formats.ts');
+  for (const e of ESTADUAIS) assert.equal(world.clubs.filter((c) => c.state === e.uf && c.stateDivision === e.division).length, e.format(2026).size, `${e.name}: clubes na divisão estadual`);
   // a base é dado congelado: duas cargas iguais; carreiras com sementes diferentes têm o mesmo universo (patches valem para todos)
   const { readPackDir } = await import('../services/packService.node.ts');
   const again = readPackDir('data/base');
@@ -151,7 +161,7 @@ test('Carreira pela base fixa: escolhe os países completos (o do clube entra se
       assert.deepEqual(players(d1), players(d2), 'mas o universo (a base) é o mesmo');
       assert.deepEqual(players(d1), baseUniverse().world.players.map((p) => p.id).sort());
       assert.deepEqual([d1, d2].map((x) => String(x.prepare('SELECT game_date AS d FROM career').get()!.d)), ['2026-07-01', '2026-07-01']);
-      assert.equal(String(d1.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), '["footera-base@1.0.0"]');
+      assert.equal(String(d1.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), `["footera-base@${(await import('../game/data-pack/base.ts')).BASE_VERSION}"]`);
     } finally { d1.close(); d2.close(); }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -207,12 +217,13 @@ test('Divisões: só a 1ª divisão completa; quem sobe vira completo, quem cai 
   db.prepare("UPDATE clubs SET league_id = 'bra-2' WHERE id = ?").run(user);
   assert.ok(!lightClubIds(db).has(user), 'usuário em divisão simplificada continua completo');
   // e a partida dele dentro de uma divisão simplificada continua lance a lance (as outras da divisão, só placar)
-  const userLeague = String(db.prepare("SELECT c.league_id AS l FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE (f.home_club_id = ? OR f.away_club_id = ?) AND f.status = 'scheduled' LIMIT 1").get(user, user)!.l);
+  const userLeague = String(db.prepare("SELECT c.league_id AS l FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.kind = 'league' AND (f.home_club_id = ? OR f.away_club_id = ?) AND f.status = 'scheduled' LIMIT 1").get(user, user)!.l);
+  const leagueName = String(db.prepare("SELECT name FROM competitions WHERE kind = 'league' AND league_id = ? ORDER BY season DESC LIMIT 1").get(userLeague)!.name);
   db.prepare("UPDATE leagues SET sim_level = 'light' WHERE id = ?").run(userLeague);
   const sides = new Set<string>();
-  for (let i = 0; i < 4; i++) { // em casa e fora
+  for (let i = 0; i < 12 && sides.size < 2; i++) { // em casa e fora (jogos de liga; os da copa ficam de fora)
     advanceTime(db, 'nextMatchday'); const day = simulateMatchday(db);
-    if (!day.userMatch) continue;
+    if (!day.userMatch || day.userMatch.competitionName !== leagueName) continue;
     assert.ok(day.userMatch.hasReport, 'partida do usuário com relatório');
     assert.equal(n(db, 'SELECT COUNT(*) AS n FROM matches WHERE fixture_id = ?', day.userMatch.fixtureId), 1);
     sides.add(String(db.prepare('SELECT home_club_id AS h FROM fixtures WHERE id = ?').get(day.userMatch.fixtureId)!.h) === user ? 'casa' : 'fora');

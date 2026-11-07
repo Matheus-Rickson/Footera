@@ -20,6 +20,7 @@ export function rankCupClubs(clubs: ReadonlyArray<{ id: string; tier: number; pr
 /** Fase de estreia de cada clube (os "melhores N" primeiro; depois por divisão). Clubes de divisões que o formato não usa ficam de fora. */
 export function entryStages(format: CupFormat, ranked: readonly CupClub[]): Map<string, number> {
   const entry = new Map<string, number>();
+  format.stages.forEach((s, i) => { if (s.enterRanks) for (const c of ranked.slice(s.enterRanks[0], s.enterRanks[1])) if (!entry.has(c.id)) entry.set(c.id, i); });
   format.stages.forEach((s, i) => { if (s.enterBest) for (const c of ranked.filter((x) => !entry.has(x.id)).slice(0, s.enterBest)) entry.set(c.id, i); });
   format.stages.forEach((s, i) => { for (const c of ranked) if (!entry.has(c.id) && s.enterTiers?.includes(c.tier)) entry.set(c.id, i); });
   return entry;

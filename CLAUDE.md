@@ -57,6 +57,7 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
   (`supercups.ts`, 13 países) e copas/supercopas editáveis no editor (`cups.json`, logo `images/cups`); Competições no esboço do usuário (forma,
   líderes com jogos sem sofrer gols — migração 020 —, jogos da rodada) e botão Continuar (`continueDay`, caixa de tempo que para no jogo do
   clube e em decisões); ficha completa do clube, Visão geral no esboço e conversas/promessas com jogadores e diretoria (migração 021,
-  `docs/PROMISES.md`). Continentais e Rússia depois.
+  `docs/PROMISES.md`). **Estaduais e Séries C/D reais** (`docs/ESTADUAIS.md`): etapa 1 (motor de formatos, `game/format-engine`)
+  commitada (`5cc0f4f`); etapa 2 (estados, "Sem divisão", base 1.1.0 com +299 clubes, Copa do Brasil de 126) sem commit. Continentais e Rússia depois.
   Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

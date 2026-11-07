@@ -121,16 +121,20 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       if (!need('countries.json', c.id, c, ['code', 'name'])) return null;
       const seasonStart = c.seasonStart ?? defaultSeasonStart(c.code!);
       newCountries.push({ id: c.id, code: c.code!, name: c.name!, economy: 1 });
-      return { id: c.id, code: c.code!, name: c.name!, economy: c.economy ?? 1, ...(seasonStart === '01-01' ? { seasonStart } : {}) };
+      return { id: c.id, code: c.code!, name: c.name!, economy: c.economy ?? 1, ...(seasonStart === '01-01' ? { seasonStart } : {}), ...(c.states?.length ? { states: c.states.map((s) => ({ ...s })) } : {}) };
     }, (cur, c) => {
       if (c.code) cur.code = c.code; if (c.name) cur.name = c.name; if (c.economy !== undefined) cur.economy = c.economy;
       if (c.seasonStart === '01-01') cur.seasonStart = '01-01'; else if (c.seasonStart === '07-01') delete cur.seasonStart;
+      if (c.states) { if (c.states.length) cur.states = c.states.map((s) => ({ ...s })); else delete cur.states; }
     });
 
     for (const r of pack.data.leagues) apply('leagues.json', r, leagues, 'liga', (l: LeagueRec) => {
       if (!need('leagues.json', l.id, l, ['country', 'name', 'tier'])) return null;
-      return { id: l.id, countryId: l.country!, name: l.name!, tier: l.tier!, teamCount: 0, rules: { ...DEFAULT_RULES, ...l.rules } as LeagueRules };
-    }, (cur, l) => { if (l.country) cur.countryId = l.country; if (l.name) cur.name = l.name; if (l.tier) cur.tier = l.tier; if (l.rules) cur.rules = { ...cur.rules, ...l.rules } as LeagueRules; });
+      return { id: l.id, countryId: l.country!, name: l.name!, tier: l.tier!, teamCount: 0, rules: { ...DEFAULT_RULES, ...l.rules } as LeagueRules, ...(l.active === false ? { active: false } : {}) };
+    }, (cur, l) => {
+      if (l.country) cur.countryId = l.country; if (l.name) cur.name = l.name; if (l.tier) cur.tier = l.tier; if (l.rules) cur.rules = { ...cur.rules, ...l.rules } as LeagueRules;
+      if (l.active === false) cur.active = false; else if (l.active === true) delete cur.active;
+    });
 
     for (const r of pack.data.stadiums) apply('stadiums.json', r, stadiums, 'estádio', (s: StadiumRec) => {
       if (!need('stadiums.json', s.id, s, ['name'])) return null;
@@ -157,6 +161,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
         const fac = (j: number) => clamp(Math.round(reputation / 6 + rng.int(-j, j)), 1, 20);
         return {
           id: c.id, name: c.name!, countryId: c.country!, leagueId: c.league!, stadiumId, city, reputation,
+          ...(c.state ? { state: c.state } : {}), ...(c.state && c.stateDivision ? { stateDivision: c.stateDivision } : {}),
           shortName: c.shortName ?? (c.name!.normalize('NFD').replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w.slice(0, 3)).join('').toUpperCase().slice(0, 4) || 'CLB'),
           balance: c.balance ?? (autoBalance.add(c.id), 0),
           fans: c.fans ?? reputation * 3500 + rng.int(0, 20_000),
@@ -166,6 +171,8 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
         if (c.name) cur.name = c.name; if (c.shortName) cur.shortName = c.shortName; if (c.country) cur.countryId = c.country; if (c.league) cur.leagueId = c.league;
         if (c.city) cur.city = c.city; if (c.stadium) cur.stadiumId = c.stadium; if (c.reputation !== undefined) cur.reputation = c.reputation;
         if (c.balance !== undefined) { cur.balance = c.balance; autoBalance.delete(cur.id); } if (c.fans !== undefined) cur.fans = c.fans; if (c.facilities) cur.facilities = { ...cur.facilities, ...c.facilities };
+        if (c.state !== undefined) { if (c.state) cur.state = c.state; else { delete cur.state; delete cur.stateDivision; } }
+        if (c.stateDivision !== undefined) { if (c.stateDivision) cur.stateDivision = c.stateDivision; else delete cur.stateDivision; }
       });
     }
 
@@ -277,6 +284,12 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     if (!lg) final('clubs.json', c.id, `liga "${c.leagueId}" não existe`);
     else if (lg.countryId !== c.countryId) final('clubs.json', c.id, `a liga "${lg.id}" é de outro país`);
     if (!stadiums.has(c.stadiumId)) final('clubs.json', c.id, `estádio "${c.stadiumId}" não existe`);
+    if (c.state && !countries.get(c.countryId)?.states?.some((st) => st.code === c.state)) final('clubs.json', c.id, `estado "${c.state}" não está entre os estados do país`);
+    if (c.stateDivision && !c.state) final('clubs.json', c.id, 'divisão do estadual sem estado: informe "state"');
+  }
+  for (const co of countries.values()) {
+    const seen = new Set<string>();
+    for (const st of co.states ?? []) { if (seen.has(st.code)) final('countries.json', co.id, `estado ${st.code} repetido`); seen.add(st.code); }
   }
   for (const p of players.values()) {
     if (p.clubId !== null && !clubs.has(p.clubId)) final('players.json', p.id, `clube "${p.clubId}" não existe`);
@@ -301,7 +314,8 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     for (const k of ks) if (k !== keep) { k.clubId = null; warnings.push({ pack: 'universo', file: 'coaches.json', record: k.id, message: `saiu do clube "${cid}" (o pacote pôs "${keep.id}" no lugar) e fica sem clube` }); }
   }
   const byCountry = new Map<string, League[]>();
-  for (const l of leagues.values()) byCountry.set(l.countryId, [...(byCountry.get(l.countryId) ?? []), l]);
+  // a sequência de divisões (1, 2, 3… e acesso = rebaixamento entre vizinhas) vale para as disputadas; a "Sem divisão" fica fora dela
+  for (const l of leagues.values()) if (l.active !== false) byCountry.set(l.countryId, [...(byCountry.get(l.countryId) ?? []), l]);
   for (const [cid, ls] of byCountry) {
     const tiers = ls.map((l) => l.tier).sort((a, b) => a - b);
     if (tiers.some((t, i) => t !== i + 1)) final('leagues.json', cid, `divisões do país devem ser 1, 2, 3… sem pular nem repetir (tem ${tiers.join(', ')})`);
@@ -337,7 +351,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   }
   for (const l of leagues.values()) {
     l.teamCount = [...clubs.values()].filter((c) => c.leagueId === l.id).length;
-    if (l.teamCount < 2) issues.push({ pack: 'universo', file: 'leagues.json', record: l.id, message: `liga com ${l.teamCount} clube(s): são necessários pelo menos 2` });
+    if (l.teamCount < 2 && l.active !== false) issues.push({ pack: 'universo', file: 'leagues.json', record: l.id, message: `liga com ${l.teamCount} clube(s): são necessários pelo menos 2` });
   }
   if (clubs.size === 0) issues.push({ pack: 'universo', file: 'clubs.json', message: 'o universo não tem nenhum clube' });
   // copas: país removido leva as suas; no máximo uma copa e uma supercopa ativas por país; regras que fecham

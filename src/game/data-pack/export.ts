@@ -7,14 +7,15 @@ import type { Club, Country, League, Player, Stadium, World, WorldCoach, WorldCu
 import { defaultCups } from '../cup-engine/catalog.ts';
 import { PACK_FORMAT, type CupRec, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackManifest, type PlayerRec, type StadiumRec } from './format.ts';
 
-export const countryRec = (c: Country): CountryRec => ({ id: c.id, code: c.code, name: c.name, economy: c.economy, seasonStart: c.seasonStart ?? '07-01' });
+export const countryRec = (c: Country): CountryRec => ({ id: c.id, code: c.code, name: c.name, economy: c.economy, seasonStart: c.seasonStart ?? '07-01', ...(c.states?.length ? { states: c.states.map((s) => ({ ...s })) } : {}) });
 export function leagueRec(l: League): LeagueRec {
   const { tiebreakers: _t, calendar, ...rules } = l.rules;
-  return { id: l.id, country: l.countryId, name: l.name, tier: l.tier, rules: { ...rules, ...(calendar ? { calendar } : {}) } };
+  return { id: l.id, country: l.countryId, name: l.name, tier: l.tier, rules: { ...rules, ...(calendar ? { calendar } : {}) }, ...(l.active === false ? { active: false } : {}) };
 }
 export const stadiumRec = (s: Stadium): StadiumRec => ({ id: s.id, name: s.name, city: s.city, capacity: s.capacity });
 export const clubRec = (c: Club): ClubRec => ({
   id: c.id, name: c.name, shortName: c.shortName, country: c.countryId, league: c.leagueId, city: c.city, stadium: c.stadiumId,
+  ...(c.state ? { state: c.state, stateDivision: c.stateDivision ?? null } : {}),
   reputation: c.reputation, balance: c.balance, fans: c.fans, facilities: { ...c.facilities },
 });
 /** `internal`: inclui os valores do motor (exportação exata); o editor usa sem eles. */

@@ -36,6 +36,34 @@
         "minLength": 1,
         "maxLength": 60
       },
+      "state": {
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "stateDivision": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "const": 1
+              },
+              {
+                "const": 2
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "stadium": {
         "type": "string",
         "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"

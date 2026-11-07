@@ -22,7 +22,7 @@ const n = (db: SqlDb, sql: string, ...p: unknown[]) => Number(db.prepare(sql).ge
 test('Formatos com a base real: as contas fecham com as folgas declaradas (tabelas aprovadas no PDF revisado), datas válidas, México e Rússia sem copa', () => {
   const w = baseUniverse().world;
   const expected: Record<string, number[]> = {
-    BRA: [40, 40, 20, 32, 16, 8, 4, 2], ENG: [40, 60, 32, 16, 8, 4, 2], ESP: [56, 32, 16, 8, 4, 2], GER: [56, 32, 16, 8, 4, 2], ITA: [32, 16, 16, 8, 4, 2],
+    BRA: [28, 88, 48, 24, 32, 16, 8, 4, 2], ENG: [40, 60, 32, 16, 8, 4, 2], ESP: [56, 32, 16, 8, 4, 2], GER: [56, 32, 16, 8, 4, 2], ITA: [32, 16, 16, 8, 4, 2],
     FRA: [18, 32, 16, 8, 4, 2], POR: [18, 32, 16, 8, 4, 2], NED: [36, 32, 16, 8, 4, 2], ARG: [40, 32, 16, 8, 4, 2], BEL: [32, 16, 8, 4, 2],
     JPN: [36, 32, 16, 8, 4, 2], AUT: [28, 16, 8, 4, 2], IRL: [20, 16, 8, 4, 2], CRO: [12, 16, 8, 4, 2],
   };
@@ -33,7 +33,8 @@ test('Formatos com a base real: as contas fecham com as folgas declaradas (tabel
     const tierOf = new Map(w.leagues.map((l) => [l.id, l.tier]));
     const ranked = rankCupClubs(w.clubs.filter((c) => c.countryId === co.id).map((c) => ({ id: c.id, tier: tierOf.get(c.leagueId)!, prevPosition: null, reputation: c.reputation })));
     const entry = entryStages(f, ranked);
-    assert.equal(entry.size, ranked.length, `${f.name}: todos os clubes do país entram`);
+    // Copa do Brasil: 126 clubes (REC 2026), os demais (Série D mais fraca e sem divisão) ficam de fora; nas outras, todos entram
+    assert.equal(entry.size, f.countryCode === 'BRA' ? 126 : ranked.length, `${f.name}: participantes`);
     const plan = planByes(f, f.stages.map((_, i) => [...entry.values()].filter((s) => s === i).length));
     assert.ok(plan.declared, `${f.name}: folgas declaradas fecham a conta`);
     assert.deepEqual(plan.pools, expected[f.countryCode], f.name);

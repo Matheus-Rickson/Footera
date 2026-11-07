@@ -36,5 +36,6 @@
   {"id":"cro-1","country":"cro","name":"Prva Liga","tier":1,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":0,"relegationSlots":1,"continentalSlots":2,"maxForeignPlayers":null,"squadMin":18,"squadMax":30}},
   {"id":"cro-2","country":"cro","name":"Druga Liga","tier":2,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":1,"relegationSlots":0,"continentalSlots":0,"maxForeignPlayers":null,"squadMin":18,"squadMax":30}},
   {"id":"rus-1","country":"rus","name":"Premier Liga Russa","tier":1,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":0,"relegationSlots":2,"continentalSlots":3,"maxForeignPlayers":null,"squadMin":18,"squadMax":30}},
-  {"id":"rus-2","country":"rus","name":"Pervaya Liga","tier":2,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":2,"relegationSlots":0,"continentalSlots":0,"maxForeignPlayers":null,"squadMin":18,"squadMax":30}}
+  {"id":"rus-2","country":"rus","name":"Pervaya Liga","tier":2,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":2,"relegationSlots":0,"continentalSlots":0,"maxForeignPlayers":null,"squadMin":18,"squadMax":30}},
+  {"id":"bra-sd","country":"bra","name":"Sem divisão","tier":5,"rules":{"rounds":2,"pointsWin":3,"pointsDraw":1,"promotionSlots":0,"relegationSlots":0,"continentalSlots":0,"maxForeignPlayers":null,"squadMin":18,"squadMax":30},"active":false}
 ]

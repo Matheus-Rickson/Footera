@@ -250,5 +250,6 @@ test('Projeção mensal inclui a bilheteria (estimada antes de 3 jogos em casa, 
   const after = getFinanceOverview(db);
   assert.equal(after.projection.gateEstimated, after.gates.length < 3);
   const avg = after.gates.reduce((a, g) => a + g.revenue, 0) / after.gates.length;
-  assert.equal(after.projection.gate, Math.round((avg * home) / 12));
+  const homeNow = n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE home_club_id = ?", clubId); // a copa sorteia jogos novos ao longo da temporada
+  assert.equal(after.projection.gate, Math.round((avg * homeNow) / 12));
 });

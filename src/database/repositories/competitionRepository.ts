@@ -57,7 +57,7 @@ function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
   const insFix = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id) VALUES (?, ?, ?, ?, ?, ?)');
   // período antes da 1ª temporada do país (meses simulados antes da carreira): o país fica parado, sem jogos
   if (cs.transition) return 0;
-  for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues WHERE country_id = ? ORDER BY rowid').all(cs.countryId)) {
+  for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues WHERE country_id = ? AND active = 1 ORDER BY rowid').all(cs.countryId)) {
     const leagueId = S(lg.id);
     const compId = `cmp_${leagueId}_${cs.season}`;
     if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;

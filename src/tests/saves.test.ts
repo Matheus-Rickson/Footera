@@ -128,7 +128,7 @@ test('Saves: visão geral traz próxima partida, posição na liga e nacionalida
   const cal = await getCalendar(base, prof.id, c.id);
   assert.equal(cal.fixtures.length, 38);
   const comps = await listCompetitionsFor(base, prof.id, c.id);
-  assert.equal(comps.competitions.filter((x) => x.kind === 'league').length, baseUniverse().world.leagues.length, 'uma competição por liga da base fixa');
+  assert.equal(comps.competitions.filter((x) => x.kind === 'league').length, baseUniverse().world.leagues.filter((l) => l.active !== false).length, 'uma competição por liga da base fixa (a "Sem divisão" não joga)');
   // uma copa por país com formato (sem México e Rússia): as 11 de julho (2026/27) e as 3 do ano civil (2026, já em andamento); sem transição
   assert.equal(comps.competitions.filter((x) => x.kind === 'cup').length, 14);
   assert.ok(comps.competitions.every((x) => !x.name.includes('Transição')));

@@ -1062,3 +1062,15 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     classificação completa, zonas), contagem de jogos por tipo de fase, Série D (fases, chave da 2ª fase, Bloco I, playoffs, 6 acessos,
     65º–96º), regras de confronto, referências e bonificação, determinismo. 277 testes passando. Mutação 8/8.
   - Ainda NÃO ligado ao jogo (etapas 2–5: dados/estados/sem divisão, Séries C e D no banco, calendário 2026, estaduais completos e telas).
+- **Estaduais — etapa 2: dados (pedido do usuário, 07/11/2026; sem commit):**
+  - Estados por país, estado e divisão estadual por clube, divisão "Sem divisão" sem jogos (`leagues.active`); pacotes, validação,
+    exportação, migração 022, CSV (Estado, Divisão estadual) e editor (estados do país em texto SIGLA=Nome, "Tem jogos" na liga, Estado e
+    Divisão do estadual no clube; a liga "Sem divisão" aparece sem o número da divisão).
+  - Base fixa 1.1.0 (`scripts/base-estaduais.ts`): +299 clubes (Série D com 96; 223 sem divisão), estados na proporção real de 2026, 29
+    estaduais com o tamanho exato; registros antigos intactos. Ver `docs/DATABASE.md`.
+  - Nova carreira: a "Sem divisão" fica fora do menu de divisões simuladas; os clubes dela aparecem na escolha do clube (país escolhido).
+    Carreira com clube sem divisão é criada, mas ainda **sem jogos próprios** até os estaduais (etapa 5).
+  - Copa do Brasil no formato real de 126 clubes (9 fases, `enterRanks`), porque a conta de 80 clubes não fecha mais.
+  - Testes: `states.test.ts` (4) e ajustes de testes que dependiam da base 1.0.0 (versão, divisões, competições, Copa do Brasil) e de
+    mundos pequenos (jogos de copa sorteados no meio da temporada; técnico padrão contratado nos meses simulados). 281 testes passando.
+    Mutação 6/6. Telas do editor e da nova carreira NÃO verificadas no Electron.

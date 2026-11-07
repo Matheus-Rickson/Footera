@@ -25,8 +25,9 @@ export function listClubs(w: World, origin?: ReadonlyMap<string, { created: stri
     startDate: w.startDate,
     countries: w.countries.map((c) => ({
       id: c.id, code: c.code, name: c.name, seasonStart: c.seasonStart ?? '07-01',
-      divisions: w.leagues.filter((l) => l.countryId === c.id).length, clubs: w.clubs.filter((x) => x.countryId === c.id).length,
-      leagues: w.leagues.filter((l) => l.countryId === c.id).sort((a, b) => a.tier - b.tier).map((l) => ({ id: l.id, name: l.name, tier: l.tier, clubs: w.clubs.filter((x) => x.leagueId === l.id).length })),
+      // divisões disputadas (a "Sem divisão" não tem jogos próprios: os clubes dela aparecem na escolha do clube, mas não no menu de divisões)
+      divisions: w.leagues.filter((l) => l.countryId === c.id && l.active !== false).length, clubs: w.clubs.filter((x) => x.countryId === c.id).length,
+      leagues: w.leagues.filter((l) => l.countryId === c.id && l.active !== false).sort((a, b) => a.tier - b.tier).map((l) => ({ id: l.id, name: l.name, tier: l.tier, clubs: w.clubs.filter((x) => x.leagueId === l.id).length })),
     })),
     clubs: w.clubs.map((c) => {
       const l = league.get(c.leagueId)!, st = stadium.get(c.stadiumId)!, squad = squads.get(c.id) ?? [];

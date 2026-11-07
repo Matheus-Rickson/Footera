@@ -161,6 +161,11 @@ levantamento: cartões por competição (BRA zera após as quartas; JPN 2 amarel
 saldo de gols antes dos pênaltis na Copa do Brasil (ida e volta), as substituições na prorrogação por competição (FA sem 6ª troca; Croácia
 com 6ª troca; DFB com 4ª parada) e as vagas com repasse (Copa do Brasil art. 4; KNVB art. 7).
 
+**Atualização (07/11/2026, base 1.1.0):** com 156 clubes nas Séries A–D, a Copa do Brasil passou a seguir o REC 2026 por inteiro: 126 clubes,
+9 fases (1ª a 4ª e final em jogo único; 5ª à semifinal em ida e volta), entradas por faixa do ranking (`enterRanks`): 1ª fase = 28
+piores, 2ª = 74, 3ª = 4, 5ª = os 20 da Série A; cotas da 1ª à semifinal pela notícia oficial. O ranking ainda é o do jogo (divisão,
+campanha anterior, reputação); as vagas pelos estaduais (critério 3) entram na etapa 5 dos estaduais.
+
 ## Implementação (etapas 2 e 3)
 
 - **Motor** (`MatchDecider`, ver `docs/MATCH_ENGINE.md`): prorrogação sim/não, pênaltis, agregado sem gol fora, 6ª troca na prorrogação;

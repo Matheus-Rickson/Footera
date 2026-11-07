@@ -91,7 +91,9 @@ test('Editor de dados: técnicos listados, alteração guarda só a diferença, 
     assert.deepEqual(getAiCoachDetail(db, ka.id).attributes.youth, 20);
     assert.equal(getAiCoachDetail(db, made.id).methodology, 'aggressive');
     assert.ok(listUnemployedCoaches(db).some((k) => k.id === clubCoachId(other.id)), 'o padrão do clube foi para o mercado');
-    assert.ok(listUnemployedCoaches(db).some((k) => k.id === clubCoachId(w.clubs[0]!.id)), 'o do clube do usuário também');
+    // o padrão do clube do usuário sai do clube na criação (vai para o mercado; nos meses simulados antes da carreira, pode ser contratado por outro)
+    const userDefault = db.prepare('SELECT club_id FROM ai_coaches WHERE id = ?').get(clubCoachId(w.clubs[0]!.id));
+    assert.ok(userDefault && userDefault.club_id !== w.clubs[0]!.id, 'o do clube do usuário também saiu');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

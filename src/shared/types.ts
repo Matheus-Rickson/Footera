@@ -80,6 +80,10 @@ export interface Club {
   countryId: Id;
   city: string;
   leagueId: Id;
+  /** sigla do estado (UF), quando o país tem estados cadastrados */
+  state?: string | null;
+  /** divisão do estadual: 1 = elite, 2 = segunda divisão; ausente = fora do estadual (reserva do estado) */
+  stateDivision?: 1 | 2 | null;
   stadiumId: Id;
   reputation: number; // 1..100
   balance: number;
@@ -112,11 +116,14 @@ export interface League {
   tier: number;
   teamCount: number;
   rules: LeagueRules;
+  /** false = divisão sem jogos próprios ("Sem divisão": clubes fora das séries nacionais, que disputam só o estadual) */
+  active?: boolean;
 }
 
 export interface Country {
   id: Id; code: string; name: string; /** fator econômico (1 = referência) */ economy: number;
   /** início da temporada: '01-01' = ano civil (jan–dez); ausente = julho a junho */ seasonStart?: '07-01' | '01-01';
+  /** estados (unidades da federação) com estadual: sigla e nome */ states?: Array<{ code: string; name: string }>;
 }
 
 export interface World {

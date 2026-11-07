@@ -79,7 +79,8 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
   const preset = (ids: string[]) => { setFull(new Set(ids)); setExcluded(new Set()); };
 
   // ---- passo 2: clubes só dos países completos
-  const pickable = useMemo(() => (list?.clubs ?? []).filter((c) => fullLeagues.has(c.leagueId)), [list, fullLeagues]);
+  // clubes das divisões simuladas e os "sem divisão" (estadual) dos países escolhidos
+  const pickable = useMemo(() => (list?.clubs ?? []).filter((c) => fullLeagues.has(c.leagueId) || (full.has(c.countryId) && !allLeagues.some((l) => l.id === c.leagueId))), [list, fullLeagues, full]); // eslint-disable-line react-hooks/exhaustive-deps
   const leagues = useMemo(() => [...new Set(pickable.filter((c) => countryFilter === 'all' || c.countryId === countryFilter).sort((a, b) => a.leagueTier - b.leagueTier).map((c) => c.league))], [pickable, countryFilter]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();

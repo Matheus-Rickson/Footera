@@ -33,6 +33,29 @@
           "07-01",
           "01-01"
         ]
+      },
+      "states": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          },
+          "required": [
+            "code",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 60
       }
     },
     "required": [

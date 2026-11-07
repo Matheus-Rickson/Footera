@@ -87,6 +87,8 @@ export const CSV_COLUMNS: Record<CsvKind, Col[]> = {
     { key: 'country', label: 'País', aliases: ['pais id'], help: 'id do país (ex.: bra)' },
     { key: 'league', label: 'Liga', aliases: ['divisao'], help: 'id da liga (ex.: bra-1)' },
     { key: 'city', label: 'Cidade', help: '' },
+    { key: 'state', label: 'Estado', aliases: ['uf'], help: 'sigla do estado (ex.: SP), se o país tiver estados' },
+    { key: 'stateDivision', label: 'Divisão estadual', aliases: ['divisao do estadual'], help: '1 = elite do estadual, 2 = segunda divisão, vazio = fora do estadual' },
     { key: 'reputation', label: 'Reputação', help: '1–100 (no jogo aparece em estrelas)' },
     { key: 'balance', label: 'Caixa', aliases: ['saldo'], help: 'euros' },
     { key: 'fans', label: 'Torcida', aliases: ['torcedores'], help: 'número de torcedores' },
@@ -166,6 +168,12 @@ export function rowsToRecords(kind: CsvKind, text: string): { records: CsvRowRes
       } else if (k === 'club') {
         r.club = norm(v) === 'livre' || norm(v) === 'sem clube' ? null : v;
       } else if (k === 'nationality') r.nationality = v.toUpperCase();
+      else if (k === 'state') r.state = v.toUpperCase();
+      else if (k === 'stateDivision') {
+        const n = intOf(v);
+        if (n !== 1 && n !== 2) return bad(`Divisão estadual "${v}": use 1 (elite) ou 2 (segunda divisão).`);
+        r.stateDivision = n;
+      }
       else if (['heightCm', 'weightKg', 'ability', 'potential', 'reputation', 'balance', 'fans'].includes(k)) {
         const n = intOf(v);
         if (n === null) return bad(`${c.label}: "${v}" não é número.`);

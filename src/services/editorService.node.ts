@@ -93,8 +93,8 @@ export function editorSummary(dataDir: string, packId: string): EditorSummaryDto
 export function editorOptions(dataDir: string, packId: string): EditorOptionsDto {
   const w = universeOf(loadPack(dataDir, packId));
   return {
-    countries: w.countries.map((c) => ({ id: c.id, name: c.name, code: c.code })),
-    leagues: w.leagues.map((l) => ({ id: l.id, name: l.name, countryId: l.countryId, tier: l.tier })),
+    countries: w.countries.map((c) => ({ id: c.id, name: c.name, code: c.code, states: (c.states ?? []).map((s) => ({ ...s })) })),
+    leagues: w.leagues.map((l) => ({ id: l.id, name: l.name, countryId: l.countryId, tier: l.tier, active: l.active !== false })),
     clubs: w.clubs.map((c) => ({ id: c.id, name: c.name, leagueId: c.leagueId, countryId: c.countryId })).sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

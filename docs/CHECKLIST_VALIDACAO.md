@@ -318,6 +318,13 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [x] Transferências → filtro "só livres": os melhores ficam por volta de 12 (estimativa); só um ou outro 14+ depois de uma virada.
 - [x] Ficha de um jogador → "Fazer proposta" → "Cancelar negociação"; sair e voltar a Transferências: a janela NÃO reabre.
 
+## 13v. Estados e "Sem divisão" (base 1.1.0)
+- [ ] Nova carreira → Brasil: o menu de divisões mostra 4 (sem a "Sem divisão"); a escolha do clube lista a liga "Sem divisão" com os clubes dela.
+- [ ] Editor → Países → Brasil: "Estados com estadual" com as 27 siglas; Ligas → Sem divisão: "Tem jogos" desmarcado.
+- [ ] Editor → Clubes: Estado e Divisão do estadual; mudar e salvar; a divisão estadual fica desativada sem estado.
+- [ ] CSV de clubes: exportar mostra as colunas Estado e Divisão estadual; importar com 1/2/vazio funciona e 7 dá erro na linha.
+- [ ] Competições → Copa do Brasil: 1ª fase com 28 clubes; a Série A estreia na 5ª fase.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

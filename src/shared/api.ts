@@ -58,8 +58,8 @@ export interface EditorListQuery {
 }
 export interface EditorListDto { total: number; rows: Array<{ id: string; title: string; subtitle: string; status: EditorStatus; extra: string | null }> }
 export interface EditorOptionsDto {
-  countries: Array<{ id: string; name: string; code: string }>;
-  leagues: Array<{ id: string; name: string; countryId: string; tier: number }>;
+  countries: Array<{ id: string; name: string; code: string; states: Array<{ code: string; name: string }> }>;
+  leagues: Array<{ id: string; name: string; countryId: string; tier: number; active: boolean }>;
   clubs: Array<{ id: string; name: string; leagueId: string; countryId: string }>;
 }
 /** Registro no formato do pacote (atributos, força e potencial de 1 a 20). Clubes trazem o estádio junto. */

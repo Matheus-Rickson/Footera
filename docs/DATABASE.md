@@ -13,6 +13,17 @@ Holanda, Argentina, Bélgica, Japão, Áustria, México, Irlanda, Croácia e Rú
 - **Semente:** a carreira não escolhe mais semente. Cada carreira ganha uma semente interna só para o acaso (resultados, lesões, peneiras);
   o universo é sempre a base. Por isso um patch feito para a base vale em qualquer carreira.
 - Nomes de cidades e clubes são fictícios; as listas de nomes evitam combinações de jogadores famosos reais.
+- **Base 1.1.0 (estaduais, decisão do usuário em 07/11/2026; `scripts/base-estaduais.ts`, uma vez só):** Brasil com os 27 estados
+  (`countries.json` → `states`), divisão **"Sem divisão"** (`bra-sd`, `active: false`: sem jogos próprios) e a **Série D com 96 clubes**
+  (REC 2026). +299 clubes fictícios (76 da Série D e 223 sem divisão, com estádio e 25 jogadores cada; força média 36,9 na D e 34,2 sem
+  divisão), distribuídos pelos estados na proporção real de 2026. Cada clube brasileiro tem `state` e `stateDivision` (1 = elite do
+  estadual, 2 = segunda divisão de SP/RJ, null = reserva do estado); os 29 estaduais saem com o número exato de clubes. O script edita os
+  registros crus: clubes, estádios e jogadores de fora do Brasil ficam byte a byte iguais; os 80 clubes antigos mantêm id e divisão.
+  Total: 971 clubes e 24.275 jogadores.
+- **Campos novos no pacote:** país `states` (lista sigla/nome); liga `active` (false = sem jogos; fica fora da sequência 1, 2, 3… e da
+  regra acesso = rebaixamento; pode ter menos de 2 clubes); clube `state` (deve existir no país) e `stateDivision` (exige `state`).
+  Banco: migração 022 (`countries.states_json`, `clubs.state`, `clubs.state_division`, `leagues.active`). CSV de clubes: colunas
+  "Estado" e "Divisão estadual".
 
 ## Países completos e simplificados
 Na criação da carreira o usuário escolhe os países com **simulação completa** (o do clube entra sempre); os demais ficam **simplificados**

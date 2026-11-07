@@ -18,6 +18,8 @@ export interface CupStage {
   enterTiers?: number[];
   /** os N mais bem classificados da copa inteira estreiam nesta fase (ex.: cabeças da Coppa Italia, clubes da Supercopa na Espanha) */
   enterBest?: number;
+  /** faixa do ranking da copa (início inclusivo, fim exclusivo; 0 = melhor) cujos clubes estreiam nesta fase (Copa do Brasil: 1ª fase = 28 piores) */
+  enterRanks?: [number, number];
   /** quantos clubes desta fase avançam sem jogar (os mais bem classificados); o resto joga */
   byes?: number;
   legs: 1 | 2;
@@ -53,13 +55,15 @@ const final = (decider: CupStage['decider'], name = 'Final'): CupStage => ({ nam
 
 export const CUP_FORMATS: CupFormat[] = [
   {
-    id: 'bra', countryCode: 'BRA', name: 'Copa do Brasil', regulation: 'CBF — REC Copa do Brasil 2026 (adaptado à base)',
+    id: 'bra', countryCode: 'BRA', name: 'Copa do Brasil', regulation: 'CBF — REC Copa do Brasil 2026 (126 clubes; entradas pelo ranking do jogo até haver os estaduais)',
     source: { structure: 'REG', tiebreak: 'REG', host: 'REG', discipline: 'REG', prizes: 'REG' },
+    // REC art. 2, 13–17: 1ª fase = 28 piores do critério 3; 2ª = 74 melhores do critério 3; 3ª = 4 do critério 2; 5ª = os 20 da Série A
     stages: [
-      { name: '1ª fase', enterTiers: [3, 4], legs: 1, decider: PENS, draw: 'opposite', host: 'draw' },
-      { name: '2ª fase', enterTiers: [2], legs: 1, decider: PENS, draw: 'open', host: 'draw' },
-      { name: '3ª fase', byes: 4, legs: 1, decider: PENS, draw: 'open', host: 'draw' },
-      { name: '5ª fase', enterTiers: [1], legs: 2, decider: PENS, draw: 'seeded', host: 'draw' },
+      { name: '1ª fase', enterRanks: [98, 126], legs: 1, decider: PENS, draw: 'opposite', host: 'draw' },
+      { name: '2ª fase', enterRanks: [24, 98], legs: 1, decider: PENS, draw: 'open', host: 'draw' },
+      { name: '3ª fase', enterRanks: [20, 24], legs: 1, decider: PENS, draw: 'open', host: 'draw' },
+      { name: '4ª fase', legs: 1, decider: PENS, draw: 'open', host: 'draw' },
+      { name: '5ª fase', enterRanks: [0, 20], legs: 2, decider: PENS, draw: 'seeded', host: 'draw' },
       { name: 'Oitavas de final', legs: 2, decider: PENS, draw: 'open', host: 'draw' },
       { name: 'Quartas de final', legs: 2, decider: PENS, draw: 'open', host: 'draw' },
       { name: 'Semifinal', legs: 2, decider: PENS, draw: 'bracket', host: 'draw' },
@@ -68,8 +72,9 @@ export const CUP_FORMATS: CupFormat[] = [
     window: { start: '08-19', final: '05-26' },
     windowCalendarYear: { start: '02-17', final: '12-06' }, // real: fevereiro a dezembro (final em 6/dez/2026)
     // limite de amarelos: Regulamento Geral da CBF (não lido) — 3, padrão da CBF; zera ao fim das quartas (REC art. 25)
-    discipline: { yellowLimit: 3, resetAfterStage: 5 },
-    prizes: { perStage: [0.83, 1.38, 1.53, 2, 3, 4, 9], runnerUp: 34, winner: 78 },
+    discipline: { yellowLimit: 3, resetAfterStage: 6 },
+    // cotas 2026 (notícia oficial CBF, em R$ mi): 1ª 0,4; 2ª 0,83; 3ª 0,95; 4ª 1,07 (Grupo III); 5ª 2; oitavas 3; quartas 4; semi 9
+    prizes: { perStage: [0.4, 0.83, 0.95, 1.07, 2, 3, 4, 9], runnerUp: 34, winner: 78 },
     reward: 'Libertadores (campeão na fase de grupos; vice na fase preliminar)',
   },
   {

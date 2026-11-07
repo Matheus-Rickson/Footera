@@ -43,6 +43,8 @@ export const countrySchema = z.object({
   id, ...remove, code: code3.optional(), name: text(60).optional(), economy: z.number().min(0.1).max(5).optional(),
   /** início da temporada: "07-01" (julho a junho) ou "01-01" (ano civil, com pré-temporada em janeiro); sem informar: o padrão do país */
   seasonStart: z.enum(['07-01', '01-01']).optional(),
+  /** estados com estadual (sigla de 2 letras e nome); a lista informada substitui a anterior */
+  states: z.array(z.object({ code: z.string().regex(/^[A-Z]{2}$/, 'sigla do estado com 2 letras maiúsculas (ex.: SP)'), name: text(40) }).strict()).max(60).optional(),
 }).strict();
 
 const rulesSchema = z.object({
@@ -51,7 +53,11 @@ const rulesSchema = z.object({
   maxForeignPlayers: int(0, 30).nullable().optional(), squadMin: int(14, 30).optional(), squadMax: int(18, 40).optional(),
   calendar: z.object({ seasonStart: z.string().regex(/^\d{2}-\d{2}$/), matchWeekday: int(0, 6), intervalDays: int(3, 14) }).strict().optional(),
 }).strict();
-export const leagueSchema = z.object({ id, ...remove, country: id.optional(), name: text(60).optional(), tier: int(1, 10).optional(), rules: rulesSchema.optional() }).strict();
+export const leagueSchema = z.object({
+  id, ...remove, country: id.optional(), name: text(60).optional(), tier: int(1, 10).optional(), rules: rulesSchema.optional(),
+  /** false = divisão sem jogos próprios ("Sem divisão": clubes que disputam só o estadual) */
+  active: z.boolean().optional(),
+}).strict();
 
 export const stadiumSchema = z.object({ id, ...remove, name: text(80).optional(), city: text(60).optional(), capacity: int(500, 250_000).optional() }).strict();
 
@@ -59,6 +65,10 @@ export const clubSchema = z.object({
   id, ...remove,
   name: text(60).optional(), shortName: z.string().trim().min(2).max(5).optional(),
   country: id.optional(), league: id.optional(), city: text(60).optional(),
+  /** sigla do estado (deve existir nos estados do país); null = sem estado */
+  state: z.string().regex(/^[A-Z]{2}$/, 'sigla do estado com 2 letras maiúsculas (ex.: SP)').nullable().optional(),
+  /** divisão do estadual: 1 = elite, 2 = segunda divisão (SP e RJ); null = fora do estadual */
+  stateDivision: z.union([z.literal(1), z.literal(2)]).nullable().optional(),
   /** sem estádio informado, um é criado para o clube */
   stadium: id.optional(),
   reputation: int(1, 100).optional(), balance: int(-1e10, 1e11).optional(), fans: int(0, 1e8).optional(),

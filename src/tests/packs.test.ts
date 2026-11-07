@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { BASE_VERSION } from '../game/data-pack/base.ts';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -50,7 +51,7 @@ test('Pacotes: importar .zip (raiz ou pasta), ativar na ordem, universo da carre
     const u = careerUniverse(dir);
     assert.equal(u.world.clubs.find((c) => c.id === club.id)!.name, 'Clube Renomeado');
     assert.ok(u.world.leagues.some((l) => l.id === 'chi-1'));
-    assert.deepEqual(u.applied, ['footera-base@1.0.0', 'renomeia@1.0', 'chile@1.0']);
+    assert.deepEqual(u.applied, [`footera-base@${BASE_VERSION}`, 'renomeia@1.0', 'chile@1.0']);
     // origem: a tela marca o que veio de pacote (criado × alterado), sem marcar o que é só da base
     const { listClubs } = await import('../services/worldService.ts');
     const opts = listClubs(u.world, u.origin).clubs;
@@ -67,7 +68,7 @@ test('Pacotes: importar .zip (raiz ou pasta), ativar na ordem, universo da carre
     const c = await createCareerSave(dir, { profileId: prof.id, clubId: club.id, coach: { firstName: 'A', lastName: 'B', birthDate: '1980-01-01', nationality: 'BRA', methodology: 'possession' } });
     const db = await openDatabase(path.join(dir, 'saves', prof.id, c.id, 'career.db'));
     try {
-      assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), '["footera-base@1.0.0","renomeia@2.0","chile@1.0"]');
+      assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), `["footera-base@${BASE_VERSION}","renomeia@2.0","chile@1.0"]`);
       assert.equal(String(db.prepare('SELECT name FROM clubs WHERE id = ?').get(club.id)!.name), 'Nome Versão 2');
     } finally { db.close(); }
     // remover tira da ordem
