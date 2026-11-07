@@ -20,6 +20,7 @@ import { youthGrowthMultiplier } from '../../game/coach-engine/coach.ts';
 import { coachOf } from './boardRepository.ts';
 import { POS_NAME } from '../../shared/positions.ts';
 import type { Position } from '../../shared/types.ts';
+import { CURRENT_COMP } from './countrySeasonRepository.ts';
 
 export class TrainingError extends UserError {}
 
@@ -130,10 +131,10 @@ export function processTrainingMonth(db: SqlDb, date: string): number {
   const coachAttrs = st.clubId ? coachOf(db).attributes : undefined;
   const economy = new Map(db.prepare('SELECT code, economy FROM countries').all().map((r) => [S(r.code), N(r.economy)]));
   // fração de minutos na temporada até aqui
-  const minutes = new Map(db.prepare('SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE c.season = ? GROUP BY pss.player_id')
-    .all(st.season).map((r) => [S(r.player_id), N(r.m)]));
-  const played = new Map(db.prepare(`SELECT club, COUNT(*) AS n FROM (SELECT f.home_club_id AS club FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'played'
-    UNION ALL SELECT f.away_club_id FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'played') GROUP BY club`).all(st.season, st.season).map((r) => [S(r.club), N(r.n)]));
+  const minutes = new Map(db.prepare(`SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE ${CURRENT_COMP} GROUP BY pss.player_id`)
+    .all().map((r) => [S(r.player_id), N(r.m)]));
+  const played = new Map(db.prepare(`SELECT club, COUNT(*) AS n FROM (SELECT f.home_club_id AS club FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE ${CURRENT_COMP} AND f.status = 'played'
+    UNION ALL SELECT f.away_club_id FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE ${CURRENT_COMP} AND f.status = 'played') GROUP BY club`).all().map((r) => [S(r.club), N(r.n)]));
   const clubCtx = new Map<string, { tech: number; phys: number; gk: number; facility: number; youthFacility: number }>();
   const ctxOf = (clubId: string) => {
     let c = clubCtx.get(clubId);
@@ -230,12 +231,13 @@ export function getMedicalOverview(db: SqlDb): MedicalOverviewDto {
  * Chamada na virada. Minutos estimados pela posição no elenco: os 11 melhores como titulares, os 7 seguintes como reservas.
  * NÃO abre transação.
  */
-export function developLightPlayers(db: SqlDb, date: string): number {
+export function developLightPlayers(db: SqlDb, date: string, onlyClubs?: ReadonlySet<string>): number {
   const seed = seedOf(db);
   const economy = new Map(db.prepare('SELECT code, economy FROM countries').all().map((r) => [S(r.code), N(r.economy)]));
   const up = db.prepare('UPDATE players SET attributes_json = ?, overall = ?, potential_hidden = ?, potential_estimated = ?, market_value = ? WHERE id = ?');
   let n = 0;
   for (const clubId of lightClubIds(db)) {
+    if (onlyClubs && !onlyClubs.has(clubId)) continue;
     const squad = db.prepare('SELECT * FROM players WHERE club_id = ? AND retired = 0').all(clubId).map(rowToPlayer).sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id));
     squad.forEach((p, i) => {
       const age = ageOn(p.birthDate, date);

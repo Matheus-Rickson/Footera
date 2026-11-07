@@ -96,6 +96,17 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
   Clube removido: o técnico dele fica sem clube.
 - Na carreira, o técnico do clube escolhido pelo usuário começa sem clube (o usuário assume a vaga).
 
+### cups.json (copas e supercopas)
+Um registro por competição (`cup-<país>` e `sup-<país>` na base, com as regras reais). Criar exige `country`, `kind` (`cup`/`supercup`) e `name`.
+Copa: `stagesFrom` (código do país cujo formato de fases é usado; obrigatório para países sem copa no jogo), `window`/`windowCalendarYear`
+(`{ start, final }` em MM-DD), `yellowLimit`. Supercopa: `teams` (2 ou 4), `double` (`league2`, `cup2`, `none`), `host` (`neutral`, `cup`,
+`league`), `extraTime`, `dates`/`datesCalendarYear` (MM-DD; com 4 clubes, semifinais e final). `enabled: false` desativa. No máximo uma copa e
+uma supercopa ativas por país; país removido leva as suas; país criado com código conhecido ganha as padrão. Logo: `images/cups/<id>`.
+O save grava as definições em `cup_formats` (migração 019) e cada edição é criada a partir delas.
+
+### Temporada do país
+`countries.seasonStart`: `"07-01"` (julho a junho) ou `"01-01"` (ano civil). Sem informar, o padrão do código (BRA, ARG e IRL no ano civil).
+
 ## Ferramentas
 - `npm run pack -- validate <pasta> [<pasta> …] [--seed <semente>]` — valida na ordem de carga e mostra erros e avisos com pacote › arquivo › registro.
 - `npm run pack -- export <pasta> [--seed <semente>]` — exporta a base gerada como pacote completo (ponto de partida para editar).

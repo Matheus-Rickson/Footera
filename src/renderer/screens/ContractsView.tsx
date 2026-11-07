@@ -53,7 +53,7 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
           <div className="row">
             <label>Novo salário (por mês)<input type="number" min={1} value={wage} onChange={(e) => setWage(Number(e.target.value))} /></label>
             <YearsPicker label="Temporadas a mais" value={years} max={sel.maxYears} onChange={setYears} />
-            <span>Novo contrato até <strong>{fmtDate(`${sel.renewBaseYear + years}-06-30`)}</strong></span>
+            <span>Novo contrato até <strong>{fmtDate(sel.renewEnds[years - 1] ?? `${sel.renewBaseYear + years}-06-30`)}</strong></span>
             <button disabled={busy} onClick={() => void send()}>Propor renovação</button>
             <button className="secondary" onClick={() => { setSel(null); setAnswer(null); }}>Cancelar</button>
           </div>

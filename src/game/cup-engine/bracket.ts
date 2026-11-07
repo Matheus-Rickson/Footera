@@ -5,6 +5,7 @@
 import type { Rng } from '../rng.ts';
 import { addDays, nextWeekdayOnOrAfter } from '../../shared/date.ts';
 import type { CupDraw, CupFormat, CupHost } from './formats.ts';
+import { yearInSeason, type SeasonStart } from '../career-engine/calendar.ts';
 
 /** Clube na copa: divisão (1 = primeira) e posição no ranking da copa (0 = melhor; divisão, campanha anterior e reputação). */
 export interface CupClub { id: string; tier: number; rank: number }
@@ -120,10 +121,12 @@ export function hostOf(rng: Rng, a: CupClub, b: CupClub, rule: CupHost): { home:
  * Datas das fases: quartas-feiras distribuídas entre o início da janela e a final (jogos de volta uma semana depois da ida), evitando
  * as datas da liga do país. A final cai na data da janela (ou na quarta-feira anterior, se houver jogo de liga nesse dia).
  */
-export function cupDates(format: CupFormat, season: number, avoid: ReadonlySet<string>): string[][] {
-  const yearOf = (mmdd: string) => (mmdd >= '07-01' ? season : season + 1);
-  const start = nextWeekdayOnOrAfter(`${yearOf(format.window.start)}-${format.window.start}`, 3);
-  let finalDate = `${yearOf(format.window.final)}-${format.window.final}`;
+export function cupDates(format: CupFormat, season: number, avoid: ReadonlySet<string>, seasonStart: SeasonStart = '07-01'): string[][] {
+  // país de ano civil: janela própria (sem ela, a de julho transposta para o mesmo período relativo não existe: exige-se a janela)
+  const win = seasonStart === '01-01' ? format.windowCalendarYear ?? format.window : format.window;
+  const yearOf = (mmdd: string) => yearInSeason(mmdd, season, seasonStart);
+  const start = nextWeekdayOnOrAfter(`${yearOf(win.start)}-${win.start}`, 3);
+  let finalDate = `${yearOf(win.final)}-${win.final}`;
   while (avoid.has(finalDate)) finalDate = addDays(finalDate, -1);
   const stages = format.stages.slice(0, -1);
   const slots = stages.reduce((s, st) => s + st.legs, 0);

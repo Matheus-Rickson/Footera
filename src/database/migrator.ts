@@ -18,6 +18,9 @@ import { migration015 } from './migrations/015_social.ts';
 import { migration016 } from './migrations/016_inbox.ts';
 import { migration017 } from './migrations/017_ai_coaches.ts';
 import { migration018 } from './migrations/018_cups.ts';
+import { migration019 } from './migrations/019_country_seasons.ts';
+import { migration020 } from './migrations/020_clean_sheets.ts';
+import { migration021 } from './migrations/021_promises.ts';
 
 export interface Migration {
   version: number; name: string; sql: string;
@@ -28,7 +31,7 @@ export interface Migration {
   rebuildsTables?: boolean;
 }
 
-export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018];
+export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018, migration019, migration020, migration021];
 
 export function currentVersion(db: SqlDb): number {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');

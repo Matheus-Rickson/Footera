@@ -112,7 +112,7 @@ export function App() {
           <div className="bar">
             <div>
               <p><strong>{latest.coachName}</strong> — {latest.clubName}</p>
-              <p className="muted small">Temporada {latest.season} · jogo em {fmtDate(latest.gameDate)} · salvo em {fmtDateTime(latest.updatedAt)}</p>
+              <p className="muted small">Temporada {latest.seasonLabel} · jogo em {fmtDate(latest.gameDate)} · salvo em {fmtDateTime(latest.updatedAt)}</p>
             </div>
             <button disabled={busy} onClick={() => void openCareer(latest.id)}><Play size={16} aria-hidden="true" />Continuar</button>
           </div>

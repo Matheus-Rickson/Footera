@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Activity, ArrowLeftRight, Award, Binoculars, Building2, CalendarDays, CalendarRange, Dumbbell, FastForward, FileSignature, HeartPulse, History, Landmark, LayoutDashboard,
-  LogOut, Mail, Moon, Newspaper, Play, PlayCircle, SkipForward, Sprout, Sun, Swords, Trophy, UserCog, Users, Wallet, type LucideIcon,
+  LogOut, Mail, Moon, Newspaper, Play, PlayCircle, Sprout, Sun, Swords, Trophy, UserCog, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtMoney, fmtNum, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
-import { PosPill, to20 } from '../playerUi.tsx';
-import type { AdvanceMode, MarketPlayerDto, SimulationSummaryDto } from '../../shared/api.ts';
+import { errMsg, fmtDate, fmtWeekday, unwrap } from '../util.ts';
+import type { MarketPlayerDto } from '../../shared/api.ts';
+import { ContinueBox, type ContinueOutcome } from './ContinueBox.tsx';
 import { MatchReport } from './MatchReport.tsx';
+import { ClubPage } from './ClubPage.tsx';
+import { OverviewView } from './OverviewView.tsx';
 import { MatchesView } from './MatchesView.tsx';
 import { TacticsView } from './TacticsView.tsx';
 import { FinanceView } from './FinanceView.tsx';
@@ -29,7 +31,6 @@ import { StaffView } from './StaffView.tsx';
 import { MedicalView } from './MedicalView.tsx';
 import { InfrastructureView } from './InfrastructureView.tsx';
 import { BoardView } from './BoardView.tsx';
-import { Stars } from '../stars.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
 
@@ -64,19 +65,18 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const [note, setNote] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
   const [match, setMatch] = useState<{ fixtureId: string; autoplay: boolean } | { live: true } | null>(null);
   const [player, setPlayer] = useState<string | null>(null);
+  const [clubPage, setClubPage] = useState<string | null>(null);
   const [preselect, setPreselect] = useState<MarketPlayerDto | null>(null);
-  const [lastSim, setLastSim] = useState<SimulationSummaryDto | null>(null);
-  const [imgOk, setImgOk] = useState(true);
+  const [continuing, setContinuing] = useState(false);
   const [theme, toggleTheme] = useTheme();
   const { coach, club, squad, summary } = overview;
-  const avg = squad.length ? Math.round((squad.reduce((s, p) => s + p.overall, 0) / squad.length) * 10) / 10 : 0;
-  const payroll = squad.reduce((s, p) => s + p.salary, 0);
   const { profileId, id: careerId } = summary;
   const next = overview.nextFixture;
   const pos = overview.leaguePosition;
   const season = overview.seasonStatus;
   const refreshKey = `${summary.gameDate}|${summary.season}|${pos?.played ?? 0}`;
-  const go = (v: View) => { setNote(null); setMatch(null); setPlayer(null); setPreselect(null); setView(v); };
+  const go = (v: View) => { setNote(null); setMatch(null); setPlayer(null); setClubPage(null); setPreselect(null); setView(v); };
+  const clearPreselect = useCallback(() => setPreselect(null), []);
   const negotiate = (p: MarketPlayerDto) => { setPlayer(null); setMatch(null); setNote(null); setPreselect({ ...p }); setView('transfers'); };
 
   async function simulate(live: boolean) {
@@ -85,21 +85,24 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
     setBusy(true); setNote(null); setMatch(null);
     try {
       const r = await unwrap(window.api.simulateMatchday(profileId, careerId));
-      setLastSim(r);
       await onRefresh();
       if (live && r.userMatch) { setMatch({ fixtureId: r.userMatch.fixtureId, autoplay: true }); if (r.notes.length) setNote({ kind: 'info', text: r.notes.join(' ') }); }
       else setNote({ kind: r.notes.length ? 'info' : 'ok', text: `${r.simulated} partida(s) simuladas.${r.userMatch ? ` Seu jogo: ${r.userMatch.homeName} ${r.userMatch.homeGoals} x ${r.userMatch.awayGoals} ${r.userMatch.awayName}.` : ''} ${r.notes.join(' ')}` });
     } catch (e) { setNote({ kind: 'error', text: errMsg(e) }); } finally { setBusy(false); }
   }
 
-  async function advance(mode: AdvanceMode) {
-    setBusy(true); setNote(null); setMatch(null);
-    try {
-      const r = await unwrap(window.api.advance(profileId, careerId, mode));
-      if (r.advanced) { setNote({ kind: 'ok', text: `Avançou ${r.daysAdvanced} dia(s) até ${fmtDate(r.toDate)}. ${r.message}` }); await onRefresh(); }
-      else setNote({ kind: 'info', text: r.message });
-    } catch (e) { setNote({ kind: 'error', text: errMsg(e) }); } finally { setBusy(false); }
+  /** Botão Continuar: abre a caixa de tempo, que avança dia a dia até parar (jogo do seu time, decisão, dia escolhido, "Parar aqui"). */
+  function startContinue() { setNote(null); setMatch(null); setPlayer(null); setBusy(true); setContinuing(true); }
+  async function continueDone(o: ContinueOutcome) {
+    setContinuing(false);
+    try { await onRefresh(); } finally { setBusy(false); }
+    if (o.error) { setNote({ kind: 'error', text: o.error }); return; }
+    const when = `${fmtWeekday(o.date)} ${fmtDate(o.date)}`;
+    if (o.stop === 'user_match') setNote({ kind: 'info', text: `${when}: dia de jogo do seu time. Acompanhe ao vivo ou simule a partida.` });
+    else if (o.stop === 'decision') { setNote({ kind: 'info', text: `${when}: decisão importante na Caixa de entrada — ${o.message}` }); }
+    else setNote({ kind: 'ok', text: `${when}. ${o.message}` });
   }
+  const userMatchToday = !!next && next.status === 'scheduled' && next.date <= summary.gameDate;
 
   const img = useImages();
   return (
@@ -118,7 +121,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
               const Icon = s.icon;
               return (
                 <button key={s.id} className={`nav ${view === s.id ? 'active' : ''}`} disabled={locked} title={locked ? 'Sem clube: aceite uma proposta na Diretoria' : ''} aria-current={view === s.id ? 'page' : undefined}
-                  onClick={() => { setNote(null); setPlayer(null); setMatch(null); setView(s.id); }}><Icon size={17} strokeWidth={1.9} aria-hidden="true" />{s.label}
+                  onClick={() => { setNote(null); setPlayer(null); setClubPage(null); setMatch(null); setView(s.id); }}><Icon size={17} strokeWidth={1.9} aria-hidden="true" />{s.label}
                   {s.id === 'inbox' && overview.unreadInbox > 0 && <span className="nav-badge" aria-label={`${overview.unreadInbox} não lida(s)`}>{overview.unreadInbox > 99 ? '99+' : overview.unreadInbox}</span>}</button>
               );
             })}
@@ -132,126 +135,63 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         </div>
       </nav>}
 
-      <main className={!match && !player && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions') ? 'content content-fit' : 'content'}>
+      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview') ? 'content content-fit' : 'content'}>
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>
-            <span className="date-pill"><CalendarDays size={14} aria-hidden="true" />Temporada {summary.season}/{String(summary.season + 1).slice(2)} · {fmtWeekday(summary.gameDate)} {fmtDate(summary.gameDate)}</span>
+            <span className="date-pill"><CalendarDays size={14} aria-hidden="true" />Temporada {summary.seasonLabel} · {fmtWeekday(summary.gameDate)} {fmtDate(summary.gameDate)}</span>
           </div>
           <div className="row">
             {season.canStart ? (
               <button disabled={busy} onClick={() => go('season')}><CalendarRange size={16} aria-hidden="true" />Iniciar nova temporada</button>
-            ) : overview.pendingMatches > 0 ? (
+            ) : userMatchToday ? (
               <>
-                <button className="secondary" disabled={busy} onClick={() => void simulate(false)}><Play size={16} aria-hidden="true" />Simular rodada ({overview.pendingMatches})</button>
+                <button className="secondary" disabled={busy} onClick={() => void simulate(false)}><Play size={16} aria-hidden="true" />Simular partida</button>
                 <button disabled={busy} onClick={() => void simulate(true)}><PlayCircle size={16} aria-hidden="true" />Acompanhar ao vivo</button>
               </>
             ) : (
-              <>
-                <button className="secondary" disabled={busy} onClick={() => void advance('day')}><SkipForward size={16} aria-hidden="true" />Avançar 1 dia</button>
-                <button disabled={busy} onClick={() => void advance('nextMatchday')}><FastForward size={16} aria-hidden="true" />{season.complete ? `Avançar até ${fmtDate(season.turnoverDate)}` : 'Próxima rodada'}</button>
-              </>
+              <button className="ct-continue" disabled={busy} onClick={startContinue} title="Avança o tempo dia a dia; para no jogo do seu time, numa decisão importante ou quando você quiser">
+                <FastForward size={16} aria-hidden="true" />Continuar</button>
             )}
           </div>
         </header>}
+        {continuing && <ContinueBox profileId={profileId} careerId={careerId} startDate={summary.gameDate} onDone={(o) => void continueDone(o)} />}
         {note && <p className={note.kind === 'error' ? 'error' : note.kind === 'info' ? 'notice' : 'ok'} role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
         {overview.warnings.map((w) => <p key={w} className="error" role="alert">{w}</p>)}
         {season.complete && !match && view !== 'season' && (
-          <p className="notice">A temporada {summary.season}/{String(summary.season + 1).slice(2)} terminou. {season.canStart ? 'Inicie a nova temporada' : `A virada acontece em ${fmtDate(season.turnoverDate)}`} na aba <button className="link" onClick={() => go('season')}>Temporada</button>; antes disso, renove os contratos que vencem.</p>
+          <p className="notice">A temporada {summary.seasonLabel} terminou. {season.canStart ? 'Inicie a nova temporada' : `A virada acontece em ${fmtDate(season.turnoverDate)}`} na aba <button className="link" onClick={() => go('season')}>Temporada</button>; antes disso, renove os contratos que vencem.</p>
         )}
 
+        {clubPage && !player && !match && <ClubPage profileId={profileId} careerId={careerId} clubId={clubPage} onClose={() => setClubPage(null)} onOpenPlayer={setPlayer} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
         {player && !match && <PlayerProfile profileId={profileId} careerId={careerId} playerId={player} onClose={() => setPlayer(null)} onNegotiate={negotiate} />}
         {match && ('live' in match
           ? <MatchReport profileId={profileId} careerId={careerId} live autoplay onBack={() => setMatch(null)}
-              onLiveFinished={async (r) => { setLastSim(r); await onRefresh(); if (r.notes.length) setNote({ kind: 'info', text: r.notes.join(' ') }); }} />
+              onLiveFinished={async (r) => { await onRefresh(); if (r.notes.length) setNote({ kind: 'info', text: r.notes.join(' ') }); }} />
           : <MatchReport profileId={profileId} careerId={careerId} fixtureId={match.fixtureId} autoplay={match.autoplay} onBack={() => setMatch(null)} />)}
 
-        {!match && !player && view === 'overview' && club && (
-          <div className="stats">
-            <div className="stat-tile"><span className="stat-label">Classificação</span><span className="stat-value">{pos && pos.played > 0 ? `${pos.position}º de ${pos.total}` : '—'}</span>
-              <span className="muted small">{pos ? (pos.played > 0 ? `${pos.points} pts em ${pos.played} jogo(s) · ` : 'liga ainda não começou · ') : 'sem competição'}{pos && <button className="link" onClick={() => go('competitions')}>ver tabela</button>}</span></div>
-            <div className="stat-tile"><span className="stat-label">Caixa</span><span className={`stat-value ${club.balance < 0 ? 'neg' : ''}`}>{fmtMoney(club.balance)}</span><span className="muted small">saldo atual do clube</span></div>
-            <div className="stat-tile"><span className="stat-label">Elenco</span><span className="stat-value">{squad.length}</span><span className="muted small">força média {to20(avg)}</span></div>
-            <div className="stat-tile"><span className="stat-label">Folha mensal</span><span className="stat-value">{fmtMoney(payroll)}</span><span className="muted small">salários dos jogadores</span></div>
-          </div>
-        )}
-        {!match && !player && view === 'overview' && (
-          <div className="grid2">
-            <section className="card">
-              <h2>Treinador</h2>
-              <div className="row">
-                {overview.photoDataUrl && imgOk
-                  ? <img className="photo" src={overview.photoDataUrl} alt="Foto do treinador" onError={() => setImgOk(false)} />
-                  : <div className="photo placeholder">{coach.firstName[0]}{coach.lastName[0]}</div>}
-                <div>
-                  <p><strong>{coach.firstName} {coach.lastName}</strong></p>
-                  <p className="muted">{coach.age} anos · {overview.nationalityName}</p>
-                  <p className="muted">Metodologia: {METHODOLOGY[coach.methodology].label}</p>
-                  <p className="muted row">Reputação: <Stars reputation={coach.reputation} label="Reputação do treinador" /></p>
-                </div>
-              </div>
-            </section>
-            {club ? (
-              <section className="card">
-                <h2>Clube</h2>
-                <div className="row dash-club"><ClubCrest id={club.id} name={club.name} size={44} src={img.url('clubs', club.id)} /><p><strong>{club.name}</strong> — {club.city}</p></div>
-                <p className="muted">{club.country} · {club.league}</p>
-                <p className="muted">Estádio: {club.stadium} ({fmtNum(club.capacity)} lugares)</p>
-                <p className="muted row">Reputação <Stars reputation={club.reputation} label="Reputação do clube" /> · Torcida {fmtNum(club.fans)}</p>
-              </section>
-            ) : (
-              <section className="card">
-                <h2>Sem clube</h2>
-                <p>O treinador está desempregado. O calendário continua e clubes com vaga fazem propostas conforme a sua reputação.</p>
-                <button onClick={() => go('board')}>Ver propostas de emprego</button>
-              </section>
-            )}
-            <section className="card">
-              <h2>Próxima partida</h2>
-              {next ? (
-                <>
-                  <p><strong>{next.homeId === club?.id ? `${club?.name} × ${next.awayName}` : `${next.homeName} × ${club?.name}`}</strong></p>
-                  <p className="muted">{fmtWeekday(next.date)} {fmtDate(next.date)} · rodada {next.round} · {next.homeId === club?.id ? 'em casa' : 'fora'}</p>
-                  <p className="muted small">{next.competitionName}</p>
-                </>
-              ) : <p className="muted">Nenhuma partida agendada.</p>}
-            </section>
-            {lastSim && lastSim.results.some((m) => m.hasReport) && (
-              <section className="card wide scroll">
-                <h2>Resultados da rodada ({fmtDate(lastSim.date)})</h2>
-                {lastSim.results.some((m) => !m.hasReport) && <p className="muted small">Só os países com simulação completa. Os placares dos demais estão em Competições.</p>}
-                <table><tbody>{lastSim.results.filter((m) => m.hasReport).map((m) => (
-                  <tr key={m.fixtureId} className={m.involvesUser ? 'mine' : ''}>
-                    <td className="muted small">{m.competitionName}</td><td className="right">{m.homeName}</td>
-                    <td className="center"><strong>{m.homeGoals} x {m.awayGoals}</strong></td><td>{m.awayName}</td>
-                    <td><button className="secondary" onClick={() => setMatch({ fixtureId: m.fixtureId, autoplay: false })}>Relatório</button></td>
-                  </tr>))}</tbody></table>
-              </section>
-            )}
-          </div>
-        )}
+        {!match && !player && !clubPage && view === 'overview' && <OverviewView overview={overview} refreshKey={refreshKey} onGo={(v) => go(v)} onOpenPlayer={setPlayer} onChanged={onRefresh} />}
 
-        {!match && !player && view === 'transfers' && <TransfersView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} preselect={preselect} onOpenPlayer={setPlayer} />}
-        {!match && !player && view === 'finance' && <FinanceView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && !player && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} onOpenPlayer={setPlayer} />}
-        {!match && !player && view === 'season' && <SeasonView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenContracts={() => go('contracts')} />}
-        {!match && !player && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && view === 'scouting' && <ScoutingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenPlayer={setPlayer} onNegotiate={negotiate} />}
-        {!match && !player && view === 'youth' && <YouthView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && view === 'staff' && <StaffView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && view === 'training' && <TrainingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
-        {!match && !player && view === 'medical' && <MedicalView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
-        {!match && !player && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && view === 'board' && <BoardView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && view === 'inbox' && <InboxView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} coachFirstName={coach.firstName} clubName={club?.name ?? null} onGo={(v) => go(v)} onChanged={() => void onRefresh()} />}
-        {!match && !player && view === 'news' && <SocialView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} />}
-        {!match && !player && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && !player && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && !player && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
-        {!match && !player && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} club={club} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
-        {!match && !player && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'transfers' && <TransfersView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} preselect={preselect} onPreselectUsed={clearPreselect} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'finance' && <FinanceView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && !clubPage && view === 'tactics' && <TacticsView profileId={profileId} careerId={careerId} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'season' && <SeasonView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenContracts={() => go('contracts')} />}
+        {!match && !player && !clubPage && view === 'contracts' && <ContractsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'scouting' && <ScoutingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenPlayer={setPlayer} onNegotiate={negotiate} />}
+        {!match && !player && !clubPage && view === 'youth' && <YouthView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'staff' && <StaffView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'training' && <TrainingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'medical' && <MedicalView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'board' && <BoardView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'inbox' && <InboxView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} coachFirstName={coach.firstName} clubName={club?.name ?? null} onGo={(v) => go(v)} onChanged={() => void onRefresh()} />}
+        {!match && !player && !clubPage && view === 'news' && <SocialView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} />}
+        {!match && !player && !clubPage && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && !clubPage && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && !clubPage && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
+        {!match && !player && !clubPage && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} club={club} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
+        {!match && !player && !clubPage && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} onOpenClub={setClubPage} />}
 
-        {!match && !player && view === 'squad' && <SquadView squad={squad} onOpenPlayer={setPlayer} />}
+        {!match && !player && !clubPage && view === 'squad' && <SquadView squad={squad} onOpenPlayer={setPlayer} />}
       </main>
     </div>
   );

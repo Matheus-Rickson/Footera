@@ -37,15 +37,15 @@ export function SeasonView({ profileId, careerId, refreshKey, onChanged, onOpenC
       <section className="card">
         <h2>Temporada {st.label}</h2>
         {!st.complete && <p>{u && <>Seu clube tem <strong>{userLeft}</strong> jogo(s) pela frente; </>}faltam {st.matchesLeft} partida(s) somando todas as ligas. A virada de temporada acontece em <strong>{fmtDate(st.turnoverDate)}</strong>, depois da última rodada.</p>}
-        {st.complete && !st.canStart && <p className="notice">Todas as partidas foram disputadas. Avance o calendário até <strong>{fmtDate(st.turnoverDate)}</strong> para iniciar a nova temporada (os salários e receitas de maio e junho continuam sendo lançados).</p>}
+        {st.complete && !st.canStart && <p className="notice">Todas as partidas foram disputadas. Avance o calendário até <strong>{fmtDate(st.turnoverDate)}</strong> para iniciar a nova temporada (os salários e receitas dos meses até lá continuam sendo lançados).</p>}
         {st.canStart && (
           <div className="notice">
             <p><strong>Chegou o dia {fmtDate(st.turnoverDate)}.</strong> Ao iniciar a nova temporada: prêmios da liga são pagos, clubes sobem e descem, jogadores se aposentam,
               contratos que vencem hoje terminam (os seus só continuam se você renovou), todos evoluem um ano, a IA promove jovens da base e quem completou 19 anos sem promoção sai da base, suspensões e cartões zeram e o novo calendário é sorteado.
-              A janela de transferências de verão abre no mesmo dia.</p>
+              {st.turnoverDate.slice(5) === '01-01' ? 'A janela de transferências de janeiro abre no mesmo dia.' : 'A janela de transferências de verão abre no mesmo dia.'}</p>
             {st.expiring.length > 0 && <p className="error">{st.expiring.length} jogador(es) do seu elenco ficarão livres se o contrato não for renovado antes.</p>}
             {!confirm
-              ? <button disabled={busy} onClick={() => setConfirm(true)}>Iniciar temporada {st.season + 1}/{String(st.season + 2).slice(2)}</button>
+              ? <button disabled={busy} onClick={() => setConfirm(true)}>Iniciar temporada {st.nextLabel}</button>
               : <div className="row"><span>Esta ação não pode ser desfeita.</span><button disabled={busy} onClick={() => void start()}>Confirmar virada</button><button className="secondary" disabled={busy} onClick={() => setConfirm(false)}>Cancelar</button></div>}
           </div>
         )}

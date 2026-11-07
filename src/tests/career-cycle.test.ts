@@ -59,9 +59,10 @@ test('Virada: só com todas as partidas disputadas e no dia 1º/jul; a entressaf
   assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'finance_last_month'").get()!.value), '2027-07');
   assert.deepEqual([getCareerState(db).season, getCareerState(db).gameDate], [2027, '2027-07-01']);
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND kind = 'league'"), 4);
-  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND kind = 'cup'"), 2, 'copas nacionais da nova temporada');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND kind = 'cup' AND id LIKE 'cup%'"), 2, 'copas nacionais da nova temporada');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE season = 2027 AND id LIKE 'sup%'"), 2, 'supercopas (campeões de 2026/27)');
   assert.equal(n(db, "SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = 2027 AND f.status = 'scheduled' AND c.kind = 'league'"), 4 * 30);
-  assert.equal(advanceTime(db, 'nextMatchday').toDate.slice(0, 7), '2027-08', 'temporada nova segue normalmente');
+  assert.equal(advanceTime(db, 'nextMatchday').toDate, '2027-07-26', 'a temporada nova abre com as supercopas (fim de julho)');
   assert.throws(() => startNextSeason(db), SeasonError, 'não vira duas vezes');
 });
 
@@ -250,7 +251,7 @@ test('Duas viradas seguidas: contabilidade, elencos e calendário continuam ínt
     for (const lg of db.prepare('SELECT id FROM leagues').all()) assert.equal(n(db, 'SELECT COUNT(*) AS n FROM clubs WHERE league_id = ?', String(lg.id)), 6);
   }
   assert.equal(getHistory(db).filter((h) => !h.current).length, 2);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM trophies'), 12, '2 temporadas × (4 ligas + 2 copas)');
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM trophies'), 14, '2 temporadas × (4 ligas + 2 copas) + 2 supercopas na 2ª');
 });
 
 test('Contratos: a data exibida antes de renovar (renewBaseYear + N) é a mesma que a renovação grava', async () => {

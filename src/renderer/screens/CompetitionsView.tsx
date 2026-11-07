@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import type { CompetitionInfoDto, CompetitionTableDto, CupBracketDto } from '../../shared/api.ts';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, CupBracketDto, FixtureDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, TIEBREAKER_LABEL, unwrap } from '../util.ts';
 import { HelpTip } from '../help.tsx';
 import { useImages } from '../images.ts';
 import { ClubCrest } from '../flags.tsx';
 import { ClubSheet } from '../clubSheet.tsx';
 
-interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer?: (id: string) => void }
+interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer?: (id: string) => void; onOpenMatch?: (fixtureId: string) => void; onOpenClub?: (clubId: string) => void }
 
-export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer }: Props) {
+export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer, onOpenMatch, onOpenClub }: Props) {
   const [club, setClub] = useState<string | null>(null);
   const [comps, setComps] = useState<CompetitionInfoDto[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -41,7 +42,8 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
     <label>Competição
       <select value={selected ?? ''} onChange={(e) => setSelected(e.target.value)}>
         <optgroup label="Ligas">{comps.filter((c) => c.kind === 'league').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
-        <optgroup label="Copas nacionais">{comps.filter((c) => c.kind === 'cup').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
+        <optgroup label="Copas nacionais">{comps.filter((c) => c.kind === 'cup' && !c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
+        {comps.some((c) => c.supercup) && <optgroup label="Supercopas">{comps.filter((c) => c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>}
       </select>
     </label>
   );
@@ -49,50 +51,162 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
     if (!cup || cup.id !== selected) return <p className="muted">Carregando copa…</p>;
     return (
       <div className="cp-root">
-        <section className="card"><div className="cp-pick">{picker}</div><CupHeader cup={cup} /></section>
+        <section className="card"><div className="cp-pick">{img.url('cups', cup.logoId) && <img className="cp-league-logo" src={img.url('cups', cup.logoId)!} alt={`Logo: ${cup.name}`} />}{picker}</div><CupHeader cup={cup} /></section>
         <section className="card cp-table-card"><div className="cp-scroll"><CupStages cup={cup} img={img} onClub={setClub} /></div></section>
-        {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} />}
+        {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} onOpenFull={onOpenClub} />}
       </div>
     );
   }
   if (!comps || !table) return <p className="muted">Carregando competições…</p>;
   const logo = img.url('leagues', table.competition.leagueId);
+  const zones = new Set(table.rows.map((r) => r.zone).filter(Boolean));
 
   return (
     <div className="cp-root">
-      <section className="card">
+      <section className="card cp-head">
         <div className="cp-pick">
           {logo && <img className="cp-league-logo" src={logo} alt={`Logo: ${table.competition.name}`} />}
           {picker}
         </div>
         <p className="muted small">
           Rodadas concluídas: {table.roundsPlayed} de {table.totalRounds} · Desempate: {table.tiebreakers.map((t) => TIEBREAKER_LABEL[t] ?? t).join(' → ')}
+          {table.roundsPlayed === 0 && table.rows.every((r) => r.played === 0) && ' · Nenhuma partida disputada: a ordem é provisória (só o desempate por código do clube).'}
         </p>
-        {table.roundsPlayed === 0 && table.rows.every((r) => r.played === 0) && (
-          <p className="notice">Nenhuma partida foi disputada ainda. A ordem abaixo é provisória (apenas desempate por código do clube) e não representa uma classificação.</p>
-        )}
       </section>
-      <section className="card cp-table-card">
-        <div className="cp-scroll">
-        <table>
-          <thead><tr><th>#</th><th>Clube</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th><th>Pts</th></tr></thead>
-          <tbody>
-            {table.rows.map((r) => (
-              <tr key={r.clubId} className={`${r.zone ?? ''} ${r.isUserClub ? 'mine' : ''}`}>
-                <td>{r.position}</td><td><button className="cp-club cp-club-btn" title="Ver a ficha do clube" onClick={() => setClub(r.clubId)}><ClubCrest id={r.clubId} name={r.clubName} size={18} src={img.url('clubs', r.clubId)} />{r.clubName}</button></td><td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
-                <td>{r.goalsFor}</td><td>{r.goalsAgainst}</td><td>{r.goalDiff}</td><td><strong>{r.points}</strong></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="cp-grid">
+        <section className="card cp-table-card">
+          <h2 className="cp-card-title">Classificação</h2>
+          <div className="cp-scroll">
+            <table className="cp-std">
+              <thead><tr><th>#</th><th>Clube</th><th className="center">Pts</th><th className="center">J</th><th className="center">V</th><th className="center">E</th><th className="center">D</th>
+                <th className="center">GP</th><th className="center">GC</th><th className="center">SG</th><th className="center">Forma</th></tr></thead>
+              <tbody>
+                {table.rows.map((r) => (
+                  <tr key={r.clubId} className={`${r.zone ?? ''} ${r.isUserClub ? 'mine' : ''}`}>
+                    <td>{r.position}</td>
+                    <td><button className="cp-club cp-club-btn" title="Ver a ficha do clube" onClick={() => setClub(r.clubId)}><ClubCrest id={r.clubId} name={r.clubName} size={16} src={img.url('clubs', r.clubId)} />{r.clubName}</button></td>
+                    <td className="center"><strong>{r.points}</strong></td><td className="center">{r.played}</td><td className="center">{r.won}</td><td className="center">{r.drawn}</td><td className="center">{r.lost}</td>
+                    <td className="center">{r.goalsFor}</td><td className="center">{r.goalsAgainst}</td><td className="center">{r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}</td>
+                    <td className="center"><span className="cp-form" aria-label={`Últimos jogos: ${r.form.join(', ') || 'nenhum'}`}>{r.form.map((f, k) => <i key={k} className={`cp-form-${f}`}>{f}</i>)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted small legend cp-legend">
+            {zones.has('promotion') && <span><span className="dot promotion" />Acesso{table.zoneTargets.promotion ? ` (${table.zoneTargets.promotion})` : ''}</span>}
+            {zones.has('continental') && <span><span className="dot continental" />Vaga continental</span>}
+            {zones.has('relegation') && <span><span className="dot relegation" />Rebaixamento{table.zoneTargets.relegation ? ` (${table.zoneTargets.relegation})` : ''}</span>}
+            <span className="cp-legend-tip">Clique em um clube para ver a ficha dele.</span>
+          </p>
+        </section>
+        <div className="cp-side">
+          <LeadersCard profileId={profileId} careerId={careerId} competitionId={table.competition.id} refreshKey={refreshKey} img={img} onClub={setClub} onOpenPlayer={onOpenPlayer} />
+          <RoundCard profileId={profileId} careerId={careerId} table={table} refreshKey={refreshKey} img={img} onOpenMatch={onOpenMatch} />
         </div>
-        <p className="muted small">Clique em um clube para ver a ficha dele, com o técnico e o elenco.</p>
-        <p className="muted small legend">
-          <span className="dot promotion" /> promoção <span className="dot continental" /> vaga continental <span className="dot relegation" /> rebaixamento
-        </p>
-      </section>
-      {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} />}
+      </div>
+      {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} onOpenFull={onOpenClub} />}
     </div>
+  );
+}
+
+const LEADERS = {
+  goals: { label: 'Artilheiros', col: 'G', title: 'Gols' },
+  assists: { label: 'Assistências', col: 'A', title: 'Assistências' },
+  cleanSheets: { label: 'Jogos sem sofrer gols', col: 'JSG', title: 'Jogos sem sofrer gols (goleiro com 60 minutos ou mais no gol)' },
+} as const;
+type LeaderKind = keyof typeof LEADERS;
+
+/** Estatísticas dos jogadores: artilheiros, assistências e jogos sem sofrer gols (10 primeiros). */
+function LeadersCard({ profileId, careerId, competitionId, refreshKey, img, onClub, onOpenPlayer }: {
+  profileId: string; careerId: string; competitionId: string; refreshKey: string; img: ReturnType<typeof useImages>; onClub: (id: string) => void; onOpenPlayer?: (id: string) => void;
+}) {
+  const [kind, setKind] = useState<LeaderKind>('goals');
+  const [data, setData] = useState<CompetitionLeadersDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let stale = false;
+    unwrap(window.api.getCompetitionLeaders(profileId, careerId, competitionId)).then((d) => { if (!stale) { setData(d); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
+    return () => { stale = true; };
+  }, [profileId, careerId, competitionId, refreshKey]);
+  const rows = data && data.competitionId === competitionId ? data[kind] : null;
+  return (
+    <section className="card cp-side-card">
+      <div className="cp-card-head">
+        <h2 className="cp-card-title">Estatísticas dos jogadores</h2>
+        <select className="cp-card-select" value={kind} onChange={(e) => setKind(e.target.value as LeaderKind)} aria-label="Estatística">
+          {(Object.keys(LEADERS) as LeaderKind[]).map((k) => <option key={k} value={k}>{LEADERS[k].label}</option>)}
+        </select>
+      </div>
+      {error ? <p className="error" role="alert">{error}</p> : !rows || !data ? <p className="muted small">Carregando…</p>
+        : !data.hasStats ? <p className="muted small">Competição com simulação simplificada: só placares, sem estatísticas dos jogadores.</p>
+          : rows.length === 0 ? <p className="muted small">Ninguém pontuou nesta estatística ainda.</p> : (
+            <div className="cp-scroll">
+              <table className="cp-mini">
+                <thead><tr><th>#</th><th>Nome</th><th>Clube</th><th className="center">J</th><th className="center" title={LEADERS[kind].title}>{LEADERS[kind].col}</th></tr></thead>
+                <tbody>{rows.map((r, k) => (
+                  <tr key={r.playerId}>
+                    <td className="muted">{k + 1}</td>
+                    <td>{onOpenPlayer ? <button className="cp-club-btn" onClick={() => onOpenPlayer(r.playerId)}>{r.name}</button> : r.name}</td>
+                    <td><button className="cp-club cp-club-btn" onClick={() => onClub(r.clubId)}><ClubCrest id={r.clubId} name={r.clubName} size={14} src={img.url('clubs', r.clubId)} />{r.clubName}</button></td>
+                    <td className="center">{r.appearances}</td><td className="center"><strong>{r.value}</strong></td>
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          )}
+    </section>
+  );
+}
+
+/** Jogos de uma rodada da liga (começa na rodada em andamento; setas para as outras). */
+function RoundCard({ profileId, careerId, table, refreshKey, img, onOpenMatch }: {
+  profileId: string; careerId: string; table: CompetitionTableDto; refreshKey: string; img: ReturnType<typeof useImages>; onOpenMatch?: (fixtureId: string) => void;
+}) {
+  const compId = table.competition.id;
+  const [round, setRound] = useState({ compId, n: table.currentRound });
+  const n = round.compId === compId ? round.n : table.currentRound;
+  const [games, setGames] = useState<{ key: string; list: FixtureDto[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setRound({ compId, n: table.currentRound }); }, [compId, table.currentRound]);
+  useEffect(() => {
+    if (n < 1 || table.totalRounds === 0) return;
+    let stale = false;
+    unwrap(window.api.listRound(profileId, careerId, compId, n)).then((l) => { if (!stale) { setGames({ key: `${compId}:${n}`, list: l }); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
+    return () => { stale = true; };
+  }, [profileId, careerId, compId, n, refreshKey, table.totalRounds]);
+  const list = games?.key === `${compId}:${n}` ? games.list : null;
+  const dates = list ? [...new Set(list.map((g) => g.date))].sort() : [];
+  const go = (d: number) => setRound({ compId, n: Math.min(table.totalRounds, Math.max(1, n + d)) });
+  const userClub = table.rows.find((r) => r.isUserClub)?.clubId ?? null;
+  return (
+    <section className="card cp-side-card">
+      <div className="cp-card-head">
+        <h2 className="cp-card-title">Jogos da rodada</h2>
+        {table.totalRounds > 0 && <div className="cp-round-nav">
+          <button className="secondary cp-round-arrow" disabled={n <= 1} onClick={() => go(-1)} aria-label="Rodada anterior"><ChevronLeft size={16} aria-hidden="true" /></button>
+          <span><strong>Rodada {n}</strong>{dates.length > 0 && <span className="muted small"> · {dates.length === 1 ? fmtDate(dates[0]!) : `${fmtDate(dates[0]!)} a ${fmtDate(dates[dates.length - 1]!)}`}</span>}</span>
+          <button className="secondary cp-round-arrow" disabled={n >= table.totalRounds} onClick={() => go(1)} aria-label="Próxima rodada"><ChevronRight size={16} aria-hidden="true" /></button>
+        </div>}
+      </div>
+      {error ? <p className="error" role="alert">{error}</p> : table.totalRounds === 0 ? <p className="muted small">Sem partidas nesta competição.</p> : !list ? <p className="muted small">Carregando…</p> : (
+        <div className="cp-scroll">
+          <table className="cp-mini cp-round">
+            <tbody>{list.map((g) => {
+              const open = g.status === 'played' && g.hasReport ? onOpenMatch : undefined;
+              return (
+                <tr key={g.id} className={userClub && (g.homeId === userClub || g.awayId === userClub) ? 'mine' : ''}>
+                  <td className="right"><span className="cp-club cp-round-home">{g.homeName}<ClubCrest id={g.homeId} name={g.homeName} size={14} src={img.url('clubs', g.homeId)} /></span></td>
+                  <td className="center cp-round-score">{g.status === 'played'
+                    ? (open ? <button className="cp-club-btn" title="Ver o relatório da partida" onClick={() => open(g.id)}><strong>{g.homeGoals} x {g.awayGoals}</strong></button> : <strong>{g.homeGoals} x {g.awayGoals}</strong>)
+                    : <span className="muted small">{dates.length > 1 ? fmtDate(g.date).slice(0, 5) : 'x'}</span>}</td>
+                  <td><span className="cp-club"><ClubCrest id={g.awayId} name={g.awayName} size={14} src={img.url('clubs', g.awayId)} />{g.awayName}</span></td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -109,8 +223,9 @@ function CupHeader({ cup }: { cup: CupBracketDto }) {
         <HelpTip text={`Regras: ${cup.regulation}. Formato e entradas: ${SRC[cup.source.structure]}; desempate: ${SRC[cup.source.tiebreak]}; mando: ${SRC[cup.source.host]}; cartões: ${SRC[cup.source.discipline]}; premiação: ${SRC[cup.source.prizes]}. Detalhes em docs/COPAS_NACIONAIS.md.`} />
       </p>
       <p className="muted small">
-        Cartões: {cup.discipline.yellowLimit} amarelos suspendem por 1 jogo{cup.discipline.resetAfter ? ` (zeram ao fim da ${cup.discipline.resetAfter})` : ''}; expulsão suspende; as suspensões da copa valem só nela.
-        {' '}O campeão ganha: {cup.reward} — as competições continentais ainda não existem no jogo.
+        {cup.supercup ? 'Cartões: expulsão suspende; as suspensões da supercopa valem só nela.'
+          : <>Cartões: {cup.discipline.yellowLimit} amarelos suspendem por 1 jogo{cup.discipline.resetAfter ? ` (zeram ao fim da ${cup.discipline.resetAfter})` : ''}; expulsão suspende; as suspensões da copa valem só nela.</>}
+        {' '}{cup.supercup ? 'Vale só o troféu (sem prêmio em dinheiro).' : `O campeão ganha: ${cup.reward} — as competições continentais ainda não existem no jogo.`}
       </p>
     </div>
   );

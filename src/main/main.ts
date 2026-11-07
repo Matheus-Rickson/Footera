@@ -7,10 +7,10 @@ import { z } from 'zod';
 import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
-  advanceCareer, createCareerSave, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
+  advanceCareer, continueCareerDay, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, aiCoachInfo, unemployedCoaches, cupBracket,
+  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -61,7 +61,7 @@ function registerHandlers(): void {
   handle('packs:list', z.unknown(), () => listPacks(dataDir()));
   const imageKeys = () => ({ version: imagesVersion(), keys: [...imageIndex(dataDir()).keys()] });
   handle('images:keys', z.unknown(), () => imageKeys());
-  const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues', 'coaches']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
+  const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues', 'coaches', 'cups']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
   const packDirFor = (id: string) => { const d = path.join(packsDir(dataDir()), id); if (!fs.existsSync(path.join(d, 'manifest.json'))) throw new ValidationError('Pacote não encontrado.'); return d; };
   const packImageKeys = (id: string) => ({ version: imagesVersion(), keys: listPackImages(packDirFor(id)).map((im) => `${im.kind}/${im.id}`) });
   handle('editor:imageKeys', z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) }), (i) => packImageKeys(i.packId));
@@ -100,7 +100,7 @@ function registerHandlers(): void {
   handle('packs:remove', z.object({ id: packId }), (i) => removePack(dataDir(), i.id));
   handle('packs:folder', z.unknown(), async () => { fs.mkdirSync(packsDir(dataDir()), { recursive: true }); await shell.openPath(packsDir(dataDir())); return true as const; });
   // ---- editor de dados (os registros são validados pelo formato dos pacotes e pela montagem do universo antes de gravar)
-  const kind = z.enum(['countries', 'leagues', 'clubs', 'players', 'coaches']);
+  const kind = z.enum(['countries', 'leagues', 'clubs', 'players', 'coaches', 'cups']);
   const pk = { packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) };
   const rec = z.record(z.unknown()).refine((r) => JSON.stringify(r).length < 200_000, 'registro grande demais');
   handle('editor:create', z.object({ name: z.string().trim().min(1).max(80), author: z.string().max(80).optional(), description: z.string().max(1000).optional() }), (i) => editorCreatePack(dataDir(), i));
@@ -190,6 +190,8 @@ function registerHandlers(): void {
   handle('career:competitions', ref, (i) => listCompetitionsFor(dataDir(), i.profileId, i.careerId));
   handle('career:table', ref.extend({ competitionId: z.string().min(1).max(100) }), (i) => getTable(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('career:advance', ref.extend({ mode: z.enum(['day', 'nextMatchday']) }), (i) => advanceCareer(dataDir(), i.profileId, i.careerId, i.mode));
+  handle('career:continue', ref, (i) => continueCareerDay(dataDir(), i.profileId, i.careerId));
+  handle('career:leaders', ref.extend({ competitionId: z.string().min(1).max(100) }), (i) => getLeaders(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('career:simulate', ref, (i) => simulateCareerMatchday(dataDir(), i.profileId, i.careerId));
   const liveSchema = ref.extend({ live: z.object({
     interventions: z.array(z.discriminatedUnion('kind', [
@@ -275,6 +277,10 @@ function registerHandlers(): void {
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
   handle('cup:bracket', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => cupBracket(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('club:info', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubInfo(dataDir(), i.profileId, i.careerId, i.clubId));
+  handle('club:profile', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubProfile(dataDir(), i.profileId, i.careerId, i.clubId));
+  handle('talk:list', ref, (i) => conversations(dataDir(), i.profileId, i.careerId));
+  handle('talk:player', ref.extend({ playerId: z.string().min(1).max(80), topic: z.enum(['praise', 'demand', 'promise_minutes', 'promise_renewal']) }), (i) => playerTalk(dataDir(), i.profileId, i.careerId, i.playerId, i.topic));
+  handle('talk:board', ref.extend({ topic: z.enum(['promise_position', 'promise_wins']) }), (i) => boardTalk(dataDir(), i.profileId, i.careerId, i.topic));
   handle('coach:info', ref.extend({ coachId: z.string().min(1).max(80) }), (i) => aiCoachInfo(dataDir(), i.profileId, i.careerId, i.coachId));
   handle('coach:unemployed', ref, (i) => unemployedCoaches(dataDir(), i.profileId, i.careerId));
   handle('board:job', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerJobOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));

@@ -1,7 +1,7 @@
 /**
  * Formato dos pacotes de dados (patches) — versão 1. Ver docs/DATABASE.md e docs/schema/.
  *
- * Um pacote é uma pasta com `manifest.json` e arquivos JSON por tipo (countries, leagues, stadiums, clubs, players, coaches). Cada registro tem um `id`
+ * Um pacote é uma pasta com `manifest.json` e arquivos JSON por tipo (countries, leagues, stadiums, clubs, players, coaches, cups). Cada registro tem um `id`
  * fixo: se o id ainda não existe no universo, o registro CRIA a entidade (precisa dos campos obrigatórios); se já existe, ALTERA só os campos
  * informados; `"$remove": true` REMOVE. Campos desconhecidos são erro (pega erros de digitação). Escalas: atributos, habilidade e potencial
  * de 1 a 20 (como na tela); reputação de 1 a 100.
@@ -12,7 +12,7 @@ import type { Position } from '../../shared/types.ts';
 
 export const PACK_FORMAT = 1;
 /** Arquivos de dados, na ordem em que são aplicados (dependências primeiro). */
-export const PACK_FILES = ['countries', 'leagues', 'stadiums', 'clubs', 'players', 'coaches'] as const;
+export const PACK_FILES = ['countries', 'leagues', 'stadiums', 'clubs', 'players', 'coaches', 'cups'] as const;
 export type PackFile = typeof PACK_FILES[number];
 
 const id = z.string().regex(ID_PATTERN, 'id inválido: use minúsculas, números, "-" ou "_" (até 60 caracteres)');
@@ -39,7 +39,11 @@ export const manifestSchema = z.object({
 }).strict();
 export type PackManifest = z.infer<typeof manifestSchema>;
 
-export const countrySchema = z.object({ id, ...remove, code: code3.optional(), name: text(60).optional(), economy: z.number().min(0.1).max(5).optional() }).strict();
+export const countrySchema = z.object({
+  id, ...remove, code: code3.optional(), name: text(60).optional(), economy: z.number().min(0.1).max(5).optional(),
+  /** início da temporada: "07-01" (julho a junho) ou "01-01" (ano civil, com pré-temporada em janeiro); sem informar: o padrão do país */
+  seasonStart: z.enum(['07-01', '01-01']).optional(),
+}).strict();
 
 const rulesSchema = z.object({
   rounds: int(1, 4).optional(), pointsWin: int(1, 5).optional(), pointsDraw: int(0, 3).optional(),
@@ -104,14 +108,29 @@ export const coachSchema = z.object({
   attributes: z.object({ tactics: attr, motivation: attr, youth: attr, discipline: attr, negotiation: attr, adaptability: attr }).partial().strict().optional(),
 }).strict();
 
-export const fileSchemas = { countries: countrySchema, leagues: leagueSchema, stadiums: stadiumSchema, clubs: clubSchema, players: playerSchema, coaches: coachSchema } as const;
+const mmdd = z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'data no formato MM-DD');
+const cupWindow = z.object({ start: mmdd, final: mmdd }).strict();
+/**
+ * copa ou supercopa nacional (Fase 9). Criar exige país, tipo e nome; o resto vem da regra real do país (ou da mais comum). Copa: as fases
+ * vêm do formato de um país (`stagesFrom`, código); a janela vale para a temporada de julho e, em `windowCalendarYear`, para o ano civil.
+ * Supercopa: 2 ou 4 clubes, dobradinha (vice da liga, vice da copa ou sem jogo), mando (neutro, campeão da copa ou da liga), prorrogação.
+ */
+export const cupSchema = z.object({
+  id, ...remove, country: id.optional(), kind: z.enum(['cup', 'supercup']).optional(), name: text(80).optional(), enabled: z.boolean().optional(),
+  stagesFrom: code3.optional(), window: cupWindow.optional(), windowCalendarYear: cupWindow.nullable().optional(), yellowLimit: int(1, 10).optional(),
+  teams: z.union([z.literal(2), z.literal(4)]).optional(), double: z.enum(['league2', 'cup2', 'none']).optional(), host: z.enum(['neutral', 'cup', 'league']).optional(),
+  extraTime: z.boolean().optional(), dates: z.array(mmdd).min(1).max(2).optional(), datesCalendarYear: z.array(mmdd).min(1).max(2).nullable().optional(),
+}).strict();
+
+export const fileSchemas = { countries: countrySchema, leagues: leagueSchema, stadiums: stadiumSchema, clubs: clubSchema, players: playerSchema, coaches: coachSchema, cups: cupSchema } as const;
 export type CountryRec = z.infer<typeof countrySchema>;
 export type LeagueRec = z.infer<typeof leagueSchema>;
 export type StadiumRec = z.infer<typeof stadiumSchema>;
 export type ClubRec = z.infer<typeof clubSchema>;
 export type PlayerRec = z.infer<typeof playerSchema>;
 export type CoachRec = z.infer<typeof coachSchema>;
-export interface PackData { countries: CountryRec[]; leagues: LeagueRec[]; stadiums: StadiumRec[]; clubs: ClubRec[]; players: PlayerRec[]; coaches: CoachRec[] }
+export type CupRec = z.infer<typeof cupSchema>;
+export interface PackData { countries: CountryRec[]; leagues: LeagueRec[]; stadiums: StadiumRec[]; clubs: ClubRec[]; players: PlayerRec[]; coaches: CoachRec[]; cups: CupRec[] }
 export interface Pack { manifest: PackManifest; data: PackData }
 
 /** Problema encontrado num pacote: onde (pacote, arquivo, registro) e o quê. */
@@ -134,7 +153,7 @@ export function parsePack(raw: { manifest: unknown; files: Partial<Record<PackFi
   const m = manifestSchema.safeParse(raw.manifest);
   const packName = m.success ? m.data.id : source;
   if (!m.success) for (const e of m.error.issues) issues.push({ pack: source, file: 'manifest.json', message: `${e.path.join('.') || '(raiz)'}: ${e.message}` });
-  const data = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] } as PackData;
+  const data = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [], cups: [] } as PackData;
   for (const f of PACK_FILES) {
     const content = raw.files[f];
     if (content === undefined) continue;

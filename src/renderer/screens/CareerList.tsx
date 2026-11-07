@@ -18,7 +18,7 @@ export function CareerList({ data, error, busy, onBack, onOpen }: Props) {
             <tbody>
               {data.careers.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.coachName}</td><td>{c.clubName}</td><td>{c.season}</td><td>{fmtDate(c.gameDate)}</td>
+                  <td>{c.coachName}</td><td>{c.clubName}</td><td>{c.seasonLabel}</td><td>{fmtDate(c.gameDate)}</td>
                   <td>{fmtDateTime(c.updatedAt)}</td><td>{fmtPlay(c.playSeconds)}</td>
                   <td><button disabled={busy} onClick={() => onOpen(c.id)}>Abrir</button></td>
                 </tr>

@@ -1,7 +1,8 @@
 import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
-import type { World, Club, League, Player, Stadium, Country } from '../../shared/types.ts';
+import type { World, Club, League, Player, Stadium, Country, WorldCup } from '../../shared/types.ts';
 import { withGoalkeeper } from '../../game/world/goalkeeper.ts';
+import { defaultCups } from '../../game/cup-engine/catalog.ts';
 
 export function saveWorld(db: SqlDb, w: World): void {
   withTransaction(db, () => {
@@ -10,8 +11,10 @@ export function saveWorld(db: SqlDb, w: World): void {
     set.run('position_set', 'v3'); // universo com meias abertos (ME/MD), alas (AE/AD), segundo atacante (SA) e centroavante (CA): a base também os gera
     set.run('world_start_date', w.startDate);
 
-    const insCountry = db.prepare('INSERT INTO countries (id, code, name, economy) VALUES (?, ?, ?, ?)');
-    for (const c of w.countries) insCountry.run(c.id, c.code, c.name, c.economy);
+    // season_start vem da migração 19 (testes de migração gravam o mundo num banco mais antigo)
+    const hasStart = db.prepare('PRAGMA table_info(countries)').all().some((r) => String(r.name) === 'season_start');
+    const insCountry = db.prepare(hasStart ? 'INSERT INTO countries (id, code, name, economy, season_start) VALUES (?, ?, ?, ?, ?)' : 'INSERT INTO countries (id, code, name, economy) VALUES (?, ?, ?, ?)');
+    for (const c of w.countries) insCountry.run(...[c.id, c.code, c.name, c.economy, ...(hasStart ? [c.seasonStart ?? '07-01'] : [])]);
 
     const insLeague = db.prepare('INSERT INTO leagues (id, country_id, name, tier, team_count, rules_json) VALUES (?, ?, ?, ?, ?, ?)');
     for (const l of w.leagues) insLeague.run(l.id, l.countryId, l.name, l.tier, l.teamCount, JSON.stringify(l.rules));
@@ -27,6 +30,12 @@ export function saveWorld(db: SqlDb, w: World): void {
 
     const insPlayer = playerInserter(db);
     for (const p of w.players) insPlayer(p);
+
+    // copas e supercopas do universo (editáveis no editor de dados); a criação de cada edição lê daqui (migração 19)
+    if (db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'cup_formats'").get()) {
+      const insCup = db.prepare('INSERT INTO cup_formats (id, country_id, kind, format_json) VALUES (?, ?, ?, ?)');
+      for (const k of w.cups ?? defaultCups(w.countries)) insCup.run(k.id, k.countryId, k.kind, JSON.stringify(k));
+    }
   });
 }
 
@@ -55,7 +64,7 @@ export function loadWorld(db: SqlDb): World {
     return s(r.value);
   };
   const countries: Country[] = db.prepare('SELECT * FROM countries ORDER BY rowid').all()
-    .map((r) => ({ id: s(r.id), code: s(r.code), name: s(r.name), economy: n(r.economy) }));
+    .map((r) => ({ id: s(r.id), code: s(r.code), name: s(r.name), economy: n(r.economy), ...(r.season_start === '01-01' ? { seasonStart: '01-01' as const } : {}) }));
   const leagues: League[] = db.prepare('SELECT * FROM leagues ORDER BY rowid').all().map((r) => ({
     id: s(r.id), countryId: s(r.country_id), name: s(r.name), tier: n(r.tier), teamCount: n(r.team_count),
     rules: JSON.parse(s(r.rules_json)),
@@ -68,7 +77,10 @@ export function loadWorld(db: SqlDb): World {
     fans: n(r.fans), facilities: JSON.parse(s(r.facilities_json)),
   }));
   const players: Player[] = db.prepare('SELECT * FROM players ORDER BY rowid').all().map(rowToPlayer);
-  return { seed: meta('world_seed'), startDate: meta('world_start_date'), countries, leagues, stadiums, clubs, players };
+  // copas e supercopas gravadas (saves anteriores ao editor de copas não têm: ficam de fora, e a criação usa as padrão)
+  const hasCups = db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'cup_formats'").get();
+  const cups = hasCups ? db.prepare('SELECT format_json FROM cup_formats ORDER BY rowid').all().map((r) => JSON.parse(s(r.format_json)) as WorldCup) : [];
+  return { seed: meta('world_seed'), startDate: meta('world_start_date'), countries, leagues, stadiums, clubs, players, ...(cups.length ? { cups } : {}) };
 }
 
 export function rowToPlayer(r: Record<string, unknown>): Player {

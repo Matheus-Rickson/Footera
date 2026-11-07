@@ -1,6 +1,17 @@
 # Ciclo de carreira (Fase 8A)
 
 ## Linha do tempo
+- **Temporada por país (Fase 9):** cada país tem a sua (`countries.season_start`: julho a junho, ou ano civil — Brasil, Argentina e Irlanda
+  na base) e vira na sua data. A virada do país do treinador é a ação dele (`startNextSeason`); as dos outros acontecem sozinhas dentro de
+  `moveClock` (`autoTurnovers`), com a mesma ordem abaixo, restrita aos clubes daquele país. No ano civil, a temporada `S` vai de 1º/jan a 31/dez
+  (contratos terminam em 31/dez). **Início da carreira** (pedido do usuário, 06–07/11/2026; `careerWorld`): sempre no início da temporada
+  do país do clube, com as divisões da base, e os países do outro calendário na metade da temporada deles. Clube de ano civil → 1º/jan/2026:
+  o universo começa em 1º/jul/2025 e os países de julho jogam jul–dez da 2025/26. Clube de julho → 1º/jul/2026: o universo começa em
+  1º/jan/2026 e os países de ano civil jogam jan–jun da temporada 2026. Os seis meses são simulados na criação sem o treinador
+  (`fastForwardToCareerStart`, resultado rápido, sem diretoria nem rotina do clube); o país do clube fica parado nesse período
+  (`country_seasons.transition = 1`, sem jogos), então a sua primeira virada não tem acesso/rebaixamento. **Não há mais torneio de transição**
+  (saves antigos que já tinham um continuam; a virada dele não tem acesso/rebaixamento). Universo com um só calendário: começa direto.
+  Base real: ~8 s para criar. O texto abaixo descreve a temporada de julho.
 - A temporada `S` vai de 1º/jul/S a 30/jun/S+1. A liga começa no 1º sábado de agosto; com 20 times a última rodada cai em abril.
 - Depois da última rodada o calendário continua andando (dia a dia ou "até 1º/jul"): salários, TV e patrocínios de maio e junho são lançados normalmente.
 - O relógio **nunca passa de 1º/jul/S+1** (`advanceTime` devolve `season_complete`). Ali a virada é uma **ação do usuário** (`startNextSeason`).

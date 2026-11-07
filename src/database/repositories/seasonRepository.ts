@@ -29,6 +29,9 @@ import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { boardBrief, squadSize } from './newsRepository.ts';
 import { reviewAiCoaches } from './aiCoachRepository.ts';
+import { advanceCountrySeason, countrySeason, CURRENT_COMP, followCountry, userCountry, userSeason } from './countrySeasonRepository.ts';
+import { contractEndIn, renewedEnd, seasonLabelFor, type SeasonStart } from '../../game/career-engine/calendar.ts';
+import { addDays } from '../../shared/date.ts';
 
 export class SeasonError extends UserError {}
 
@@ -48,32 +51,36 @@ export const RENEW_WINDOW_MONTHS = 24;
 const AI_SQUAD_CAP = 28;
 
 // ---------------------------------------------------------------- consultas
-export function isSeasonComplete(db: SqlDb): boolean {
-  const st = getCareerState(db);
-  const left = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'scheduled'").get(st.season)!.n);
-  return left === 0;
+/** Partidas ainda a disputar na temporada corrente dos países que viram junto com o do treinador. */
+function matchesLeftForUser(db: SqlDb): number {
+  const turnover = userSeason(db).turnover;
+  return N(db.prepare(`SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id
+    WHERE ${CURRENT_COMP} AND f.status = 'scheduled' AND c.country_id IN (SELECT country_id FROM country_seasons WHERE turnover = ?)`).get(turnover)!.n);
 }
+export function isSeasonComplete(db: SqlDb): boolean { return matchesLeftForUser(db) === 0; }
 
-function contractRow(p: Player, date: string, turnover: string): ContractRowDto {
+function contractRow(p: Player, date: string, turnover: string, start: SeasonStart): ContractRowDto {
   const age = ageOn(p.birthDate, date);
   const left = monthsLeft(date, p.contractEnd);
   return {
     id: p.id, name: nameOf(p), position: p.position, age, overall: p.overall, salary: p.salary, contractEnd: p.contractEnd,
     monthsLeft: left, expiresThisSeason: expiresAt(p.contractEnd, turnover), canRenew: left <= RENEW_WINDOW_MONTHS, maxYears: maxContractYears(age), renewBaseYear: contractBaseYear(p.contractEnd),
+    renewEnds: [1, 2, 3, 4, 5].map((y) => renewedEnd(p.contractEnd, y, start)),
   };
 }
 
 export function getContracts(db: SqlDb): ContractRowDto[] {
   const st = getCareerState(db);
-  const turnover = turnoverDate(st.season);
-  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, turnover))
+  const us = userSeason(db);
+  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, us.turnover, us.start))
     .sort((a, b) => a.contractEnd.localeCompare(b.contractEnd) || b.overall - a.overall);
 }
 
 export function getSeasonStatus(db: SqlDb): SeasonStatusDto {
   const st = getCareerState(db);
-  const turnover = turnoverDate(st.season);
-  const matchesLeft = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.season = ? AND f.status = 'scheduled'").get(st.season)!.n);
+  const us = userSeason(db);
+  const turnover = us.turnover;
+  const matchesLeft = matchesLeftForUser(db);
   const comps = listCompetitions(db);
   const leagues = comps.competitions.filter((c) => c.kind === 'league').map((c) => {
     const t = getCompetitionTable(db, c.id);
@@ -93,7 +100,7 @@ export function getSeasonStatus(db: SqlDb): SeasonStatusDto {
   }
   const complete = matchesLeft === 0;
   return {
-    season: st.season, label: seasonLabel(st.season), gameDate: st.gameDate, turnoverDate: turnover, matchesLeft, complete,
+    season: us.season, label: us.label, nextLabel: seasonLabelFor(us.transition ? Number(us.turnover.slice(0, 4)) : us.season + 1, us.start), gameDate: st.gameDate, turnoverDate: turnover, matchesLeft, complete,
     canStart: complete && st.gameDate >= turnover, user, leagues, expiring: getContracts(db).filter((c) => c.expiresThisSeason),
   };
 }
@@ -114,7 +121,7 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
   if (d.kind === 'counter') return { outcome: 'counter', counterWage: d.wage, message: `${nameOf(p)} renova se o salário for de ${fmt(d.wage)} por mês.` };
   const veto = boardVeto(db, { fee: 0, wage: input.wage, marketValue: p.marketValue, replacesSalary: p.salary });
   if (veto) return { outcome: 'rejected', message: veto };
-  const end = `${contractBaseYear(p.contractEnd) + input.years}-06-30`;
+  const end = renewedEnd(p.contractEnd, input.years, userSeason(db).start);
   withTransaction(db, () => {
     db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(input.wage, end, p.id);
     addNews(db, st.gameDate, 'contract', `Renovação: ${nameOf(p)} assina até ${br(end)}`, `${nameOf(p)} (${age} anos) renovou o contrato por ${input.years} temporada(s), até ${br(end)}.\n\nSalário: de ${fmt(p.salary)} para ${fmt(input.wage)} por mês (${input.wage >= p.salary ? '+' : '−'}${fmt(Math.abs(input.wage - p.salary))}). A nova folha já vale a partir deste mês.`);
@@ -137,42 +144,85 @@ function userShortage(squad: Player[]): PositionGroup | null {
 }
 
 /**
- * Virada de temporada (ação do usuário em 1º/jul), atômica: resultados → prêmios → promoção/rebaixamento → aposentadorias →
- * contratos → desenvolvimento → jovens → reposição dos elencos da IA → zera suspensões → temporada + 1 → calendário novo →
- * mercado e fechamento mensal do dia.
+ * Virada de temporada do país do treinador (ação do usuário na data da virada: 1º/jul ou 1º/jan), atômica. Os países que viram no
+ * mesmo dia viram juntos. O dia começa pelo treino (a evolução do mês que termina pertence à temporada que termina), depois o balanço
+ * (`runTurnover`), e por fim o mercado e o fechamento mensal do dia. `opts.quiet`: virada automática do início da carreira (sem
+ * avaliação da diretoria — o treinador ainda não comandava o clube).
  */
-export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonReportDto {
+export function startNextSeason(db: SqlDb, now: Date = new Date(), opts: { quiet?: boolean } = {}): NewSeasonReportDto {
   const st = getCareerState(db);
   if (!isSeasonComplete(db)) throw new SeasonError('A temporada ainda não terminou: há partidas a disputar.');
-  const date = turnoverDate(st.season);
+  const date = userSeason(db).turnover;
   if (st.gameDate < date) throw new SeasonError(`A nova temporada começa em ${br(date)}. Avance o calendário até lá.`);
-  const newSeason = st.season + 1;
-  const rng = createRng(`season:${seedOf(db)}:${st.season}`);
-
   return withTransaction(db, () => {
-    const post: Poster = makePoster(db, st.clubId);
-    // o dia 1º/jul começa pelo treino (a evolução de junho pertence à temporada que termina), antes do balanço da temporada
     processStaffDay(db, date);
     processTrainingDay(db, date);
     processConstructionDay(db, date);
     processTrainingMonth(db, date);
-    developLightPlayers(db, date); // países simplificados: a evolução da temporada inteira de uma vez
-    const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
-    const report: NewSeasonReportDto = {
-      season: newSeason, label: seasonLabel(newSeason), previous: null, newLeague: '', champions: [], movements: [],
-      retiredUser: [], retiredTotal: 0, releasedUser: [], youthReleased: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0, board: null,
-    };
+    const report = runTurnover(db, date, countriesTurningOn(db, date), { user: true, quiet: !!opts.quiet, now });
+    processMarketDay(db, date);
+    processScoutingDay(db, date);
+    settleFinances(db, date);
+    return report;
+  });
+}
+
+/** Países cuja temporada vira na data. */
+export const countriesTurningOn = (db: SqlDb, date: string): string[] =>
+  db.prepare('SELECT country_id FROM country_seasons WHERE turnover = ? ORDER BY country_id').all(date).map((r) => S(r.country_id));
+
+/**
+ * Viradas automáticas do dia (países que não são o do treinador), chamadas por `moveClock` depois do treino do dia e antes do mercado.
+ * Exigem a temporada desses países encerrada; senão a virada espera (fica para o dia seguinte). NÃO abre transação.
+ */
+export function autoTurnovers(db: SqlDb, date: string, now: Date): number {
+  const mine = userCountry(db);
+  const due = countriesTurningOn(db, date).filter((c) => c !== mine);
+  const ready = due.filter((c) => N(db.prepare(`SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE ${CURRENT_COMP} AND c.country_id = ? AND f.status = 'scheduled'`).get(c)!.n) === 0);
+  for (const c of due.filter((x) => !ready.includes(x))) db.prepare('UPDATE country_seasons SET turnover = ? WHERE country_id = ?').run(addDays(date, 1), c);
+  if (ready.length) runTurnover(db, date, ready, { user: false, quiet: true, now });
+  return ready.length;
+}
+
+/**
+ * Balanço e virada de um grupo de países (mesma data): resultados → prêmios → promoção/rebaixamento → aposentadorias → contratos →
+ * revisão do potencial → jovens → reposição dos elencos da IA → zera suspensões → diretoria e técnicos → temporada seguinte do país →
+ * calendário novo (ligas, copas, supercopa). Só mexe em clubes e jogadores desses países (livres: os da nacionalidade). NÃO abre transação.
+ */
+function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opts: { user: boolean; quiet: boolean; now: Date }): NewSeasonReportDto {
+  const st = getCareerState(db);
+  const rng = createRng(`season:${seedOf(db)}:${date}:${countryIds.join(',')}`);
+  const post: Poster = makePoster(db, st.clubId);
+  const inBatch = new Set(countryIds);
+  const ph = countryIds.map(() => '?').join(',');
+  const clubIds = new Set(db.prepare(`SELECT id FROM clubs WHERE country_id IN (${ph})`).all(...countryIds).map((r) => S(r.id)));
+  // livres: pela nacionalidade (sem país no universo: com os de julho)
+  const codes = new Set(db.prepare(`SELECT code FROM countries WHERE id IN (${ph})`).all(...countryIds).map((r) => S(r.code)));
+  const known = new Set(db.prepare('SELECT code FROM countries').all().map((r) => S(r.code)));
+  const julyBatch = date.slice(5) === '07-01';
+  const freeInBatch = (nat: string) => codes.has(nat) || (julyBatch && !known.has(nat));
+  const userInBatch = !!st.clubId && clubIds.has(st.clubId);
+  const cur = new Map(countryIds.map((c) => [c, countrySeason(db, c)] as const));
+  const userCs = opts.user ? userSeason(db) : null;
+  developLightPlayers(db, date, clubIds); // países simplificados: a evolução da temporada inteira de uma vez
+  const clubName = (id: string) => S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)!.name);
+  const nextLabel = userCs ? seasonLabelFor(userCs.transition ? Number(userCs.turnover.slice(0, 4)) : userCs.season + 1, userCs.start) : '';
+  const report: NewSeasonReportDto = {
+    season: userCs ? (userCs.transition ? Number(userCs.turnover.slice(0, 4)) : userCs.season + 1) : 0, label: nextLabel, previous: null, newLeague: '', champions: [], movements: [],
+    retiredUser: [], retiredTotal: 0, releasedUser: [], youthReleased: [], autoPromoted: [], aiRenewed: 0, aiReleased: 0, board: null,
+  };
 
     // 1. resultados finais (derivados das partidas) e trocas de divisão por país
     const comps: CompRow[] = db.prepare(
       `SELECT c.id, c.name, c.league_id, l.tier, l.country_id, l.rules_json, co.name AS country, co.economy FROM competitions c
-         JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE c.season = ? ORDER BY co.rowid, l.tier`).all(st.season)
+         JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND c.country_id IN (${ph}) ORDER BY co.rowid, l.tier`).all(...countryIds)
       .map((r) => ({ id: S(r.id), name: S(r.name), leagueId: S(r.league_id), tier: N(r.tier), countryId: S(r.country_id), country: S(r.country), economy: N(r.economy), rules: JSON.parse(S(r.rules_json)) as LeagueRules }));
     const tables = new Map(comps.map((c) => [c.id, getCompetitionTable(db, c.id).rows]));
     const outcome = new Map<string, 'champion' | 'promoted' | 'relegated'>();
     const direction = new Map<string, 'promoted' | 'relegated'>(); // o campeão da 2ª divisão também sobe
     const moves: Array<{ clubId: string; toLeague: string }> = [];
     for (const upper of comps) {
+      if (cur.get(upper.countryId)!.transition) continue; // torneio de transição: sem acesso nem rebaixamento (divisões da base intactas)
       const lower = comps.find((c) => c.countryId === upper.countryId && c.tier === upper.tier + 1);
       if (!lower) continue;
       const up = tables.get(upper.id)!, down = tables.get(lower.id)!;
@@ -192,12 +242,13 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
         const prize = prizeMoney(c.economy, c.tier, r.position, rows.length);
         if (r.position === 1) outcome.set(r.clubId, 'champion'); // título prevalece sobre o acesso no registro
         post(r.clubId, date, 'prize', prize, `Premiação: ${r.position}º lugar — ${c.name}`);
-        insResult.run(st.season, r.clubId, c.id, r.position, outcome.get(r.clubId) ?? null, prize);
-        if (r.clubId === st.clubId) report.previous = { season: st.season, competitionName: c.name, position: r.position, teamCount: rows.length, outcome: outcome.get(r.clubId) ?? null, prize };
+        const season = cur.get(c.countryId)!.season;
+        insResult.run(season, r.clubId, c.id, r.position, outcome.get(r.clubId) ?? null, prize);
+        if (r.clubId === st.clubId) report.previous = { season, competitionName: c.name, position: r.position, teamCount: rows.length, outcome: outcome.get(r.clubId) ?? null, prize };
       }
       const champ = rows[0];
       if (champ) {
-        db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(st.season, champ.clubId, c.id, champ.clubId === st.clubId ? 1 : 0);
+        db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(cur.get(c.countryId)!.season, champ.clubId, c.id, champ.clubId === st.clubId ? 1 : 0);
         report.champions.push({ competitionName: c.name, country: c.country, clubName: champ.clubName });
         if (champ.clubId === st.clubId) addNews(db, date, 'trophy', `CAMPEÃO! ${champ.clubName} conquista a ${c.name}`, `Parabéns, professor! O ${champ.clubName} é campeão da ${c.name}. Uma conquista histórica para o clube e para a sua carreira.\n\nO troféu já está na Sala de troféus. Títulos aumentam a reputação do clube e a sua, e contam na avaliação da diretoria.`);
       }
@@ -205,16 +256,22 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     for (const m of moves) {
       db.prepare('UPDATE clubs SET league_id = ?, reputation = MAX(1, MIN(99, reputation + ?)) WHERE id = ?').run(m.toLeague, direction.get(m.clubId) === 'relegated' ? -3 : 3, m.clubId);
     }
-    db.prepare('UPDATE clubs SET reputation = MIN(99, reputation + 2) WHERE id IN (SELECT club_id FROM trophies WHERE season = ?)').run(st.season);
+    for (const c of comps) { const champ = tables.get(c.id)![0]; if (champ) db.prepare('UPDATE clubs SET reputation = MIN(99, reputation + 2) WHERE id = ?').run(champ.clubId); }
     const prev = report.previous;
-    if (prev) {
+    if (prev && !opts.quiet) {
       const o = direction.get(st.clubId);
-      addNews(db, date, 'season', `Fim da temporada ${seasonLabel(st.season)}: ${prev.position}º lugar na ${prev.competitionName}`,
-        `A temporada ${seasonLabel(st.season)} terminou: ${prev.position}º lugar na ${prev.competitionName}.${o === 'promoted' ? ' O clube conquistou o ACESSO à divisão superior!' : o === 'relegated' ? ' O clube foi REBAIXADO.' : ''}\n\nA premiação pela campanha foi de ${fmt(prev.prize)}, já creditada no caixa. A avaliação da diretoria chega em seguida.`);
+      const label = userCs ? userCs.label : seasonLabel(prev.season);
+      addNews(db, date, 'season', `Fim da temporada ${label}: ${prev.position}º lugar na ${prev.competitionName}`,
+        `A temporada ${label} terminou: ${prev.position}º lugar na ${prev.competitionName}.${o === 'promoted' ? ' O clube conquistou o ACESSO à divisão superior!' : o === 'relegated' ? ' O clube foi REBAIXADO.' : ''}\n\nA premiação pela campanha foi de ${fmt(prev.prize)}, já creditada no caixa. A avaliação da diretoria chega em seguida.`);
     }
 
     // 3. aposentadorias (inclui jogadores livres)
+    const inScope = (r: Record<string, unknown>) => {
+      const club = r.club_id ?? r.youth_club_id;
+      return club != null ? clubIds.has(S(club)) : freeInBatch(S(r.nationality));
+    };
     for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
+      if (!inScope(r)) continue;
       const p = rowToPlayer(r);
       if (!rng.chance(retirementChance(ageOn(p.birthDate, date), p.overall, p.clubId === null && r.youth_club_id == null))) continue;
       releasePlayer(db, p.id, date, true);
@@ -224,7 +281,9 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     if (report.retiredUser.length) addNews(db, date, 'retirement', `Aposentadoria: ${report.retiredUser.join(', ')}`, `${report.retiredUser.join(', ')} ${report.retiredUser.length > 1 ? 'encerraram' : 'encerrou'} a carreira e ${report.retiredUser.length > 1 ? 'deixaram' : 'deixou'} o elenco.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Confira se algum setor ficou desfalcado e reforce no mercado ou na base.`);
 
     // 4. contratos que vencem: a IA renova a maioria; o usuário perde quem não renovou
-    const expiring = db.prepare('SELECT * FROM players WHERE club_id IS NOT NULL AND contract_end <= ? ORDER BY id').all(date).map(rowToPlayer);
+    const expiring = db.prepare('SELECT * FROM players WHERE club_id IS NOT NULL AND contract_end <= ? ORDER BY id').all(date).map(rowToPlayer).filter((p) => clubIds.has(p.clubId!));
+    const startOf = new Map(db.prepare(`SELECT id, season_start FROM countries WHERE id IN (${ph})`).all(...countryIds).map((r) => [S(r.id), S(r.season_start) as SeasonStart]));
+    const clubStart = (clubId: string) => startOf.get(S(db.prepare('SELECT country_id FROM clubs WHERE id = ?').get(clubId)!.country_id)) ?? '07-01';
     const coreOf = new Map<string, Set<string>>();
     for (const p of expiring) {
       if (p.clubId === st.clubId) { releasePlayer(db, p.id, date, false); report.releasedUser.push(nameOf(p)); continue; }
@@ -233,28 +292,31 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
       if (rng.chance(coreOf.get(p.clubId!)!.has(p.id) ? AI_RENEW_CHANCE.core : AI_RENEW_CHANCE.other)) {
         const years = Math.min(maxContractYears(age), rng.int(1, 3));
         const wage = aiRenewalWage({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty });
-        db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(wage, contractEndFor(date, years), p.id);
+        db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(wage, contractEndIn(date, years, clubStart(p.clubId!)), p.id);
         report.aiRenewed++;
       } else { releasePlayer(db, p.id, date, false); report.aiReleased++; }
     }
     if (report.releasedUser.length) addNews(db, date, 'contract', `Fim de contrato: ${report.releasedUser.join(', ')}`, `${report.releasedUser.join(', ')} ${report.releasedUser.length > 1 ? 'saíram' : 'saiu'} de graça porque o contrato terminou sem renovação.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Para não perder jogadores assim, renove na aba Contratos quando faltarem até 12 meses.`, { action: 'squad', actionLabel: 'Ver o elenco' });
 
     // 5. balanço da temporada (a evolução agora é mensal, pelo treino) e revisão anual do potencial estimado visível
-    const minutes = new Map(db.prepare('SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE c.season = ? GROUP BY pss.player_id')
-      .all(st.season).map((r) => [S(r.player_id), N(r.m)]));
-    const insDev = db.prepare('INSERT INTO player_development (player_id, season, club_id, age, overall_before, overall_after, minutes) VALUES (?,?,?,?,?,?,?)');
+    const minutes = new Map(db.prepare(`SELECT pss.player_id, SUM(pss.minutes) AS m FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE ${CURRENT_COMP} AND c.country_id IN (${ph}) GROUP BY pss.player_id`)
+      .all(...countryIds).map((r) => [S(r.player_id), N(r.m)]));
+    // um jogador que trocou de país pode cair duas vezes na mesma numeração de temporada: vale o primeiro registro
+    const insDev = db.prepare('INSERT OR IGNORE INTO player_development (player_id, season, club_id, age, overall_before, overall_after, minutes) VALUES (?,?,?,?,?,?,?)');
     const upEst = db.prepare('UPDATE players SET potential_estimated = ?, season_start_overall = overall WHERE id = ?');
+    const anySeason = cur.values().next().value!.season;
     for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
+      if (!inScope(r)) continue;
       const p = rowToPlayer(r);
-      insDev.run(p.id, st.season, p.clubId, ageOn(p.birthDate, date), N(r.season_start_overall ?? p.overall), p.overall, minutes.get(p.id) ?? 0);
+      insDev.run(p.id, anySeason, p.clubId, ageOn(p.birthDate, date), N(r.season_start_overall ?? p.overall), p.overall, minutes.get(p.id) ?? 0);
       upEst.run(reviseEstimate(p.potentialEstimated, p.potentialHidden, p.overall, rng.fork(`est:${p.id}`)), p.id);
     }
 
     // 6. categorias de base: a IA promove os jovens prontos; quem chega aos 19 sem ser promovido deixa a base
-    const generate = playerFactory(db, `s${newSeason}`, date);
-    const clubs = db.prepare('SELECT id FROM clubs ORDER BY rowid').all().map((r) => S(r.id));
-    report.youthReleased = youthTurnover(db, date, st.clubId, AI_SQUAD_CAP - 2); // promove até 26: deixa espaço para o mercado
-    if (report.youthReleased.length) addNews(db, date, 'youth', `Base: ${report.youthReleased.join(', ')} deixa(m) o clube`, 'Completaram 19 anos sem ser promovidos ao elenco principal e ficaram livres.');
+    const generate = playerFactory(db, `s${date}:${countryIds.join(',')}`, date);
+    const clubs = db.prepare('SELECT id FROM clubs ORDER BY rowid').all().map((r) => S(r.id)).filter((id) => clubIds.has(id));
+    report.youthReleased = youthTurnover(db, date, st.clubId, AI_SQUAD_CAP - 2, clubIds); // promove até 26: deixa espaço para o mercado
+    if (report.youthReleased.length && !opts.quiet) addNews(db, date, 'youth', `Base: ${report.youthReleased.join(', ')} deixa(m) o clube`, 'Completaram 19 anos sem ser promovidos ao elenco principal e ficaram livres.');
 
     // 7. elencos da IA: enxuga os inchados (veteranos mais fracos primeiro) e completa os desfalcados (livres; se faltar, jovens)
     for (const clubId of clubs) {
@@ -273,7 +335,7 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
         removed++; report.aiReleased++;
       }
     }
-    const unmet = aiSignFreeAgents(db, post, rng.fork('fill'), date, st.clubId, true);
+    const unmet = aiSignFreeAgents(db, post, rng.fork('fill'), date, st.clubId, true, clubIds);
     for (const clubId of [...new Set(unmet.map((u) => u.clubId))]) {
       const squad = squadOf(db, clubId);
       const fillRng = rng.fork(`fill:${clubId}`);
@@ -282,9 +344,9 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
       }
     }
     // elenco do usuário abaixo do mínimo para jogar: promove o melhor jovem da base no setor (ou gera um, se a base não tiver), avisando nas notícias
-    const mine = squadOf(db, st.clubId);
+    const mine = userInBatch ? squadOf(db, st.clubId) : [];
     const autoRng = rng.fork('auto-user');
-    for (let g = st.clubId ? userShortage(mine) : null, guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
+    for (let g = userInBatch ? userShortage(mine) : null, guard = 0; g && guard < 20; g = userShortage(mine), guard++) {
       const p = promoteBestOfGroup(db, st.clubId, g, date) ?? generate(autoRng, st.clubId, autoRng.pick(GROUP_POSITIONS[g]), autoRng.int(17, 18), false);
       mine.push(p);
       report.autoPromoted.push(`${nameOf(p)} (${posLabel(p.position)})`);
@@ -292,27 +354,29 @@ export function startNextSeason(db: SqlDb, now: Date = new Date()): NewSeasonRep
     if (report.autoPromoted.length) addNews(db, date, 'youth', 'Elenco incompleto: jovens promovidos às pressas', `Para ter o mínimo de jogadores por setor: ${report.autoPromoted.join(', ')}.`);
 
     // 8. suspensões e cartões não passam de uma temporada para a outra (lesões continuam)
-    db.exec('UPDATE player_status SET suspension_matches = 0, yellow_cards = 0');
+    db.prepare(`UPDATE player_status SET suspension_matches = 0, yellow_cards = 0 WHERE player_id IN (SELECT id FROM players WHERE club_id IS NULL OR club_id IN (SELECT id FROM clubs WHERE country_id IN (${ph})))`).run(...countryIds);
 
     // avaliação da diretoria (pode demitir o treinador) e vagas em clubes rebaixados da IA
-    const userRow = st.clubId ? [...tables.values()].flat().find((r) => r.clubId === st.clubId) : undefined;
-    const review = reviewSeason(db, date, userRow ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : null,
-      [...direction].filter(([, d]) => d === 'relegated').map(([id]) => id));
+    const relegatedIds = [...direction].filter(([, d]) => d === 'relegated').map(([id]) => id);
+    const userRow = userInBatch ? [...tables.values()].flat().find((r) => r.clubId === st.clubId) : undefined;
+    // a diretoria avalia o treinador na virada do país dele (não no início da carreira, quando ele ainda não comandava o clube)
+    const review = opts.user ? reviewSeason(db, date, userRow && !opts.quiet ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : null, relegatedIds)
+      : reviewSeason(db, date, null, relegatedIds);
     if (review) report.board = { met: review.verdict.met, lines: review.verdict.lines, sacked: review.sacked };
-    reviewAiCoaches(db, st.season, date, new Set([...direction].filter(([, d]) => d === 'relegated').map(([id]) => id))); // técnicos da IA: reputação e aposentadoria
+    reviewAiCoaches(db, comps.map((c) => c.id), date, new Set(relegatedIds), julyBatch); // técnicos da IA: reputação e aposentadoria
 
-    // 9. temporada nova, calendário, e o dia 1º/jul (mercado de verão abre; cobrança de julho)
-    db.prepare('UPDATE career SET season = ?, updated_at = ? WHERE id = 1').run(newSeason, now.toISOString());
-    createSeason(db, newSeason);
-    startBoardSeason(db); // objetivos e orçamentos da temporada nova
-    processMarketDay(db, date);
-    processScoutingDay(db, date);
-    settleFinances(db, date);
+    // 9. temporada seguinte dos países e calendário novo (ligas, copas, supercopa)
+    for (const c of countryIds) advanceCountrySeason(db, c);
+    if (opts.user) followCountry(db, userCountry(db));
+    db.prepare('UPDATE career SET updated_at = ? WHERE id = 1').run(opts.now.toISOString());
+    createSeason(db, undefined, countryIds);
+    if (opts.user) startBoardSeason(db); // objetivos e orçamentos da temporada nova
+    if (!opts.user) return report;
     const coachClub = getCareerState(db).clubId; // vazio se o treinador foi demitido na avaliação
-    report.newLeague = coachClub ? S(db.prepare('SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(newSeason, coachClub)?.name ?? '') : '';
-    addNews(db, date, 'season', `Começa a temporada ${seasonLabel(newSeason)}`, coachClub ? `Começa a temporada ${seasonLabel(newSeason)}: o ${clubName(coachClub)} disputa a ${report.newLeague}.\n\n${boardBrief(db)}\n\nA janela de transferências de verão está aberta até 31/08. Bom momento para ajustar o elenco, renovar contratos e definir os esquemas táticos.` : 'O treinador está sem clube: aguarde propostas de emprego na Diretoria.');
+    report.newLeague = coachClub ? S(db.prepare(`SELECT c.name FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND cl.id = ?`).get(coachClub)?.name ?? '') : '';
+    const window = report.label && date.slice(5) === '01-01' ? 'A janela de transferências de janeiro está aberta.' : 'A janela de transferências de verão está aberta até 31/08.';
+    if (!opts.quiet) addNews(db, date, 'season', `Começa a temporada ${report.label}`, coachClub ? `Começa a temporada ${report.label}: o ${clubName(coachClub)} disputa a ${report.newLeague}.\n\n${boardBrief(db)}\n\n${window} Bom momento para ajustar o elenco, renovar contratos e definir os esquemas táticos.` : 'O treinador está sem clube: aguarde propostas de emprego na Diretoria.');
     return report;
-  });
 }
 
 // ---------------------------------------------------------------- histórico e troféus

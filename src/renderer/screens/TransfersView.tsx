@@ -18,13 +18,14 @@ const SUMMARY_COLS: Array<[SummaryKey, string, string]> = [
 interface Props {
   profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void>;
   /** Jogador escolhido na ficha ou nos olheiros: abre direto a janela de negociação. */ preselect?: MarketPlayerDto | null; onOpenPlayer: (id: string) => void;
+  /** avisa que o jogador pré-escolhido já abriu a negociação (o painel o descarta, para não reabrir ao voltar à tela) */ onPreselectUsed?: () => void;
 }
 const PAGE = 100;
 const KIND_LABEL = { purchase: 'Compra', sale: 'Venda', ai: 'Outros clubes' } as const;
 /** Filtros da última busca: continuam valendo ao voltar da ficha de um jogador (a tela é desmontada). */
 let lastFilters: Filters = EMPTY_FILTERS;
 
-export function TransfersView({ profileId, careerId, refreshKey, onChanged, preselect, onOpenPlayer }: Props) {
+export function TransfersView({ profileId, careerId, refreshKey, onChanged, preselect, onOpenPlayer, onPreselectUsed }: Props) {
   const [tab, setTab] = useState<Tab>('market');
   const [ov, setOv] = useState<TransfersOverviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
 
   const load = useCallback(async () => { setOv(await unwrap(window.api.getTransfers(profileId, careerId))); }, [profileId, careerId]);
   useEffect(() => { load().catch((e) => setError(errMsg(e))); }, [load, refreshKey]);
-  useEffect(() => { if (preselect) { setTab('market'); setNegotiating(preselect.id); } }, [preselect]);
+  useEffect(() => { if (preselect) { setTab('market'); setNegotiating(preselect.id); onPreselectUsed?.(); } }, [preselect, onPreselectUsed]);
 
   const search = useCallback(async (f: Filters) => {
     const id = ++reqId.current;

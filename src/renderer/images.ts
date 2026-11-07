@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-export type ImageKind = 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches';
+export type ImageKind = 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups';
 export interface ImageKeys { version: number; keys: string[] }
 
 /** `packId`: imagens só daquele pacote (editor, mesmo inativo); sem ele, as dos pacotes ativos (o resto do jogo). */

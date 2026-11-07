@@ -6,13 +6,15 @@ import { createRng, clamp, type Rng } from '../rng.ts';
 import { addYears, ageOn } from '../../shared/date.ts';
 import { isPlausibleSecondary } from '../../shared/positions.ts';
 import { uniqueIds } from '../../shared/slug.ts';
-import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World, WorldCoach } from '../../shared/types.ts';
+import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World, WorldCoach, WorldCup } from '../../shared/types.ts';
+import { CUP_STAGE_CODES, defaultCups, resolveCup, resolveSupercup } from '../cup-engine/catalog.ts';
 import { clubCoach, defaultCoaches, packCoachDefaults } from '../coach-engine/worldCoaches.ts';
 import { COUNTRY_TEMPLATES, type CountryTemplate } from '../world/names.ts';
 import { overallFor } from '../world/overall.ts';
 import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
-import { PackError, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
+import { PackError, type CupRec, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
+import { defaultSeasonStart } from '../career-engine/calendar.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
   rounds: 2, pointsWin: 3, pointsDraw: 1, tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
@@ -83,13 +85,16 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const copyCoach = (k: WorldCoach): WorldCoach => ({ ...k, attributes: { ...k.attributes } });
   /** técnicos: os do mundo base (ou os padrão dos clubes dele); numa base "none" sem técnicos, os padrão nascem depois do 1º pacote */
   const coaches = new Map<string, WorldCoach>(fresh ? [] : (base.coaches ?? defaultCoaches(coachClubs(clubs.values()), startDate)).map((k) => [k.id, copyCoach(k)]));
+  /** copas e supercopas: as do mundo base (ou as padrão dos países dele); países criados por pacote ganham as padrão do seu código */
+  const copyCup = (k: WorldCup): WorldCup => JSON.parse(JSON.stringify(k)) as WorldCup;
+  const cups = new Map<string, WorldCup>(fresh ? [] : (base.cups ?? defaultCups(base.countries)).map((k) => [k.id, copyCup(k)]));
   /** técnicos cujo clube foi definido por um pacote (têm prioridade sobre o técnico padrão do clube) */
   const assigned = new Set<string>();
   const typeOf = new Map<string, string>();
   /** clubes criados por pacote sem caixa informado: o caixa é calculado depois do elenco (startingBalance) */
   const autoBalance = new Set<string>();
   const origin = new Map<string, EntityOrigin>();
-  for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players], ['técnico', coaches]] as const) for (const k of m.keys()) typeOf.set(k, kind);
+  for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players], ['técnico', coaches], ['copa', cups]] as const) for (const k of m.keys()) typeOf.set(k, kind);
   const economyOf = (code: string) => [...countries.values()].find((c) => c.code === code)?.economy ?? 1;
   const tplOf = (code: string): CountryTemplate => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
 
@@ -111,10 +116,16 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       return miss.length === 0;
     };
 
+    const newCountries: Country[] = [];
     for (const r of pack.data.countries) apply('countries.json', r, countries, 'país', (c: CountryRec) => {
       if (!need('countries.json', c.id, c, ['code', 'name'])) return null;
-      return { id: c.id, code: c.code!, name: c.name!, economy: c.economy ?? 1 };
-    }, (cur, c) => { if (c.code) cur.code = c.code; if (c.name) cur.name = c.name; if (c.economy !== undefined) cur.economy = c.economy; });
+      const seasonStart = c.seasonStart ?? defaultSeasonStart(c.code!);
+      newCountries.push({ id: c.id, code: c.code!, name: c.name!, economy: 1 });
+      return { id: c.id, code: c.code!, name: c.name!, economy: c.economy ?? 1, ...(seasonStart === '01-01' ? { seasonStart } : {}) };
+    }, (cur, c) => {
+      if (c.code) cur.code = c.code; if (c.name) cur.name = c.name; if (c.economy !== undefined) cur.economy = c.economy;
+      if (c.seasonStart === '01-01') cur.seasonStart = '01-01'; else if (c.seasonStart === '07-01') delete cur.seasonStart;
+    });
 
     for (const r of pack.data.leagues) apply('leagues.json', r, leagues, 'liga', (l: LeagueRec) => {
       if (!need('leagues.json', l.id, l, ['country', 'name', 'tier'])) return null;
@@ -203,6 +214,15 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       if (k.attributes) cur.attributes = { ...cur.attributes, ...k.attributes };
       if (k.club !== undefined) { cur.clubId = k.club; assigned.add(cur.id); }
     });
+
+    // copas: países criados por este pacote ganham as padrão do código (se houver regra no jogo); depois, o cups.json do pacote
+    for (const k of defaultCups(newCountries)) if (!typeOf.has(k.id) && countries.has(k.countryId)) { cups.set(k.id, k); typeOf.set(k.id, 'copa'); origin.set(k.id, { created: P, edited: [] }); }
+    for (const r of pack.data.cups) apply('cups.json', r, cups, 'copa', (k: CupRec) => {
+      if (!need('cups.json', k.id, k, ['country', 'kind', 'name'])) return null;
+      const made: WorldCup = { id: k.id, countryId: k.country!, kind: k.kind!, name: k.name!, enabled: k.enabled ?? true };
+      patchCup(made, k);
+      return made;
+    }, patchCup);
 
     /** cria, altera ou remove um registro (remoção de quem não existe é só aviso) */
     function apply<T extends { id: string }, R extends { id: string; $remove?: true }>(file: string, rec: R, map: Map<string, T>, kind: string, create: (r: R) => T | null, patch: (cur: T, r: R) => void) {
@@ -320,6 +340,24 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     if (l.teamCount < 2) issues.push({ pack: 'universo', file: 'leagues.json', record: l.id, message: `liga com ${l.teamCount} clube(s): são necessários pelo menos 2` });
   }
   if (clubs.size === 0) issues.push({ pack: 'universo', file: 'clubs.json', message: 'o universo não tem nenhum clube' });
+  // copas: país removido leva as suas; no máximo uma copa e uma supercopa ativas por país; regras que fecham
+  const activeCup = new Map<string, string>();
+  for (const k of [...cups.values()]) {
+    const co = countries.get(k.countryId);
+    if (!co) { cups.delete(k.id); continue; }
+    const bad = (m: string) => issues.push({ pack: 'universo', file: 'cups.json', record: k.id, message: m });
+    if (k.stagesFrom && !CUP_STAGE_CODES.includes(k.stagesFrom)) bad(`"${k.stagesFrom}" não tem formato de copa no jogo (use: ${CUP_STAGE_CODES.join(', ')})`);
+    if (!k.enabled) continue;
+    const key = `${k.countryId}:${k.kind}`;
+    if (activeCup.has(key)) bad(`o país "${k.countryId}" já tem ${k.kind === 'cup' ? 'uma copa' : 'uma supercopa'} ativa ("${activeCup.get(key)}")`);
+    activeCup.set(key, k.id);
+    if (k.kind === 'cup' && !resolveCup(k, co.code)) bad(`sem formato de fases: informe "stagesFrom" com o código de um país (${CUP_STAGE_CODES.join(', ')})`);
+    if (k.kind === 'supercup') {
+      const r = resolveSupercup(k, co.code)!;
+      const want = r.teams === 4 ? 2 : 1;
+      if (r.dates.length !== want || (r.datesCalendarYear ?? []).length !== want) bad(`supercopa de ${r.teams} clubes precisa de ${want} data(s) (${r.teams === 4 ? 'semifinais e final' : 'a final'}) em "dates" e "datesCalendarYear"`);
+    }
+  }
   // clube sem técnico (o dele foi removido ou foi para outro clube): ganha um técnico gerado
   const withCoach = new Set([...coaches.values()].map((k) => k.clubId));
   for (const c of clubs.values()) {
@@ -334,7 +372,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   // estádios órfãos (de clubes removidos) saem do universo sem erro
   const usedStadiums = new Set([...clubs.values()].map((c) => c.stadiumId));
   return {
-    world: { seed, startDate, countries: [...countries.values()], leagues: [...leagues.values()], stadiums: [...stadiums.values()].filter((s) => usedStadiums.has(s.id)), clubs: [...clubs.values()], players: [...players.values()], coaches: [...coaches.values()] },
+    world: { seed, startDate, countries: [...countries.values()], leagues: [...leagues.values()], stadiums: [...stadiums.values()].filter((s) => usedStadiums.has(s.id)), clubs: [...clubs.values()], players: [...players.values()], coaches: [...coaches.values()], cups: [...cups.values()] },
     warnings,
     applied: packs.map((p) => `${p.manifest.id}@${p.manifest.version}`),
     origin,
@@ -342,3 +380,13 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
 }
 
 function hash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
+/** Aplica os campos informados de um registro de copa (null em janela/datas do ano civil = remove). */
+function patchCup(cur: WorldCup, k: CupRec): void {
+  if (k.country) cur.countryId = k.country; if (k.kind) cur.kind = k.kind; if (k.name) cur.name = k.name; if (k.enabled !== undefined) cur.enabled = k.enabled;
+  if (k.stagesFrom) cur.stagesFrom = k.stagesFrom; if (k.window) cur.window = { ...k.window }; if (k.yellowLimit !== undefined) cur.yellowLimit = k.yellowLimit;
+  if (k.windowCalendarYear === null) delete cur.windowCalendarYear; else if (k.windowCalendarYear) cur.windowCalendarYear = { ...k.windowCalendarYear };
+  if (k.teams) cur.teams = k.teams; if (k.double) cur.double = k.double; if (k.host) cur.host = k.host; if (k.extraTime !== undefined) cur.extraTime = k.extraTime;
+  if (k.dates) cur.dates = [...k.dates];
+  if (k.datesCalendarYear === null) delete cur.datesCalendarYear; else if (k.datesCalendarYear) cur.datesCalendarYear = [...k.datesCalendarYear];
+}

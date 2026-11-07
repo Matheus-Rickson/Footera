@@ -21,6 +21,11 @@ pular até a próxima rodada dá o mesmo resultado que avançar dia a dia (testa
 
 ## Limitações conhecidas
 - Jogadores livres, fim de contrato e renovações: ver `docs/CAREER_CYCLE.md` (Fase 8A). Todo contrato novo termina em 30/jun.
+- Livres bons não ficam no mercado (`FREE_AGENT_LEVEL` = 62, ou 12 na escala 1–20): acima disso, o clube de maior reputação em que o jogador
+  entraria entre os 11 melhores (sem passar de melhor + 3, elenco com menos de 28, salário pedido até 3× a média da folha) o contrata, mesmo
+  sem carência — com 70% de chance na virada e 6% por dia nas janelas (não é certeza: um ou outro 14+ fica disponível, pedido do usuário).
+  Medido no universo real (2 temporadas): antes ~30 livres entre 14 e 16; depois, 1–2 livres com 14+ logo após cada virada (alguns
+  ainda no fim da janela), os demais até 13; média ~8.
 - Sem rescisões, empréstimos, cláusulas (multa, bônus), agentes, limite de estrangeiros nem regras de inscrição.
 - Sem rede de olheiros (Fase 8): as estimativas não melhoram com investimento.
 - As taxas de jogadores muito caros superam o caixa de quase todos os clubes (o caixa inicial equivale a ~4 meses de receita). Isso é realista, mas limita compras e vendas de craques.

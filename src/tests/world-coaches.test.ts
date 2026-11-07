@@ -15,7 +15,7 @@ import { createCareer } from '../services/careerService.ts';
 import { getAiCoachDetail, getClubInfo, listUnemployedCoaches } from '../database/repositories/aiCoachRepository.ts';
 import { clubCoachId } from '../game/coach-engine/worldCoaches.ts';
 
-const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] };
+const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [], cups: [] };
 const pack = (id: string, data: Partial<PackData>): Pack => ({ manifest: { format: PACK_FORMAT, id, name: id, version: '1.0.0' }, data: { ...EMPTY, ...data } });
 const build = (...packs: Pack[]) => compileUniverse(EMPTY_WORLD, [basePack(), ...packs]);
 const coach = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-01-01', nationality: 'BRA', methodology: 'possession' as const, reputation: 20, photoPath: null };
@@ -99,6 +99,6 @@ test('Guarda: os canais do processo principal aceitam todos os tipos do editor e
   const main = fs.readFileSync(path.join('src', 'main', 'main.ts'), 'utf8');
   const enumAfter = (marker: string) => { const m = new RegExp(marker + String.raw`[^\n]*?z\.enum\(\[([^\]]+)\]`).exec(main); assert.ok(m, marker); return m![1]!.split(',').map((s) => s.trim().replace(/'/g, '')).sort(); };
   const { IMAGE_KINDS } = await import('../services/imageService.node.ts');
-  assert.deepEqual(enumAfter('const kind = '), ['clubs', 'coaches', 'countries', 'leagues', 'players'], 'tipos do editor (EditorKind)');
+  assert.deepEqual(enumAfter('const kind = '), ['clubs', 'coaches', 'countries', 'cups', 'leagues', 'players'], 'tipos do editor (EditorKind)');
   assert.deepEqual(enumAfter('const imgRef = '), [...IMAGE_KINDS].sort(), 'tipos de imagem');
 });

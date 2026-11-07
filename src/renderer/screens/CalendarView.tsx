@@ -38,8 +38,14 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
     return () => { stale = true; };
   }, [profileId, careerId, refreshKey]);
 
-  // meses da temporada: julho do ano da temporada até junho do seguinte
-  const months = useMemo(() => (cal ? Array.from({ length: 12 }, (_, i) => { const m = (6 + i) % 12 + 1, y = cal.season + (m < 7 ? 1 : 0); return `${y}-${String(m).padStart(2, '0')}`; }) : []), [cal]);
+  // meses da temporada do país do clube: do início até o mês anterior à virada (jul–jun, jan–dez, ou a transição jul–dez)
+  const months = useMemo(() => {
+    if (!cal) return [];
+    const out: string[] = [];
+    let [y, m] = cal.seasonStarts.split('-').map(Number) as [number, number];
+    for (let guard = 0; guard < 24 && `${y}-${String(m).padStart(2, '0')}-01` < cal.turnover; guard++) { out.push(`${y}-${String(m).padStart(2, '0')}`); m++; if (m > 12) { m = 1; y++; } }
+    return out;
+  }, [cal]);
   const byDate = useMemo(() => new Map((cal?.fixtures ?? []).map((f) => [f.date, f])), [cal]);
 
   if (error) return <p className="error" role="alert">{error}</p>;
@@ -60,7 +66,7 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
   return (
     <div className="cl">
       <aside className="card cl-side">
-        <div className="cl-today"><strong>{fmtWeekday(today)}, {fmtDate(today)}</strong><span className="muted">Temporada {cal.season}/{String(cal.season + 1).slice(2)}</span></div>
+        <div className="cl-today"><strong>{fmtWeekday(today)}, {fmtDate(today)}</strong><span className="muted">Temporada {cal.seasonLabel}</span></div>
         {club ? (
           <div className="cl-club"><ClubCrest id={club.id} name={club.name} size={84} src={img.url('clubs', club.id)} /><strong>{club.name}</strong><span className="muted small">{club.league}</span></div>
         ) : <p className="muted">Treinador sem clube.</p>}

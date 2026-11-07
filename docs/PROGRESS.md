@@ -944,3 +944,97 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   Telas NÃO verificadas. Não feito: supercopas, continentais, Rússia, convidados amadores, suspensões pendentes para a edição seguinte.
   Ajuste pedido pelo usuário: o calendário mostrava "Liga" em todo jogo; agora o jogo de copa traz o nome da copa, a fase e ida/volta
   (`FixtureDto.cup`), com destaque dourado; "Próximo jogo" mostra a competição.
+- **Temporada por país (ano civil × julho), supercopas e copas no editor (pedido do usuário, 06/11/2026; sem commit):**
+  - *Temporada por país:* `countries.season_start` ('07-01' ou '01-01'; base: Brasil, Argentina e Irlanda no ano civil; o Japão ficou em
+    julho porque a J.League passou a ago–mai em 2026/27 — editável no país). Migração 019: `country_seasons` (temporada corrente de cada
+    país), `career.season_country`, `cup_formats`. Calendário em `game/career-engine/calendar.ts`; fragmento `CURRENT_COMP` nas consultas.
+    Países de ano civil jogam um **torneio de transição** (jul–dez/2026, turno único, sem copa). Virada **por país**: a do país do treinador é
+    `startNextSeason` (o relógio para nela); as dos outros acontecem sozinhas dentro de `moveClock` (`autoTurnovers`), cada uma com liga,
+    copa, supercopa, acesso/rebaixamento, prêmios, contratos (fim em 31/dez no ano civil), base, aposentadorias e renovações da IA do grupo.
+    Contratos assinados/renovados terminam no fim de uma temporada do país do clube. Trocar de emprego segue a temporada do novo país.
+  - *Carreira começa em 2027 com clube de ano civil* (decisão do usuário): `createCareer` simula jul–dez/2026 sem o treinador
+    (`fastForwardToCareerStart`: partidas pelo resultado rápido, sem rotina diária de treino, sem diretoria avaliando nem propostas) e vira o país
+    em 1º/jan/2027 (pré-temporada; 1ª rodada a partir de 31/jan). Custo medido: ~9,6 s com todas as divisões completas da base (antes ~95 s com
+    partidas lance a lance). A tela de nova carreira avisa.
+  - *Supercopas* (`game/cup-engine/supercups.ts`, PDF de 06/11/2026 com as propostas aceitas): 13 países (sem Áustria, México e Rússia); a partir
+    da 2ª temporada com os campeões da anterior (nada inventado); dobradinha pela regra do país (vice da liga, vice da copa, sem jogo na Croácia);
+    Espanha com 4 clubes (vagas repetidas para 3º/4º da liga; pareamento como em 2026); mando neutro, do campeão da copa (Alemanha) ou da liga
+    (Holanda, Bélgica, Croácia, Itália); prorrogação só em Portugal e Croácia; fim de julho (ano civil: 24/jan; Espanha 8 e 11/jan; Itália 4/jan);
+    só troféu. Aparecem em Competições ("Supercopas"), calendário e sala de troféus.
+  - *Copas e supercopas no editor de dados:* arquivo `cups.json` nos pacotes (`docs/schema/cups.schema.json`), `World.cups` (padrão das regras
+    reais), gravado no save (`cup_formats`) e lido na criação de cada edição. Editor → Copas: nome, ativa, fases de (país do regulamento), janelas
+    julho/ano civil, amarelos; supercopa: clubes, dobradinha, mando, prorrogação, datas; logo (`images/cups/<id>`, mostrada em Competições).
+    País: campo "Temporada" (julho a junho / ano civil). Correção: o JSON Schema dos técnicos saía sem título.
+  - Testes: `calendar-year.test.ts` (4), `supercups.test.ts` (2), `cups-editor.test.ts` (3); ajustes em saves, ciclo de carreira, copas, pacotes.
+    262 testes passando (o de desempenho "40 jogos < 2 s" falha às vezes só sob a carga da suíte paralela; isolado passa em ~1 s).
+    Mutação: calendário 9/12, supercopas 6/9, editor de copas 6/6 (+1 após teste novo). Sobreviventes: a diretoria parada no período pré-carreira
+    (efeito depende do sorteio), escopo das aposentadorias por país, propostas ao treinador no período pré-carreira, deslocamento de data da
+    supercopa (não houve conflito no teste), guarda redundante de transição e prêmio zero (equivalente).
+  - Telas NÃO verificadas no Electron (calendário de 12 meses do ano civil, rótulos "2027", aviso da nova carreira, Supercopas, editor de copas).
+  - Não feito: copa russa, continentais, fases da copa editáveis uma a uma (o editor escolhe o regulamento de um país), supercopa na planilha CSV.
+- **Cabeçalho da partida e pênaltis (pedido do usuário após validar as copas; sem commit; tela NÃO verificada):** competição com logo (liga ou
+  copa, quando o pacote tem a imagem; senão um troféu), etiquetas de fase (dourada), ida/volta, agregado e "decidido nos pênaltis/na
+  prorrogação"; data, local (campo neutro ou casa do mandante), tempo, público, renda e craque em itens com ícone; aviso de relatório resumido
+  discreto. Placar: "Fim · pênaltis"/"Fim · prorrogação" e bloco "Pênaltis 7 x 6" com o vencedor destacado e a sequência das cobranças de cada
+  time (● convertida, ○ perdida). `MatchReportDto.logo`; `LiveState.kicks`. 262 testes passando.
+- **Competições no esboço do usuário e botão Continuar (pedido do usuário, 06/11/2026; sem commit):**
+  - *Competições (liga):* classificação à esquerda com Pts logo após o clube, SG com sinal e coluna **Forma** (últimos 5 jogos na
+    competição: V/E/D); a faixa colorida da posição usa as cores das zonas e a legenda diz para onde vão: "Acesso (divisão de cima)",
+    "Vaga continental", "Rebaixamento (divisão de baixo)" — nomes reais das divisões do país; sem continentais no jogo, a vaga continental
+    segue genérica. À direita: **Estatísticas dos jogadores** com seletor (Artilheiros, Assistências, Jogos sem sofrer gols; 10 primeiros;
+    clicar abre o jogador ou o clube) e **Jogos da rodada** (rodada em andamento, setas para as outras, placar abre o relatório). A tela cabe na
+    janela sem rolagem; em janelas com menos de 1100 px de largura ou 700 px de altura, as colunas empilham e a página rola.
+  - *Jogos sem sofrer gols:* migração 020 (`player_season_stats.clean_sheets`): conta para o goleiro que ficou ao menos 60 minutos no gol numa
+    partida em que o time não sofreu gol; a migração preenche a partir dos relatórios das partidas já jogadas. Ligas com simulação simplificada
+    não têm estatísticas de jogadores (a tela avisa).
+  - *Continuar:* substitui "Avançar 1 dia" e "Próxima rodada". Abre a caixa "Avançando o tempo" (data por extenso, faixa de 5 dias com o dia
+    atual marcado, "Parar aqui"; clicar num dia futuro marca a parada nele). Cada passo é `continueDay` (motor): simula os jogos do dia que não
+    são do seu clube (rodada atômica) e avança um dia por `advanceTime`. Para sozinho no dia de jogo do seu clube (aí aparecem "Simular partida"
+    e "Acompanhar ao vivo"), numa decisão importante (mensagem nova de proposta de emprego, proposta por jogador do elenco ou diretoria —
+    demissão, alerta, avaliação, título) e na virada da temporada do seu país.
+  - Testes: `continue-competitions.test.ts` (3). 265 testes; 263 passando na suíte e os 2 restantes conferidos: a colisão de CSS foi corrigida e o
+    teste "40 jogos < 2 s" passa isolado (falha só sob a carga da suíte paralela, já conhecido). Mutação 6/8: sobreviveram o mínimo de 60 minutos
+    do goleiro (nos jogos do teste não houve goleiro substituído antes dos 60) e a parada no jogo do usuário logo após avançar (equivalente: o
+    passo seguinte para no mesmo dia, sem avançar).
+  - Telas NÃO verificadas no Electron (Competições nova, caixa do Continuar).
+- **Ficha completa do clube, Visão geral no esboço e conversas/promessas (pedido do usuário, 06/11/2026; sem commit):**
+  - *Ficha completa do clube* (`ClubPage.tsx`, `clubProfileRepository.ts`): aberta pelo nome ou pelo botão "Ficha completa" na ficha resumida
+    (Competições). Dados, técnico (ficha), campanha na liga (posição, campanha, forma, zona com o destino) e nas copas (na disputa, eliminado,
+    campeão, fase), últimos e próximos 5 jogos (placar abre o relatório), elenco com estatísticas da temporada (J, min, G, A, JSG, nota; colunas
+    ordenáveis; lesionados marcados; contrato só no seu clube; sem força — de outros clubes só estimativa no perfil), títulos e histórico.
+  - *Visão geral* (`OverviewView.tsx`): treinador (com clube, caixa e próximo jogo) e notícias resumidas (6 últimas da rede social) à esquerda;
+    conversas e promessas no centro; tabela da liga à direita; diretoria (confiança), torcida (humor) e objetivos embaixo. Cabe na janela;
+    em janelas pequenas, uma coluna com rolagem. Os quadros antigos (números do clube, resultados da rodada) saíram: estão em Competições e na ficha.
+  - *Conversas e promessas* (decisão do usuário: criar o sistema): migração 021 (`conversations`, `promises`); regras em
+    `game/promise-engine/promises.ts`, aplicação em `promiseRepository.ts`, cobrança diária em `moveClock` (`processPromisesDay`). Jogador:
+    elogiar, cobrar, prometer minutos, prometer renovação; diretoria: posição na liga, vitórias. Regras e números em `docs/PROMISES.md`.
+  - *Humor da torcida*: indicador derivado dos últimos 5 jogos e da posição em relação ao esperado; sem efeito no jogo por ora.
+  - Testes: `promises-club.test.ts` (5). 270 testes passando. Mutação 7/7 (anulação ao sair do clube, intervalo entre conversas, limite de
+    minutos, prazo da renovação, 5º jogo, ordem dos últimos jogos, limiar de "pedem conversa").
+  - NÃO calibrado: efeitos das conversas/promessas em várias temporadas. Telas NÃO verificadas no Electron (ficha completa, Visão geral, janelas de conversa).
+- **Livres mais fracos e negociação que não reabre (pedido do usuário, 06/11/2026; sem commit):**
+  - Livres com força 14+ vinham dos contratos que a IA deixa vencer (55% de renovação fora dos 14 principais). Agora livres acima de 12
+    (`FREE_AGENT_LEVEL`) são contratados por um clube em que sejam reforço (`signStrongFreeAgents`, ver `docs/TRANSFERS.md`). Universo real,
+    2 temporadas: de ~30 livres com 14+ para 1–2 logo após cada virada (não é certeza a contratação: 70% na virada, 6% por dia na janela,
+    para que um ou outro 14+ fique disponível, pedido do usuário). Teste em `transfers.test.ts`; mutação 2/2. Efeito nas finanças da IA não medido
+    em várias temporadas (suíte de finanças passa).
+  - Transferências: o jogador escolhido na ficha/olheiros reabria a negociação toda vez que se voltava à tela; agora é descartado ao abrir.
+    Botão "Cancelar negociação" (nada fica pendente no motor). Tela NÃO verificada no Electron.
+- **Carreira de ano civil começa em 01/01/2026 (pedido do usuário, 06/11/2026; sem commit):**
+  - Antes: clube de ano civil começava em 01/01/2027, depois de simular jul–dez/2026 (torneio de transição com acesso/rebaixamento), e os clubes
+    chegavam fora das divisões da base. Agora a carreira começa obrigatoriamente em 01/01/2026 (`careerWorld`, `careerService.ts`), sem nada
+    simulado; os países de julho jogam um torneio de transição jan–jun/2026 (a partir de 10/jan, turno único, sem copa) e viram para 2026/27 em 1º/jul.
+  - Torneio de transição (os dois sentidos) sem acesso nem rebaixamento: divisões da base intactas na primeira temporada normal de todos os países.
+  - Base real: criação em ~1 s, 0 clubes fora da divisão da base; transições europeias terminam entre março e maio.
+  - Testes: `calendar-year.test.ts` reescrito (início em 2026, transição jan–jun, divisões intactas nos dois sentidos); copas da base contadas em
+    duas carreiras (julho + ano civil = 14). Mutação 2/2. 271 testes passando. Telas (aviso da nova carreira) NÃO verificadas no Electron.
+  - *Ajuste (pedido do usuário, mesmo dia):* em vez do torneio de transição jan–jun, os países de julho chegam a 01/01/2026 na **metade da
+    temporada 2025/26**: o universo começa em 01/07/2025 e jul–dez é simulado na criação (resultado rápido, sem diretoria/rotina do clube);
+    os países de ano civil ficam parados nesse período (meta `pre_career`: sem transição), então nenhum clube muda de divisão antes da carreira.
+    Base real: ~8 s para criar; 0 clubes fora da divisão da base. Testes de `calendar-year.test.ts` e da copa da base ajustados; mutação 2/2.
+  - *Sem torneio de transição (pedido do usuário, 07/11/2026):* o caminho inverso para clubes de julho: o universo começa em 01/01/2026,
+    os países de ano civil jogam jan–jun da temporada 2026 (simulados na criação) e os de julho ficam parados até 01/07/2026, quando a carreira
+    começa. O torneio de transição foi removido (o período antes da 1ª temporada de um país é parado, sem jogos). Universo com um só calendário
+    (mundos de teste) começa direto. Testes: `calendar-year.test.ts`, `saves.test.ts` (14 copas, 1ª rodada do ano civil em julho),
+    `sim-levels.test.ts` (a metade simulada segue a semente de cada carreira: só a identidade dos jogadores da base é comparada). Mutação 2/2.
+    Tela de nova carreira (aviso e "Simulando jan–jun/2026…") NÃO verificada no Electron.

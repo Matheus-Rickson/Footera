@@ -189,3 +189,10 @@ com 6ª troca; DFB com 4ª parada) e as vagas com repasse (Copa do Brasil art. 4
   Caixa de entrada avisa o adversário sorteado, a folga e o título; rede social com textos de copa; Sala de troféus com as copas.
 - **Ainda não**: supercopas, competições continentais (a vaga do campeão fica registrada no formato), Rússia, convidados amadores (opção B),
   objetivo de copa na diretoria.
+
+## Supercopas (implementadas em 06/11/2026)
+Regras em `game/cup-engine/supercups.ts`, do levantamento `docs/supercopas-regulamentos.pdf` com as propostas aceitas pelo usuário: começam na
+2ª temporada da carreira; só troféu; Holanda com pênaltis direto; Espanha com o pareamento histórico (campeão da liga × vice da copa; campeão da
+copa × vice da liga; vagas repetidas por prioridade liga 1º, liga 2º, copa 1º, copa 2º → 3º, 4º… da liga, o que reproduz 2026); Argentina
+simplificada (liga × Copa Argentina); Itália com dois clubes em janeiro na casa do campeão; Áustria e México sem supercopa; Rússia com a copa.
+Copas e supercopas são editáveis no editor de dados (`cups.json`, ver `docs/DATABASE.md`).

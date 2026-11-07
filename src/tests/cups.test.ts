@@ -203,19 +203,27 @@ test('Migração 18 num save com dados: competições viram ligas com país, par
   const late = await career('cups-late');
   const { createCups } = await import('../database/repositories/cupRepository.ts');
   late.prepare("DELETE FROM fixtures WHERE tie_id IS NOT NULL").run(); late.prepare('DELETE FROM cup_ties').run(); late.prepare("DELETE FROM competitions WHERE kind = 'cup'").run();
-  assert.equal(createCups(late, 2026, '2027-03-01'), 0);
-  assert.equal(createCups(late, 2026, getCareerState(late).gameDate), 2);
+  assert.equal(createCups(late, { notBefore: '2027-03-01' }), 0);
+  assert.equal(createCups(late, { notBefore: getCareerState(late).gameDate }), 2);
 });
 
 test('Base real na criação da carreira: 14 copas sorteadas; folgas da 1ª fase para os mais bem classificados; mando e campo pela regra; jogos fora das datas da liga', async () => {
   const w = baseUniverse().world;
-  const db = await openDatabase(':memory:');
-  createCareer(db, { ...w, seed: 'cups-base' }, coach, w.clubs[0]!.id);
+  // carreira de ano civil: copas dos países de julho (2025/26, já em andamento) e as do ano civil (2026) — as 14
+  const civil = (cid: string) => w.countries.find((x) => x.id === cid)!.seasonStart === '01-01';
+  const careers = [];
+  for (const pick of [w.clubs.find((c) => civil(c.countryId))!]) {
+    const db = await openDatabase(':memory:');
+    createCareer(db, { ...w, seed: 'cups-base' }, coach, pick.id);
+    careers.push(db);
+  }
+  const total = careers.reduce((s, db) => s + Number(db.prepare("SELECT COUNT(*) AS n FROM competitions WHERE kind = 'cup'").get()!.n), 0);
+  assert.equal(total, 14);
+  let checkedByes = 0, checkedLower = 0;
+  for (const db of careers) {
   const cups = db.prepare("SELECT id, country_id FROM competitions WHERE kind = 'cup'").all();
-  assert.equal(cups.length, 14);
   const leagueDates = new Set(db.prepare('SELECT DISTINCT match_date AS d FROM fixtures WHERE tie_id IS NULL').all().map((r) => String(r.d)));
   const tierOf = new Map(db.prepare('SELECT c.id, l.tier FROM clubs c JOIN leagues l ON l.id = c.league_id').all().map((r) => [String(r.id), Number(r.tier)]));
-  let checkedByes = 0, checkedLower = 0;
   for (const c of cups) {
     const id = String(c.id), state = cupStateOf(db, id);
     assert.ok(state.declaredByes, `${state.format.name}: plano aprovado`);
@@ -237,6 +245,7 @@ test('Base real na criação da carreira: 14 copas sorteadas; folgas da 1ª fase
         assert.ok(tierOf.get(String(decisive.home_club_id))! > tierOf.get(String(decisive.away_club_id))!, `${state.format.name}: divisão inferior manda`);
       }
     }
+  }
   }
   assert.ok(checkedByes >= 6 && checkedLower > 0, `cobertura: ${checkedByes} copas com folga, ${checkedLower} mandos por divisão`);
 });

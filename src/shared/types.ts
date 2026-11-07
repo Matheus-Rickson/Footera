@@ -114,7 +114,10 @@ export interface League {
   rules: LeagueRules;
 }
 
-export interface Country { id: Id; code: string; name: string; /** fator econômico (1 = referência) */ economy: number }
+export interface Country {
+  id: Id; code: string; name: string; /** fator econômico (1 = referência) */ economy: number;
+  /** início da temporada: '01-01' = ano civil (jan–dez); ausente = julho a junho */ seasonStart?: '07-01' | '01-01';
+}
 
 export interface World {
   seed: string;
@@ -126,6 +129,17 @@ export interface World {
   players: Player[];
   /** técnicos do universo (ausente em mundos antigos: a carreira gera os padrão) */
   coaches?: WorldCoach[];
+  /** copas e supercopas (ausente: as padrão de cada país, ver game/cup-engine/catalog.ts) */
+  cups?: WorldCup[];
+}
+
+/** Copa ou supercopa nacional do universo (editável). Datas em MM-DD. */
+export interface WorldCup {
+  id: string; countryId: string; kind: 'cup' | 'supercup'; name: string; enabled: boolean;
+  /** copa: código do país cujo formato de fases é usado; janela (1ª fase e final) na temporada de julho e no ano civil; limite de amarelos */
+  stagesFrom?: string; window?: { start: string; final: string }; windowCalendarYear?: { start: string; final: string }; yellowLimit?: number;
+  /** supercopa: 2 ou 4 clubes, regra da dobradinha, mando, prorrogação, datas (temporada de julho e ano civil) */
+  teams?: 2 | 4; double?: 'league2' | 'cup2' | 'none'; host?: 'neutral' | 'cup' | 'league'; extraTime?: boolean; dates?: string[]; datesCalendarYear?: string[];
 }
 
 /** Técnico do universo (dos clubes da IA e os sem clube). Atributos 1–20; reputação 1–100. */

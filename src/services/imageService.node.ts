@@ -1,6 +1,6 @@
 /**
  * Imagens dos pacotes de dados (etapa 3 da base editável): `images/players/<id>`, `images/clubs/<id>` (escudo) e
- * `images/stadiums/<id>`, `images/leagues/<id>` (logo da liga), `images/coaches/<id>` (foto do técnico), em PNG ou JPEG (validados pelo conteúdo, até 5 MB, de 64 a 4096 px). O jogo só serve imagens deste
+ * `images/stadiums/<id>`, `images/leagues/<id>` (logo da liga), `images/coaches/<id>` (foto do técnico), `images/cups/<id>` (logo da copa ou supercopa), em PNG ou JPEG (validados pelo conteúdo, até 5 MB, de 64 a 4096 px). O jogo só serve imagens deste
  * índice (nenhum caminho vem da tela), então um pacote não consegue fazer o jogo ler outros arquivos do computador.
  */
 import fs from 'node:fs';
@@ -9,11 +9,11 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ID_PATTERN } from '../shared/slug.ts';
 import { ValidationError } from './careerService.ts';
 
-export type ImageKind = 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches';
-export const IMAGE_KINDS: readonly ImageKind[] = ['players', 'clubs', 'stadiums', 'leagues', 'coaches'];
+export type ImageKind = 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups';
+export const IMAGE_KINDS: readonly ImageKind[] = ['players', 'clubs', 'stadiums', 'leagues', 'coaches', 'cups'];
 const EXTS = ['png', 'jpg'] as const;
 /** caminho de imagem dentro de um pacote/zip: images/<tipo>/<id>.<png|jpg|jpeg> */
-export const IMAGE_PATH = /^images\/(players|clubs|stadiums|leagues|coaches)\/([a-z0-9][a-z0-9_-]{0,59})\.(png|jpg|jpeg)$/;
+export const IMAGE_PATH = /^images\/(players|clubs|stadiums|leagues|coaches|cups)\/([a-z0-9][a-z0-9_-]{0,59})\.(png|jpg|jpeg)$/;
 
 export function validateImage(bytes: Uint8Array, label: string): 'png' | 'jpg' {
   try { return inspectImage(bytes).format === 'png' ? 'png' : 'jpg'; } catch (e) {

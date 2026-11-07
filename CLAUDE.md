@@ -24,7 +24,7 @@ Motor separado da UI. Versão atual: ver `package.json` (0.8.0 = Fase 8 completa
 ## Regras inegociáveis (cada uma tem teste)
 1. Todo dinheiro passa por `makePoster`: saldo = saldo inicial + soma do extrato, para TODOS os clubes. Moeda exibida: euro (`fmtMoney`).
 2. Jogador só entra em clube vindo de outro clube/livre via `executeTransfer`; saída sem destino (fim de contrato, aposentadoria) via `releasePlayer`; base → principal (mesmo clube) via `promoteFromYouth`.
-3. O tempo só avança por `moveClock`, dia a dia: mercado do dia, depois fechamento mensal. Nunca passa de 1º/jul; a virada é `startNextSeason` (ação do usuário, atômica).
+3. O tempo só avança por `moveClock`, dia a dia: mercado do dia, depois fechamento mensal. Cada país tem a sua temporada (jul–jun ou ano civil, `country_seasons`): o relógio nunca passa da virada do país do treinador, que é `startNextSeason` (ação do usuário, atômica); as viradas dos outros países acontecem dentro de `moveClock` (`autoTurnovers`).
 4. Classificação é derivada das partidas, nunca armazenada.
 5. Rodada simulada é atômica.
 6. Determinismo por semente (mesma semente = mesmo resultado).
@@ -52,6 +52,11 @@ Telas React só são "verificadas" depois que o usuário roda `npm run dev`; at�
 - v0.8.7 commitada (aguardando validação completa pelo checklist 13c). **Fase 9 em andamento** (branch `fase-9-base-de-dados`): etapa 1 da base
   editável commitada (`0304652`); base fixa + simulação por divisão + nova carreira commitadas (`8cca05e`); etapa 2 (tela de pacotes, .zip), editor de dados,
   atributos de goleiro, imagens (fotos, escudos, estádios, logos de liga; etapa 3) e informativos dos atributos commitados; reputação em estrelas, atributos do treinador com efeito, escudos no jogo, campinho das funções, calendário em grade, rede social (Notícias, migração 015), Caixa de entrada (migração 016) e propostas de emprego mais raras commitados; técnicos da IA como pessoas (migração 017; parte do universo, editáveis no editor com foto, fichas do clube e do técnico) e planilhas CSV no editor commitados e verificados pelo usuário; **copas nacionais implementadas sem commit** (regras verificadas em `docs/COPAS_NACIONAIS.md`,
-  motor com desempate por fase, migração 018, 14 copas; supercopas, continentais e Rússia depois), com as regras reais de cada competição.
+  motor com desempate por fase, migração 018, 14 copas) commitadas (`4340aa1`); **sem commit:** temporada por país (ano civil para BRA/ARG/IRL,
+  migração 019, torneio de transição, carreira começa no início da temporada do país do clube (ano civil 01/01/2026, julho 01/07/2026) com o outro calendário na metade da temporada, simulada na criação; sem torneio de transição, viradas automáticas por país), supercopas
+  (`supercups.ts`, 13 países) e copas/supercopas editáveis no editor (`cups.json`, logo `images/cups`); Competições no esboço do usuário (forma,
+  líderes com jogos sem sofrer gols — migração 020 —, jogos da rodada) e botão Continuar (`continueDay`, caixa de tempo que para no jogo do
+  clube e em decisões); ficha completa do clube, Visão geral no esboço e conversas/promessas com jogadores e diretoria (migração 021,
+  `docs/PROMISES.md`). Continentais e Rússia depois.
   Ver `docs/DATABASE.md`.
 - A especificação original do usuário deve ficar em `docs/SPEC.md` (ver PROGRESS.md: não consta no zip).

@@ -14,6 +14,8 @@ function convert(t: z.ZodTypeAny): Json {
     case 'ZodOptional': return convert((t as z.ZodOptional<z.ZodTypeAny>).unwrap());
     case 'ZodNullable': { const inner = convert((t as z.ZodNullable<z.ZodTypeAny>).unwrap()); return { anyOf: [inner, { type: 'null' }] }; }
     case 'ZodLiteral': return { const: def.value };
+    case 'ZodBoolean': return { type: 'boolean' };
+    case 'ZodUnion': return { anyOf: (def.options as z.ZodTypeAny[]).map(convert) };
     case 'ZodEnum': return { type: 'string', enum: [...(def.values as string[])] };
     case 'ZodString': {
       const out: Json = { type: 'string' };
@@ -47,7 +49,7 @@ function convert(t: z.ZodTypeAny): Json {
 }
 
 const TITLES: Record<string, string> = {
-  manifest: 'Manifesto do pacote de dados', countries: 'Países', leagues: 'Ligas', stadiums: 'Estádios', clubs: 'Clubes', players: 'Jogadores',
+  manifest: 'Manifesto do pacote de dados', countries: 'Países', leagues: 'Ligas', stadiums: 'Estádios', clubs: 'Clubes', players: 'Jogadores', coaches: 'Técnicos', cups: 'Copas e supercopas',
 };
 
 /** Um schema por arquivo do pacote (nome do arquivo → conteúdo). */

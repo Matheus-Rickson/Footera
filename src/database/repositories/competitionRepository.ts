@@ -14,12 +14,16 @@ import { youthIntake } from './youthRepository.ts';
 import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
-import { processBoardDay } from './boardRepository.ts';
+import { fastForwarding, processBoardDay } from './boardRepository.ts';
+import { processPromisesDay } from './promiseRepository.ts';
 import { processSocialDay } from './socialRepository.ts';
-import { createCups } from './cupRepository.ts';
+import { createCups, createSupercup } from './cupRepository.ts';
+import { allCountrySeasons, CURRENT_COMP, ensureCountrySeasons, userSeason, type CountrySeason } from './countrySeasonRepository.ts';
+import { autoTurnovers } from './seasonRepository.ts';
+import { CALENDAR_YEAR_LEAGUE_START, seasonLabelFor } from '../../game/career-engine/calendar.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type {
-  AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionTableDto, FixtureDto, StandingRowDto, TableZone,
+  AdvanceMode, AdvanceResultDto, CalendarDto, CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, FixtureDto, LeaderRowDto, StandingRowDto, TableZone,
 } from '../../shared/api.ts';
 
 const S = (v: unknown) => String(v);
@@ -29,28 +33,43 @@ export { getCareerState };
 export type { CareerState };
 
 /**
- * Garante que existam competições e calendário para a temporada. Idempotente e determinístico
- * (semente = semente do universo + temporada + liga). Também "repara" saves criados antes da Fase 3.
+ * Garante que cada país tenha competições e calendário da sua temporada corrente. Idempotente e determinístico
+ * (semente = semente do universo + temporada + liga). Também "repara" saves criados antes da Fase 3. `_season` é ignorado
+ * (cada país tem a sua temporada; mantido por compatibilidade).
  */
-export function ensureSeason(db: SqlDb, season: number): { created: number } {
-  return withTransaction(db, () => createSeason(db, season));
+export function ensureSeason(db: SqlDb, _season?: number): { created: number } {
+  return withTransaction(db, () => createSeason(db));
 }
 
-/** Corpo de `ensureSeason` sem transação própria (usado pela virada de temporada, que já é atômica). */
-export function createSeason(db: SqlDb, season: number): { created: number } {
+/** Corpo de `ensureSeason` sem transação própria (usado pela virada, que já é atômica). `countryIds`: só esses países. */
+export function createSeason(db: SqlDb, _season?: number, countryIds?: readonly string[]): { created: number } {
+  ensureCountrySeasons(db);
+  let created = 0;
+  for (const cs of allCountrySeasons(db)) if (!countryIds || countryIds.includes(cs.countryId)) created += createCountrySeason(db, cs);
+  return { created };
+}
+
+/** Ligas e copas da temporada corrente de um país (nenhuma no período parado antes da 1ª temporada). NÃO abre transação. */
+function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
   const seed = S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
   let created = 0;
-  const insComp = db.prepare("INSERT INTO competitions (id, kind, league_id, country_id, season, name) VALUES (?, 'league', ?, (SELECT country_id FROM leagues WHERE id = ?), ?, ?)");
+  const insComp = db.prepare("INSERT INTO competitions (id, kind, league_id, country_id, season, name) VALUES (?, 'league', ?, ?, ?, ?)");
   const insFix = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues ORDER BY rowid').all()) {
+  // período antes da 1ª temporada do país (meses simulados antes da carreira): o país fica parado, sem jogos
+  if (cs.transition) return 0;
+  for (const lg of db.prepare('SELECT id, name, rules_json FROM leagues WHERE country_id = ? ORDER BY rowid').all(cs.countryId)) {
     const leagueId = S(lg.id);
-    if (db.prepare('SELECT 1 AS x FROM competitions WHERE league_id = ? AND season = ?').get(leagueId, season)) continue;
+    const compId = `cmp_${leagueId}_${cs.season}`;
+    if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;
     const teams = db.prepare('SELECT id FROM clubs WHERE league_id = ? ORDER BY id').all(leagueId).map((r) => S(r.id));
     if (teams.length < 2) continue;
     const rules = JSON.parse(S(lg.rules_json)) as LeagueRules;
-    const games = scheduleLeague(teams, rules.rounds, season, rules.calendar ?? DEFAULT_CALENDAR, createRng(`schedule:${seed}:${season}:${leagueId}`));
-    const compId = `cmp_${leagueId}_${season}`;
-    insComp.run(compId, leagueId, leagueId, season, `${S(lg.name)} ${season}/${String(season + 1).slice(2)}`);
+    const base = rules.calendar ?? DEFAULT_CALENDAR;
+    // ano civil: liga depois da pré-temporada de janeiro
+    const cal = cs.start === '01-01' && !rules.calendar ? { ...DEFAULT_CALENDAR, seasonStart: CALENDAR_YEAR_LEAGUE_START } : base;
+    const games = scheduleLeague(teams, rules.rounds, cs.season, cal, createRng(`schedule:${seed}:${cs.season}:${leagueId}`));
+    const name = `${S(lg.name)} ${seasonLabelFor(cs.season, cs.start)}`;
+    insComp.run(compId, leagueId, cs.countryId, cs.season, name);
     const perRound = new Map<number, number>();
     for (const g of games) {
       const idx = (perRound.get(g.round) ?? 0) + 1;
@@ -59,8 +78,9 @@ export function createSeason(db: SqlDb, season: number): { created: number } {
     }
     created++;
   }
-  createCups(db, season); // copas nacionais: depois do calendário das ligas (as datas evitam os jogos da liga)
-  return { created };
+  // copas e supercopa: depois da liga (as datas evitam os jogos da liga); só numa temporada nova (saves antigos: saveService, com data mínima)
+  if (created > 0) { createCups(db, { countryId: cs.countryId }); createSupercup(db, cs.countryId); }
+  return created;
 }
 
 export const FIXTURE_SELECT = `
@@ -87,15 +107,17 @@ export function toFixture(r: Record<string, unknown>): FixtureDto {
 
 export function getClubCalendar(db: SqlDb): CalendarDto {
   const st = getCareerState(db);
-  const rows = db.prepare(`${FIXTURE_SELECT} WHERE c.season = ? AND (f.home_club_id = ? OR f.away_club_id = ?) ORDER BY f.match_date, f.round`)
-    .all(st.season, st.clubId, st.clubId);
-  return { season: st.season, gameDate: st.gameDate, clubId: st.clubId, fixtures: rows.map(toFixture) };
+  // temporada corrente do país do clube (o calendário do clube é o do seu país)
+  const rows = db.prepare(`${FIXTURE_SELECT} WHERE ${CURRENT_COMP} AND (f.home_club_id = ? OR f.away_club_id = ?) ORDER BY f.match_date, f.round`)
+    .all(st.clubId, st.clubId);
+  const us = userSeason(db);
+  return { season: us.season, seasonLabel: us.label, seasonStarts: us.starts, turnover: us.turnover, gameDate: st.gameDate, clubId: st.clubId, fixtures: rows.map(toFixture) };
 }
 
 export function getNextFixture(db: SqlDb): FixtureDto | null {
   const st = getCareerState(db);
-  const r = db.prepare(`${FIXTURE_SELECT} WHERE c.season = ? AND f.status = 'scheduled' AND (f.home_club_id = ? OR f.away_club_id = ?)
-                         ORDER BY f.match_date, f.round LIMIT 1`).get(st.season, st.clubId, st.clubId);
+  const r = db.prepare(`${FIXTURE_SELECT} WHERE ${CURRENT_COMP} AND f.status = 'scheduled' AND (f.home_club_id = ? OR f.away_club_id = ?)
+                         ORDER BY f.match_date, f.round LIMIT 1`).get(st.clubId, st.clubId);
   return r ? toFixture(r) : null;
 }
 
@@ -104,16 +126,17 @@ export function listCompetitions(db: SqlDb): { userCompetitionId: string | null;
   const competitions = db.prepare(
     `SELECT c.id, c.name, c.league_id, l.tier, l.team_count, co.name AS country
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id
-      WHERE c.season = ? ORDER BY co.name, l.tier`).all(st.season)
+      WHERE ${CURRENT_COMP} ORDER BY co.name, l.tier`).all()
     .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count), kind: 'league' }) as CompetitionInfoDto);
   // copas nacionais (depois das divisões do país; a do país do usuário primeiro entre as copas)
   const myCountry = st.clubId ? S(db.prepare('SELECT country_id FROM clubs WHERE id = ?').get(st.clubId)?.country_id ?? '') : '';
-  const cups = db.prepare(`SELECT c.id, c.name, c.country_id, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.clubs'))) AS n
-      FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'cup' AND c.season = ? ORDER BY c.country_id = ? DESC, co.name`).all(st.season, myCountry)
-    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'cup' as const }));
+  const cups = db.prepare(`SELECT c.id, c.name, c.country_id, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.clubs'))) AS n,
+      json_extract(c.format_json, '$.format.kind') AS fk
+      FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'cup' AND ${CURRENT_COMP} ORDER BY c.country_id = ? DESC, co.name, c.id`).all(myCountry)
+    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'cup' as const, supercup: r.fk === 'supercup' }));
   competitions.push(...cups);
   const mine = db.prepare(
-    'SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.season = ? AND cl.id = ?').get(st.season, st.clubId);
+    `SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND cl.id = ?`).get(st.clubId);
   return { userCompetitionId: mine ? S(mine.id) : null, competitions };
 }
 
@@ -127,7 +150,7 @@ function zoneFor(position: number, total: number, rules: LeagueRules): TableZone
 export function getCompetitionTable(db: SqlDb, competitionId: string): CompetitionTableDto {
   const st = getCareerState(db);
   const c = db.prepare(
-    `SELECT c.id, c.name, c.league_id, l.tier, l.rules_json, co.name AS country
+    `SELECT c.id, c.name, c.league_id, l.tier, l.rules_json, l.country_id, co.name AS country
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE c.id = ?`).get(competitionId);
   if (!c) throw new Error('Competição não encontrada.');
   const rules = JSON.parse(S(c.rules_json)) as LeagueRules;
@@ -142,15 +165,41 @@ export function getCompetitionTable(db: SqlDb, competitionId: string): Competiti
   const roundsPlayed = N(db.prepare(
     `SELECT COUNT(*) AS n FROM (SELECT round FROM fixtures WHERE competition_id = ? GROUP BY round HAVING SUM(status = 'scheduled') = 0)`).get(competitionId)!.n);
   const totalRounds = N(db.prepare('SELECT COALESCE(MAX(round), 0) AS n FROM fixtures WHERE competition_id = ?').get(competitionId)!.n);
+  // forma: últimos 5 jogos de cada clube na competição (ordem do calendário)
+  const form = new Map<string, Array<'V' | 'E' | 'D'>>();
+  for (const m of db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' ORDER BY match_date, round, id").all(competitionId)) {
+    const h = N(m.home_goals), a = N(m.away_goals);
+    for (const [id, d] of [[S(m.home_club_id), h - a], [S(m.away_club_id), a - h]] as const) {
+      const l = form.get(id) ?? []; l.push(d > 0 ? 'V' : d < 0 ? 'D' : 'E'); form.set(id, l.slice(-5));
+    }
+  }
   const rows: StandingRowDto[] = table.map((r) => ({
     position: r.position, clubId: r.teamId, clubName: names.get(r.teamId) ?? '?', played: r.played, won: r.won, drawn: r.drawn, lost: r.lost,
     goalsFor: r.goalsFor, goalsAgainst: r.goalsAgainst, goalDiff: r.goalDiff, points: r.points,
-    zone: zoneFor(r.position, table.length, rules), isUserClub: r.teamId === st.clubId,
+    zone: zoneFor(r.position, table.length, rules), isUserClub: r.teamId === st.clubId, form: form.get(r.teamId) ?? [],
   }));
+  const nextRound = db.prepare("SELECT MIN(round) AS r FROM fixtures WHERE competition_id = ? AND status = 'scheduled'").get(competitionId);
+  const currentRound = nextRound && nextRound.r != null ? N(nextRound.r) : Math.max(1, totalRounds);
+  const neighbour = (tier: number) => { const l = db.prepare('SELECT name FROM leagues WHERE country_id = ? AND tier = ?').get(S(c.country_id), tier); return l ? S(l.name) : null; };
   return {
     competition: { id: S(c.id), leagueId: S(c.league_id), name: S(c.name), country: S(c.country), tier: N(c.tier), teamCount: rows.length, kind: 'league' },
-    rows, roundsPlayed, totalRounds, tiebreakers: rules.tiebreakers,
+    rows, roundsPlayed, totalRounds, tiebreakers: rules.tiebreakers, currentRound,
+    zoneTargets: { promotion: rules.promotionSlots > 0 ? neighbour(N(c.tier) - 1) : null, relegation: rules.relegationSlots > 0 ? neighbour(N(c.tier) + 1) : null },
   };
+}
+
+const LEADER_COL = { goals: 'goals', assists: 'assists', cleanSheets: 'clean_sheets' } as const;
+
+/** Líderes de gols, assistências e jogos sem sofrer gols de uma competição (dados públicos: não passam por estimativa). */
+export function getCompetitionLeaders(db: SqlDb, competitionId: string, limit = 10): CompetitionLeadersDto {
+  if (!db.prepare('SELECT 1 FROM competitions WHERE id = ?').get(competitionId)) throw new Error('Competição não encontrada.');
+  const hasStats = !!db.prepare('SELECT 1 FROM player_season_stats WHERE competition_id = ? LIMIT 1').get(competitionId);
+  const top = (k: keyof typeof LEADER_COL): LeaderRowDto[] => db.prepare(
+    `SELECT s.player_id, p.first_name, p.last_name, s.club_id, cl.name AS club, s.appearances, s.${LEADER_COL[k]} AS v
+       FROM player_season_stats s JOIN players p ON p.id = s.player_id JOIN clubs cl ON cl.id = s.club_id
+      WHERE s.competition_id = ? AND s.${LEADER_COL[k]} > 0 ORDER BY v DESC, s.appearances ASC, p.last_name, p.id LIMIT ?`).all(competitionId, limit)
+    .map((r) => ({ playerId: S(r.player_id), name: `${S(r.first_name)} ${S(r.last_name)}`.trim(), clubId: S(r.club_id), clubName: S(r.club), appearances: N(r.appearances), value: N(r.v) }));
+  return { competitionId, hasStats, goals: top('goals'), assists: top('assists'), cleanSheets: top('cleanSheets') };
 }
 
 export class ResultError extends UserError {}
@@ -195,19 +244,23 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
   const st = getCareerState(db);
   const days = daysBetween(from, to);
   db.prepare('UPDATE career SET game_date = ?, updated_at = ? WHERE id = 1').run(to, now.toISOString());
-  const turnover = turnoverDate(st.season);
+  const turnover = userSeason(db).turnover; // a virada do país do treinador é ação dele (startNextSeason)
+  void st;
+  const ff = fastForwarding(db); // meses antes do início da carreira: partidas rápidas, sem condição física a recuperar
   for (let i = 1; i <= days; i++) {
     const d = addDays(from, i);
     if (d >= turnover) break; // o dia da virada é processado por startNextSeason
     processStaffDay(db, d);    // contratos da comissão técnica
-    processTrainingDay(db, d); // recuperação de condição, lesões de treino, rotina do preparador
+    if (!ff) processTrainingDay(db, d); // recuperação de condição, lesões de treino, rotina do preparador
     processConstructionDay(db, d); // obras concluídas
     processTrainingMonth(db, d);   // evolução mensal dos jogadores (dia 1º)
+    autoTurnovers(db, d, now);     // viradas dos outros países que viram hoje (ano civil × julho)
     processMarketDay(db, d);   // propostas expiram; a IA negocia dentro das janelas
     processScoutingDay(db, d); // olheiros observam jogadores
     youthIntake(db, d);        // peneira anual (15/mar)
     settleFinances(db, d);     // salários, patrocínios, TV etc. dos meses que começaram até este dia
     processBoardDay(db, d);    // diretoria: confiança, aviso/demissão, vagas e propostas de emprego
+    processPromisesDay(db, d); // promessas do treinador a jogadores e à diretoria: cobradas no prazo
     processSocialDay(db, d);   // rede social: prévias de hoje e notícias de ontem (transferências, demissões)
   }
   return days;
@@ -221,7 +274,7 @@ export function advanceTime(db: SqlDb, mode: AdvanceMode, now: Date = new Date()
   if (mode !== 'day' && mode !== 'nextMatchday') throw new ResultError('Modo de avanço inválido.');
   const st = getCareerState(db);
   const today = st.gameDate;
-  const turnover = turnoverDate(st.season);
+  const turnover = userSeason(db).turnover;
   const blockers = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND match_date <= ?").get(today)!.n);
   const fail = (reason: 'pending_matches' | 'season_complete', pending: number, message: string): AdvanceResultDto =>
     ({ advanced: false, fromDate: today, toDate: today, daysAdvanced: 0, reason, pendingMatches: pending, message });
@@ -234,7 +287,7 @@ export function advanceTime(db: SqlDb, mode: AdvanceMode, now: Date = new Date()
   const days = withTransaction(db, () => moveClock(db, today, target, now));
   const pendingOnTarget = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE status = 'scheduled' AND match_date = ?").get(target)!.n);
   const message = pendingOnTarget > 0 ? `Dia de jogos: ${pendingOnTarget} partida(s) a disputar.`
-    : target === turnover ? 'Chegou o dia 1º de julho: inicie a nova temporada.'
-      : nextMatch === null ? 'Temporada encerrada: sem partidas até a virada (1º de julho).' : 'Nada a processar neste dia.';
+    : target === turnover ? `Chegou o dia ${turnover.slice(5) === '01-01' ? '1º de janeiro' : '1º de julho'}: inicie a nova temporada.`
+      : nextMatch === null ? `Temporada encerrada: sem partidas até a virada (${turnover.split('-').reverse().join('/')}).` : 'Nada a processar neste dia.';
   return { advanced: true, fromDate: today, toDate: target, daysAdvanced: days, reason: 'ok', pendingMatches: pendingOnTarget, message };
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://footera.local/schema/coaches.schema.json",
-  "title": "FOOTERA — undefined",
+  "title": "FOOTERA — Técnicos",
   "type": "array",
   "items": {
     "type": "object",

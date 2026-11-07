@@ -21,6 +21,7 @@ import { fmtMoney } from '../../shared/money.ts';
 export class ScoutError extends UserError {}
 
 import { playerReputation } from '../../shared/scale.ts';
+import { CURRENT_COMP } from './countrySeasonRepository.ts';
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
@@ -54,7 +55,7 @@ const countryName = (db: SqlDb, code: string) => { const r = db.prepare('SELECT 
 function publicStatus(db: SqlDb, playerId: string, date: string): MarketPlayerDto['status'] {
   const ps = db.prepare('SELECT injury_until, suspension_matches FROM player_status WHERE player_id = ?').get(playerId);
   const cards = db.prepare(`SELECT COALESCE(SUM(pss.yellow_cards), 0) AS y, COALESCE(SUM(pss.red_cards), 0) AS r FROM player_season_stats pss
-    JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND c.season = ?`).get(playerId, getCareerState(db).season)!;
+    JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND ${CURRENT_COMP}`).get(playerId)!;
   const injury = ps?.injury_until == null ? null : S(ps.injury_until);
   return { injuredUntil: injury && injury > date ? injury : null, suspension: ps ? N(ps.suspension_matches) : 0, yellows: N(cards.y), reds: N(cards.r) };
 }
@@ -174,7 +175,7 @@ export function getPlayerProfile(db: SqlDb, playerId: string): PlayerProfileDto 
   const own = p.clubId === st.clubId || youthOf === st.clubId;
   if (youthOf && !own) throw new ScoutError('Jogadores das categorias de base de outros clubes não são observáveis.');
   const s = db.prepare(`SELECT COALESCE(SUM(pss.appearances), 0) AS apps, COALESCE(SUM(pss.goals), 0) AS goals, COALESCE(SUM(pss.assists), 0) AS assists, COALESCE(SUM(pss.rating_sum), 0) AS rs
-    FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND c.season = ?`).get(p.id, st.season)!;
+    FROM player_season_stats pss JOIN competitions c ON c.id = pss.competition_id WHERE pss.player_id = ? AND ${CURRENT_COMP}`).get(p.id)!;
   const stats = { appearances: N(s.apps), goals: N(s.goals), assists: N(s.assists), avgRating: N(s.apps) > 0 ? Math.round((N(s.rs) / N(s.apps)) * 100) / 100 : null };
   const k0 = own ? 100 : knowledgeMap(db).get(p.id) ?? 0;
   const known = own || k0 >= 50;

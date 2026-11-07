@@ -170,7 +170,7 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
               <><button className="secondary" onClick={() => onOpenPlayer(p.id)}>Ver ficha</button><button onClick={onClose}>Concluir</button></>
             ) : (
               <>
-                <button className="secondary" disabled={busy} onClick={onClose}>Cancelar</button>
+                <button className="secondary" disabled={busy} title="Encerra a negociação sem contratar; nada fica pendente" onClick={onClose}><X size={16} aria-hidden="true" />Cancelar negociação</button>
                 {step === 'fee' && <button disabled={busy || !n.windowOpen || !(fee >= 0)} onClick={() => void offerFee(fee)}>Fazer oferta</button>}
                 {step === 'contract' && <button disabled={busy || !(wage > 0)} onClick={() => void offerContract(wage)}>Enviar proposta de contrato</button>}
               </>

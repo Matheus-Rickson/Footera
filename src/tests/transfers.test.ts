@@ -6,11 +6,13 @@ import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { activateScheme, autoLineup, saveScheme } from '../database/repositories/tacticsRepository.ts';
-import { getNegotiation, getTransfersOverview, makeOffer, processMarketDay, proposeFee, respondOffer, searchMarket, setListed, TransferError } from '../database/repositories/transferRepository.ts';
+import { aiSignFreeAgents, FREE_AGENT_LEVEL, getNegotiation, getTransfersOverview, makeOffer, processMarketDay, proposeFee, respondOffer, searchMarket, setListed, TransferError } from '../database/repositories/transferRepository.ts';
 import {
   askingPrice, clubDecision, estimateRange, groupOf, playerDecision, playerInterest, sellerWillingness, squadStaysValid, wageDemand, windowStatus,
 } from '../game/transfer-engine/transfer.ts';
 import { addDays } from '../shared/date.ts';
+import { createRng } from '../game/rng.ts';
+import { makePoster } from '../database/repositories/financeRepository.ts';
 import type { SqlDb } from '../database/types.ts';
 import type { Coach, Position } from '../shared/types.ts';
 import type { MarketPlayerDto } from '../shared/api.ts';
@@ -377,4 +379,22 @@ test('Mercado paginado: todos os disponíveis, várias posições (natural ou se
   db.prepare("INSERT OR REPLACE INTO scout_shortlist (player_id, added_on) VALUES (?, '2026-07-01')").run(b!.id);
   assert.ok(all({ knownOnly: true }).players.some((p) => p.id === a!.id) && all({ knownOnly: true }).players.every((p) => p.knowledge >= 25));
   assert.deepEqual(all({ shortlistedOnly: true }).players.map((p) => p.id), [b!.id]);
+});
+
+test('Livres acima do nível 12 são contratados por um clube em que sejam reforço; os comuns ficam no mercado', async () => {
+  const { db, clubId, initial } = await setup('tr-strong-free');
+  const ids = db.prepare('SELECT id FROM players WHERE club_id IS NOT NULL AND club_id <> ? ORDER BY overall DESC LIMIT 6').all(clubId).map((r) => String(r.id));
+  const strong = ids.slice(0, 3), weak = ids.slice(3);
+  for (const id of ids) db.prepare('UPDATE players SET club_id = NULL WHERE id = ?').run(id);
+  for (const id of weak) db.prepare('UPDATE players SET overall = ? WHERE id = ?').run(FREE_AGENT_LEVEL, id);
+  assert.ok(strong.every((id) => n(db, 'SELECT overall AS n FROM players WHERE id = ?', id) > FREE_AGENT_LEVEL));
+  const date = getCareerState(db).gameDate;
+  // não é certeza (um ou outro livre forte pode sobrar): em algumas viradas seguidas, todos acabam contratados
+  for (let k = 0; k < 6; k++) aiSignFreeAgents(db, makePoster(db, clubId), createRng(`strong:${k}`), date, clubId, true);
+  for (const id of strong) {
+    const to = db.prepare('SELECT club_id FROM players WHERE id = ?').get(id)!.club_id;
+    assert.ok(to && to !== clubId, `livre forte ${id} contratado pela IA`);
+  }
+  assert.ok(weak.every((id) => db.prepare('SELECT club_id FROM players WHERE id = ?').get(id)!.club_id === null), 'livres no nível ficam livres (elencos sem carência)');
+  assertBooksBalance(db, initial);
 });

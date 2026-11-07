@@ -18,7 +18,7 @@ import { applyResult, getCareerState } from './competitionRepository.ts';
 import { loadSquad, type Squad, type Status } from './squadRepository.ts';
 import { addFamiliarity, ROLE_MATCH_GAIN } from './roleRepository.ts';
 import { medicalFactor } from './staffRepository.ts';
-import { applyMatchesToBoard } from './boardRepository.ts';
+import { applyMatchesToBoard, fastForwarding } from './boardRepository.ts';
 import { processSocialMatchday } from './socialRepository.ts';
 import { quickKnockout, quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
 import { advanceCups, applyCupCards, cupFixtureRule, cupSuspensions, recordCupResult, serveCupSuspension } from './cupRepository.ts';
@@ -144,9 +144,10 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   const upStatus = db.prepare(`INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?,?,?,?,?)
     ON CONFLICT(player_id) DO UPDATE SET injury_until = excluded.injury_until, injury_note = excluded.injury_note, suspension_matches = excluded.suspension_matches, yellow_cards = excluded.yellow_cards`);
   const upPlayer = db.prepare('UPDATE players SET condition_pct = ?, form = ?, morale = ? WHERE id = ?');
-  const upStats = db.prepare(`INSERT INTO player_season_stats (player_id, competition_id, club_id, appearances, minutes, goals, assists, yellow_cards, red_cards, rating_sum)
-    VALUES (?,?,?,1,?,?,?,?,?,?) ON CONFLICT(player_id, competition_id) DO UPDATE SET appearances = appearances + 1, minutes = minutes + excluded.minutes,
-    goals = goals + excluded.goals, assists = assists + excluded.assists, yellow_cards = yellow_cards + excluded.yellow_cards, red_cards = red_cards + excluded.red_cards, rating_sum = rating_sum + excluded.rating_sum`);
+  const upStats = db.prepare(`INSERT INTO player_season_stats (player_id, competition_id, club_id, appearances, minutes, goals, assists, yellow_cards, red_cards, rating_sum, clean_sheets)
+    VALUES (?,?,?,1,?,?,?,?,?,?,?) ON CONFLICT(player_id, competition_id) DO UPDATE SET appearances = appearances + 1, minutes = minutes + excluded.minutes,
+    goals = goals + excluded.goals, assists = assists + excluded.assists, yellow_cards = yellow_cards + excluded.yellow_cards, red_cards = red_cards + excluded.red_cards, rating_sum = rating_sum + excluded.rating_sum,
+    clean_sheets = clean_sheets + excluded.clean_sheets`);
 
   const medical = new Map([[f.homeId, medicalFactor(db, f.homeId)], [f.awayId, medicalFactor(db, f.awayId)]]);
   for (const r of out.players) {
@@ -156,7 +157,9 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
     upPlayer.run(conditionAfter(p.condition, p.attributes.physical.stamina, r.minutes, out.conditions.weather),
       Math.round(clamp(0.7 * p.form + 0.3 * (50 + (r.rating - 6) * 15), 0, 100) * 10) / 10,
       clamp(p.morale + (result > 0 ? 3 : result < 0 ? -3 : 0), 10, 100), p.id);
-    upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating);
+    const conceded = r.team === 0 ? out.awayGoals : out.homeGoals;
+    // jogo sem sofrer gol: o goleiro que ficou ao menos 60 minutos no gol
+    upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating, r.slot === 'GK' && r.minutes >= 60 && conceded === 0 ? 1 : 0);
     if (r.role && r.minutes > 0) addFamiliarity(db, p, r.role, (ROLE_MATCH_GAIN * r.minutes) / 90); // aprende a função jogando
     const st = statusOf(sq, p.id);
     const LEAGUE_YELLOWS = 5;
@@ -248,6 +251,8 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
   const rows = pendingFixtures(db, st.gameDate);
   const ctx = contextOf(db), notes = ctx.notes;
   const light = lightClubIds(db);
+  // meses anteriores ao início da carreira (clube de ano civil): todo o mundo pelo resultado rápido, por força
+  const allLight = fastForwarding(db);
   const strength = new Map<string, number>();
   const strengthOf = (clubId: string) => {
     let s = strength.get(clubId);
@@ -256,7 +261,7 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
   };
   const results = withTransaction(db, () => {
     const post = makePoster(db, st.clubId);
-    const out = rows.map((f) => (light.has(f.homeId) && light.has(f.awayId) ? simulateLight(db, f, { ...ctx, post }, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
+    const out = rows.map((f) => (allLight || (light.has(f.homeId) && light.has(f.awayId)) ? simulateLight(db, f, { ...ctx, post }, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
     advanceCups(db, st.gameDate); // copas: fase encerrada → sorteio da próxima (ou título), na mesma transação
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
     processSocialMatchday(db, st.gameDate, out.map((r) => r.fixtureId)); // rede social: resultados, zebras, hat-tricks, lesões, rodada
@@ -283,12 +288,14 @@ function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'f
   const mom = r.manOfTheMatch ? { id: r.manOfTheMatch, name: names.get(r.manOfTheMatch) ?? '' } : null;
   // força atual só dos jogadores do clube do usuário (de outros clubes o usuário só vê estimativas)
   const userClub = getCareerState(db).clubId;
+  const comp = db.prepare("SELECT c.kind, c.league_id, json_extract(c.format_json, '$.format.id') AS fid FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.id = ?").get(meta.fixtureId);
+  const logo: MatchReportDto['logo'] = !comp ? null : comp.kind === 'cup' ? (comp.fid == null ? null : { kind: 'cups', id: S(comp.fid) }) : comp.league_id == null ? null : { kind: 'leagues', id: S(comp.league_id) };
   const levels: Record<string, number> = {};
   for (const row of db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(userClub)) if (names.has(S(row.id))) levels[S(row.id)] = N(row.overall);
   return {
     ...meta, detail: r.detail, home: r.home, away: r.away,
     homeGoals: r.homeGoals, awayGoals: r.awayGoals, decidedIn: r.decidedIn, shootout: r.shootout, conditions: r.conditions, duration: r.duration,
-    extraTime: r.extraTime ?? r.decidedIn !== 'regular', cup: r.cup ?? null,
+    extraTime: r.extraTime ?? r.decidedIn !== 'regular', cup: r.cup ?? null, logo,
     stats: r.stats, players, lineups: r.lineups, commentary, manOfTheMatch: mom, tactics: r.tactics ?? null, timeline: r.timeline ?? null, levels, userClubId: userClub,
   };
 }

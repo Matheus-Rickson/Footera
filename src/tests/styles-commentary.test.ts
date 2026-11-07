@@ -56,7 +56,7 @@ test('Posições: todas as telas exibem a sigla em português (nunca o código i
       for (const m of line.matchAll(raw)) {
         const before = line[m.index! - 1], after = line.slice(m.index! + m[0].length, m.index! + m[0].length + 3);
         if (before === '=' || /º/.test(after)) continue; // pos={p.position} (selo) ou "12º de 20"
-        if (f === 'CompetitionsView.tsx' && m[0] === '{r.position}') continue; // coluna de colocação na tabela
+        if ((f === 'CompetitionsView.tsx' || f === 'OverviewView.tsx') && m[0] === '{r.position}') continue; // coluna de colocação na tabela
         offenders.push(`${f}: ${m[0]}`);
       }
     }

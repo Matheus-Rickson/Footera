@@ -9,6 +9,7 @@ import type {
 } from '../../shared/types.ts';
 import { deriveGoalkeeper } from './goalkeeper.ts';
 import { defaultCoaches } from '../coach-engine/worldCoaches.ts';
+import { defaultCups } from '../cup-engine/catalog.ts';
 
 export interface WorldOptions {
   seed: string;
@@ -256,5 +257,5 @@ export function generateWorld(opts: WorldOptions): World {
 
   const code = new Map(countries.map((c) => [c.id, c.code]));
   const coaches = defaultCoaches(clubs.map((c) => ({ id: c.id, reputation: c.reputation, countryCode: code.get(c.countryId) ?? 'BRA' })), startDate);
-  return { seed: opts.seed, startDate, countries, leagues, stadiums, clubs, players, coaches };
+  return { seed: opts.seed, startDate, countries, leagues, stadiums, clubs, players, coaches, cups: defaultCups(countries) };
 }

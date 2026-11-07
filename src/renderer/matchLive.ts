@@ -33,6 +33,7 @@ export interface LivePlayer {
 export interface LiveState {
   step: number; finished: boolean; started: boolean; minuteLabel: string; minute: number;
   score: [number, number]; shootout: [number, number] | null;
+  /** cobranças da disputa de pênaltis, na ordem (time e se converteu) */ kicks: Array<{ team: Side; scored: boolean }>;
   lines: CommentaryLine[]; tickLines: CommentaryLine[];
   /** em campo (na ordem da escalação) e os que já saíram (substituídos, expulsos, lesionados) */
   teams: [{ onPitch: LivePlayer[]; gone: LivePlayer[]; formation: string }, { onPitch: LivePlayer[]; gone: LivePlayer[]; formation: string }];
@@ -55,9 +56,10 @@ export function liveAt(r: MatchReportDto, ticks: LiveTick[], step: number): Live
 
   const score: [number, number] = [0, 0];
   let shoot: [number, number] | null = null;
+  const kicks: Array<{ team: Side; scored: boolean }> = [];
   for (const l of lines) {
     if (l.kind === 'goal' && l.team !== null) score[l.team]++;
-    if (l.kind === 'shootout' && l.team !== null) { shoot ??= [0, 0]; if (l.scored) shoot[l.team]++; }
+    if (l.kind === 'shootout' && l.team !== null) { shoot ??= [0, 0]; if (l.scored) shoot[l.team]++; kicks.push({ team: l.team as Side, scored: !!l.scored }); }
   }
 
   const teams = ([0, 1] as const).map((t) => {
@@ -118,7 +120,7 @@ export function liveAt(r: MatchReportDto, ticks: LiveTick[], step: number): Live
 
   return {
     step, finished, started: step > 0, minute, minuteLabel: finished ? 'Fim' : tick?.label ?? "0'",
-    score: finished ? [r.homeGoals, r.awayGoals] : score, shootout: finished && r.shootout ? [r.shootout.home, r.shootout.away] : shoot,
+    score: finished ? [r.homeGoals, r.awayGoals] : score, shootout: finished && r.shootout ? [r.shootout.home, r.shootout.away] : shoot, kicks,
     lines, tickLines, teams, stats,
   };
 }

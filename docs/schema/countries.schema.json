@@ -26,6 +26,13 @@
         "type": "number",
         "minimum": 0.1,
         "maximum": 5
+      },
+      "seasonStart": {
+        "type": "string",
+        "enum": [
+          "07-01",
+          "01-01"
+        ]
       }
     },
     "required": [

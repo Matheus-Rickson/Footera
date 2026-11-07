@@ -9,6 +9,7 @@ import { addDays } from '../../shared/date.ts';
 import type { FinanceOverviewDto } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
+import { CURRENT_COMP } from './countrySeasonRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -179,7 +180,7 @@ export function getFinanceOverview(db: SqlDb): FinanceOverviewDto {
   const sponsorsMonthly = deals.reduce((s, d) => s + N(d.monthly_amount), 0);
   // Bilheteria: média dos últimos jogos em casa (se houver ao menos 3) ou estimativa pela fórmula; anualizada pelos jogos em casa da temporada.
   const gateRows = db.prepare('SELECT gate_revenue FROM matches m JOIN fixtures f ON f.id = m.fixture_id WHERE f.home_club_id = ? AND m.gate_revenue IS NOT NULL ORDER BY f.match_date DESC LIMIT 10').all(st.clubId);
-  const homeGames = N(db.prepare('SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.home_club_id = ? AND c.season = ?').get(st.clubId, st.season)!.n);
+  const homeGames = N(db.prepare(`SELECT COUNT(*) AS n FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.home_club_id = ? AND ${CURRENT_COMP}`).get(st.clubId)!.n);
   const gateEstimated = gateRows.length < 3;
   const avgGate = gateEstimated ? gateRevenue(Math.round(econ.capacity * expectedFill(econ.reputation, 50, 'clear')), econ) : gateRows.reduce((a, r) => a + N(r.gate_revenue), 0) / gateRows.length;
   const gateMonthly = Math.round((avgGate * homeGames) / 12);

@@ -87,6 +87,8 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
       .sort((a, b) => a.country.localeCompare(b.country) || a.leagueTier - b.leagueTier || b.reputation - a.reputation);
   }, [pickable, countryFilter, leagueFilter, query]);
   const chosen = pickable.find((c) => c.id === clubId) ?? null;
+  const civilYear = !!chosen && countries.find((x) => x.id === chosen.countryId)?.seasonStart === '01-01';
+  const hasCivil = countries.some((x) => x.seasonStart === '01-01'), hasJuly = countries.some((x) => x.seasonStart !== '01-01');
   function goToClubs() {
     // abre destacando o clube de maior reputação do primeiro país completo (o atual, se ainda vale)
     if (!chosen) {
@@ -320,9 +322,11 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
           </div>
 
           <div className="row end">
+            {civilYear && hasJuly && <span className="muted small">{countries.find((x) => x.id === chosen.countryId)?.name} joga a temporada no ano civil: a carreira começa em 01/01/{startYear}, na pré-temporada, com as divisões como na base. Nos países de julho a junho, a temporada {startYear - 1}/{String(startYear).slice(2)} já estará na metade (julho a dezembro são simulados ao criar, o que leva alguns segundos).</span>}
+            {!!chosen && !civilYear && hasCivil && <span className="muted small">A carreira começa em 01/07/{startYear}, com as divisões como na base. Nos países de ano civil (Brasil, Argentina...), a temporada {startYear} já estará na metade (janeiro a junho são simulados ao criar, o que leva alguns segundos).</span>}
             {remaining > 0 && <span className="muted small">Distribua os pontos de atributo para iniciar ({remaining} restante{remaining === 1 ? '' : 's'}).</span>}
             <button className="secondary" onClick={() => setStep(2)} disabled={busy}><ArrowLeft size={16} aria-hidden="true" />Clube</button>
-            <button disabled={!formOk || busy} onClick={() => void create()}>{busy ? 'Criando carreira…' : 'Iniciar carreira'}</button>
+            <button disabled={!formOk || busy} onClick={() => void create()}>{busy ? (civilYear && hasJuly ? `Simulando jul–dez/${startYear - 1} nos outros países…` : !civilYear && hasCivil ? `Simulando jan–jun/${startYear} nos outros países…` : 'Criando carreira…') : 'Iniciar carreira'}</button>
           </div>
         </div>
       )}

@@ -88,8 +88,9 @@ export function hireAiCoach(db: SqlDb, clubId: string, date: string): string {
  * Virada (antes de o calendário novo existir): reputação dos técnicos empregados pela campanha (posição × esperada pela reputação
  * do clube, título, rebaixamento); desempregados perdem 1 ponto; aos 70 anos se aposentam (o clube contrata outro). NÃO abre transação.
  */
-export function reviewAiCoaches(db: SqlDb, season: number, date: string, relegated: ReadonlySet<string>): void {
-  for (const c of db.prepare('SELECT c.id, l.rules_json FROM competitions c JOIN leagues l ON l.id = c.league_id WHERE c.season = ?').all(season)) {
+export function reviewAiCoaches(db: SqlDb, competitionIds: readonly string[], date: string, relegated: ReadonlySet<string>, decayUnemployed = true): void {
+  const ph = competitionIds.map(() => '?').join(',') || "''";
+  for (const c of db.prepare(`SELECT c.id, l.rules_json FROM competitions c JOIN leagues l ON l.id = c.league_id WHERE c.id IN (${ph})`).all(...competitionIds)) {
     const teams = db.prepare('SELECT id, reputation FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ? UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)').all(S(c.id), S(c.id));
     const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played'").all(S(c.id))
       .map((r) => ({ home: S(r.home_club_id), away: S(r.away_club_id), homeGoals: N(r.home_goals), awayGoals: N(r.away_goals) }));
@@ -100,7 +101,7 @@ export function reviewAiCoaches(db: SqlDb, season: number, date: string, relegat
       db.prepare('UPDATE ai_coaches SET reputation = MAX(1, MIN(100, reputation + ?)) WHERE club_id = ?').run(delta, row.teamId);
     }
   }
-  db.prepare('UPDATE ai_coaches SET reputation = MAX(1, reputation - 1) WHERE club_id IS NULL AND retired = 0').run();
+  if (decayUnemployed) db.prepare('UPDATE ai_coaches SET reputation = MAX(1, reputation - 1) WHERE club_id IS NULL AND retired = 0').run(); // uma vez por ano (virada de julho)
   for (const r of db.prepare('SELECT id, club_id, birth_date FROM ai_coaches WHERE retired = 0 ORDER BY id').all()) {
     if (ageOn(S(r.birth_date), date) < AI_COACH_RETIRE_AGE) continue;
     const club = r.club_id == null ? null : S(r.club_id);

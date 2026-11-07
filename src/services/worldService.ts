@@ -24,7 +24,7 @@ export function listClubs(w: World, origin?: ReadonlyMap<string, { created: stri
   return {
     startDate: w.startDate,
     countries: w.countries.map((c) => ({
-      id: c.id, code: c.code, name: c.name,
+      id: c.id, code: c.code, name: c.name, seasonStart: c.seasonStart ?? '07-01',
       divisions: w.leagues.filter((l) => l.countryId === c.id).length, clubs: w.clubs.filter((x) => x.countryId === c.id).length,
       leagues: w.leagues.filter((l) => l.countryId === c.id).sort((a, b) => a.tier - b.tier).map((l) => ({ id: l.id, name: l.name, tier: l.tier, clubs: w.clubs.filter((x) => x.leagueId === l.id).length })),
     })),

@@ -15,13 +15,14 @@ import { addNews } from './newsRepository.ts';
 import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
 import { boardVeto, coachOf, getBoardOverview, recordTransferForBoard } from './boardRepository.ts';
 import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
-import { contractEndFor } from '../../game/career-engine/contracts.ts';
+import { contractEndIn } from '../../game/career-engine/calendar.ts';
 import { makePoster, type Poster } from './financeRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { boardBrief, squadSize } from './newsRepository.ts';
 import { POS_NAME } from '../../shared/positions.ts';
+import { clubSeasonStart, userSeason } from './countrySeasonRepository.ts';
 
 export class TransferError extends UserError {}
 
@@ -44,12 +45,12 @@ function priceOf(db: SqlDb, p: Player, date: string): number {
 /**
  * Executa a transferência (sem transação própria): move o jogador, atualiza contrato, registra o histórico e lança o dinheiro.
  * ÚNICA porta de entrada de um jogador em um clube (inclui jogadores livres, com `clubId` nulo e taxa zero).
- * O contrato termina em 30/jun, para vencer exatamente numa virada de temporada.
+ * O contrato termina no último dia de uma temporada do país do clube (30/jun ou 31/dez), para vencer exatamente numa virada.
  */
 export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; toClubId: string; fee: number; wage: number; years: number; date: string; kind: 'purchase' | 'sale' | 'ai' }): number {
   const from = a.player.clubId;
   if (from === a.toClubId) throw new TransferError('O jogador já pertence a este clube.');
-  const end = contractEndFor(a.date, a.years);
+  const end = contractEndIn(a.date, a.years, clubSeasonStart(db, a.toClubId)); // fim da temporada do país do clube comprador
   db.prepare('UPDATE players SET club_id = ?, salary = ?, contract_end = ? WHERE id = ?').run(a.toClubId, a.wage, end, a.player.id);
   db.prepare('DELETE FROM transfer_list WHERE player_id = ?').run(a.player.id);
   db.prepare("UPDATE transfer_offers SET status = 'expired', response_date = ? WHERE status = 'pending' AND player_id = ?").run(a.date, a.player.id);
@@ -104,7 +105,7 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   if (f.name && f.name.trim()) { where.push("(p.first_name || ' ' || p.last_name) LIKE ?"); args.push(`%${f.name.trim().replace(/[%_]/g, '')}%`); }
   if (f.nationalities?.length) { where.push(`p.nationality IN (${f.nationalities.map(() => '?').join(',')})`); args.push(...f.nationalities); }
   if (f.foot) { where.push('p.foot = ?'); args.push(f.foot); }
-  if (f.contractEndsBy) { where.push('(p.club_id IS NULL OR p.contract_end <= ?)'); args.push(`${st.season + (f.contractEndsBy === 'season' ? 1 : 2)}-06-30`); }
+  if (f.contractEndsBy) { where.push('(p.club_id IS NULL OR p.contract_end <= ?)'); const t = userSeason(db).turnover; args.push(addDays(f.contractEndsBy === 'season' ? t : `${Number(t.slice(0, 4)) + 1}${t.slice(4)}`, -1)); }
   const rows = db.prepare(`SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
   const wanted = f.positions?.length ? new Set(f.positions) : null;
   const matches: Array<{ r: Record<string, unknown>; id: string }> = [];
@@ -300,12 +301,13 @@ export function neededGroup(squad: ReadonlyArray<{ position: Player['position'] 
  * enquanto houver livres adequados; caso contrário, no máximo uma contratação por clube, com pouca chance por dia.
  * Devolve as carências que o mercado de livres não conseguiu cobrir.
  */
-export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string, fill: boolean): Array<{ clubId: string; group: PositionGroup }> {
+export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string, fill: boolean, onlyClubs?: ReadonlySet<string>): Array<{ clubId: string; group: PositionGroup }> {
   const unmet: Array<{ clubId: string; group: PositionGroup }> = [];
   const pool = db.prepare('SELECT * FROM players WHERE club_id IS NULL AND youth_club_id IS NULL AND retired = 0 ORDER BY overall DESC, id').all().map(rowToPlayer);
   if (!fill && pool.length === 0) return unmet;
   const taken = new Set<string>();
   for (const c of db.prepare(`SELECT id, reputation FROM clubs WHERE id <> ?${fill ? '' : ` AND id IN ${FULL_CLUBS}`} ORDER BY rowid`).all(userClub)) {
+    if (onlyClubs && !onlyClubs.has(S(c.id))) continue;
     if (!fill && !rng.chance(0.15)) continue;
     const squad = squadOf(db, S(c.id));
     const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível
@@ -322,7 +324,42 @@ export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string
       squad.push({ ...p, clubId: S(c.id) });
     }
   }
+  signStrongFreeAgents(db, post, rng.fork('strong'), date, userClub, fill, pool.filter((x) => !taken.has(x.id)), onlyClubs);
   return unmet;
+}
+
+/** Livres acima deste nível (0–100; 12 na escala 1–20) não ficam muito tempo sem clube: algum clube em que sejam reforço os contrata. */
+export const FREE_AGENT_LEVEL = 62;
+/**
+ * Chance de um livre acima do nível ser contratado: na virada (`fill`) e por dia de janela aberta. Não é certeza, para que um ou outro
+ * jogador acima de 12 continue disponível no mercado de livres por algum tempo.
+ */
+const STRONG_FREE_CHANCE = { fill: 0.7, daily: 0.06 } as const;
+
+/**
+ * Livres bons (acima de `FREE_AGENT_LEVEL`) são contratados mesmo sem carência no elenco, pelo clube de maior reputação em que entrariam
+ * entre os 11 melhores, sem passar muito do próprio nível (melhor + 3), com vaga no elenco e salário pedido até 3× a média da folha.
+ */
+function signStrongFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: string, fill: boolean, pool: Player[], onlyClubs?: ReadonlySet<string>): void {
+  const strong = pool.filter((p) => p.overall > FREE_AGENT_LEVEL); // o pool já vem do mais forte para o mais fraco
+  if (!strong.length) return;
+  const clubs = db.prepare(`SELECT id, reputation FROM clubs WHERE id <> ?${fill ? '' : ` AND id IN ${FULL_CLUBS}`} ORDER BY reputation DESC, rowid`).all(userClub)
+    .filter((c) => !onlyClubs || onlyClubs.has(S(c.id)));
+  const squads = new Map<string, Player[]>();
+  const squadFor = (id: string) => { let s = squads.get(id); if (!s) { s = squadOf(db, id).sort((a, b) => b.overall - a.overall); squads.set(id, s); } return s; };
+  for (const p of strong) {
+    if (!rng.chance(fill ? STRONG_FREE_CHANCE.fill : STRONG_FREE_CHANCE.daily)) continue;
+    for (const c of clubs) {
+      const id = S(c.id), squad = squadFor(id);
+      if (squad.length >= 28 || squad.length < 11) continue;
+      if (p.overall > squad[0]!.overall + 3 || p.overall <= squad[10]!.overall) continue;
+      const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation));
+      if (wage > 3 * (squad.reduce((s, x) => s + x.salary, 0) / squad.length)) continue;
+      executeTransfer(db, post, { player: p, toClubId: id, fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
+      squad.push({ ...p, clubId: id }); squad.sort((a, b) => b.overall - a.overall);
+      break;
+    }
+  }
 }
 
 export function processMarketDay(db: SqlDb, date: string): void {

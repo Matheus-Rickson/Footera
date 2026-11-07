@@ -30,7 +30,7 @@ export interface ClubOption {
 /** Base de dados fixa, para a tela de nova carreira: países (com divisões e clubes) e clubes escolhíveis. */
 export interface ClubList {
   startDate: string;
-  countries: Array<{ id: string; code: string; name: string; divisions: number; clubs: number; leagues: Array<{ id: string; name: string; tier: number; clubs: number }> }>;
+  countries: Array<{ id: string; code: string; name: string; /** '01-01' = temporada no ano civil */ seasonStart: '07-01' | '01-01'; divisions: number; clubs: number; leagues: Array<{ id: string; name: string; tier: number; clubs: number }> }>;
   clubs: ClubOption[];
 }
 
@@ -47,7 +47,7 @@ export interface PacksOverviewDto {
   universe: { ok: boolean; errors: string[]; warnings: string[]; countries: number; leagues: number; clubs: number; players: number };
 }
 // ---------------------------------------------------------------- editor de dados (pacote do usuário em cima da base)
-export type EditorKind = 'countries' | 'leagues' | 'clubs' | 'players' | 'coaches';
+export type EditorKind = 'countries' | 'leagues' | 'clubs' | 'players' | 'coaches' | 'cups';
 /** Resultado da importação de CSV no editor (tudo ou nada: com erros, nada foi gravado). */
 export interface CsvImportReportDto { created: number; updated: number; /** linhas iguais ao que já existe (nada gravado) */ unchanged: number; errors: string[]; warnings: string[] }
 /** base = como na base; edited = alterado por este pacote; created = criado por ele; removed = excluído por ele */
@@ -89,7 +89,7 @@ export interface CreateCareerInput {
 
 export interface CareerSummaryDto {
   id: string; profileId: string; coachName: string; clubId: string; clubName: string;
-  gameDate: string; season: number; createdAt: string; updatedAt: string; playSeconds: number; worldSeed: string;
+  gameDate: string; season: number; /** "2026/27" ou "2027" (ano civil, país do clube) */ seasonLabel: string; createdAt: string; updatedAt: string; playSeconds: number; worldSeed: string;
 }
 export interface CareerListDto {
   careers: CareerSummaryDto[];
@@ -104,11 +104,11 @@ export interface FixtureDto {
   /** partida de copa: nome da copa (sem a temporada), fase, jogo de ida/volta (null = jogo único) e campo neutro; null = liga */
   cup: { name: string; stage: string; leg: 1 | 2 | null; neutral: boolean } | null;
 }
-export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' }
+export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa: leagueId = '' e tier = 0 */ kind: 'league' | 'cup'; /** copa que é supercopa */ supercup?: boolean }
 /** Chave de uma copa: fases com os confrontos, a regra de cada fase e de onde veio cada regra. */
 export interface CupBracketDto {
   id: string; name: string; country: string; countryCode: string; status: 'scheduled' | 'in_progress' | 'finished'; champion: { id: string; name: string } | null;
-  regulation: string; reward: string;
+  regulation: string; reward: string; /** id da definição (logo: imagem "cups") */ logoId: string; supercup: boolean;
   source: { structure: string; tiebreak: string; host: string; discipline: string; prizes: string };
   discipline: { yellowLimit: number; resetAfter: string | null };
   stages: Array<{
@@ -124,13 +124,31 @@ export type TableZone = 'promotion' | 'continental' | 'relegation' | null;
 export interface StandingRowDto {
   position: number; clubId: string; clubName: string; played: number; won: number; drawn: number; lost: number;
   goalsFor: number; goalsAgainst: number; goalDiff: number; points: number; zone: TableZone; isUserClub: boolean;
+  /** últimos 5 jogos na competição, do mais antigo ao mais recente: V(itória), E(mpate), D(errota) */ form: Array<'V' | 'E' | 'D'>;
 }
 export interface CompetitionTableDto {
   competition: CompetitionInfoDto; rows: StandingRowDto[]; roundsPlayed: number; totalRounds: number;
   tiebreakers: string[];
+  /** rodada em andamento (a da próxima partida; todas jogadas: a última) */ currentRound: number;
+  /** para onde vão as zonas: divisão de cima (acesso) e de baixo (rebaixamento) do mesmo país, se existirem */ zoneTargets: { promotion: string | null; relegation: string | null };
 }
-export interface CalendarDto { season: number; gameDate: string; clubId: string; fixtures: FixtureDto[] }
+export interface LeaderRowDto { playerId: string; name: string; clubId: string; clubName: string; appearances: number; value: number }
+/** Líderes de estatística de uma competição (10 primeiros). `hasStats` = false: competição sem partidas lance a lance (simulação simplificada). */
+export interface CompetitionLeadersDto { competitionId: string; hasStats: boolean; goals: LeaderRowDto[]; assists: LeaderRowDto[]; cleanSheets: LeaderRowDto[] }
+export interface CalendarDto {
+  season: number; /** "2026/27" ou "2027" (ano civil) */ seasonLabel: string; /** início e virada da temporada do país do clube */ seasonStarts: string; turnover: string;
+  gameDate: string; clubId: string; fixtures: FixtureDto[];
+}
 export type AdvanceMode = 'day' | 'nextMatchday';
+/**
+ * Um passo do botão "Continuar" (um dia): simula os jogos de hoje que não são do seu clube e avança um dia.
+ * `stop`: por que parar — jogo do seu clube hoje, decisão importante (proposta de emprego, proposta por jogador, diretoria),
+ * fim da temporada (virada do seu país); null = pode seguir.
+ */
+export interface ContinueStepDto {
+  date: string; stop: 'user_match' | 'decision' | 'season_end' | null; message: string;
+  /** jogos de outros clubes simulados antes de avançar (a rodada fica em "Resultados da rodada") */ simulation: SimulationSummaryDto | null;
+}
 export interface AdvanceResultDto {
   advanced: boolean; fromDate: string; toDate: string; daysAdvanced: number;
   reason: 'ok' | 'pending_matches' | 'season_complete'; pendingMatches: number; message: string;
@@ -237,6 +255,7 @@ export interface MatchReportDto {
   /** houve prorrogação (pênaltis direto não têm) */ extraTime: boolean;
   /** partida de copa: fase, jogo de ida/volta (null = jogo único), agregado (na volta) e campo neutro */
   cup: { stage: string; leg: 1 | 2 | null; aggregate: [number, number] | null; neutral: boolean } | null;
+  /** imagem da competição: logo da liga ou da copa/supercopa (a tela mostra se o pacote tiver a imagem) */ logo: { kind: 'leagues' | 'cups'; id: string } | null;
   conditions: MatchConditions; duration: number;
   stats: [TeamStats, TeamStats]; players: PlayerReport[];
   lineups: Array<{ clubId: string; name: string; formation: string; slots: Array<{ slot: Position; x: number; y: number; playerId: string }> }>;
@@ -327,11 +346,12 @@ export interface SocialFeedDto { posts: SocialPostDto[]; trending: Array<{ clubI
 export interface ContractRowDto {
   id: string; name: string; position: Position; age: number; overall: number; salary: number; contractEnd: string;
   monthsLeft: number; /** vence na próxima virada (1º/jul) */ expiresThisSeason: boolean; canRenew: boolean; maxYears: number;
-  /** renovar por N temporadas = contrato até 30/06 de (renewBaseYear + N) */ renewBaseYear: number;
+  /** renovar por N temporadas = contrato até 30/06 de (renewBaseYear + N) */ renewBaseYear: number; /** fim do contrato renovando por 1 a 5 temporadas (calendário do país) */ renewEnds: string[];
 }
 export interface RenewInput { playerId: string; wage: number; years: number }
 export interface RenewResultDto { outcome: 'accepted' | 'counter' | 'rejected'; message: string; counterWage?: number; contractEnd?: string }
 export interface SeasonStatusDto {
+  /** rótulo da próxima temporada (botão de virada) */ nextLabel: string;
   season: number; label: string; gameDate: string; turnoverDate: string; matchesLeft: number; complete: boolean; canStart: boolean;
   user: { competitionId: string; competitionName: string; position: number; teamCount: number; points: number; played: number; zone: TableZone; prizeIfEndedNow: number } | null;
   leagues: Array<{ competitionId: string; name: string; country: string; tier: number; leader: string | null; roundsPlayed: number; totalRounds: number }>;
@@ -436,6 +456,36 @@ export interface ClubInfoDto {
   coach: AiCoachDto | null; userCoach: string | null;
   squad: Array<{ id: string; name: string; position: Position; age: number; nationality: string }>; avgAge: number;
 }
+/** Ficha completa do clube (tela cheia): dados, campanha, jogos, elenco com estatísticas da temporada, histórico e títulos. */
+export interface ClubProfileDto {
+  info: ClubInfoDto;
+  league: { competitionId: string; name: string; total: number; row: StandingRowDto; roundsPlayed: number; totalRounds: number; zoneTargets: { promotion: string | null; relegation: string | null } } | null;
+  cups: Array<{ competitionId: string; name: string; stage: string; status: 'alive' | 'eliminated' | 'champion' }>;
+  recent: FixtureDto[]; upcoming: FixtureDto[];
+  squad: Array<{ id: string; name: string; position: Position; age: number; nationality: string; contractEnd: string | null; appearances: number; minutes: number; goals: number; assists: number; cleanSheets: number; avgRating: number | null; injured: boolean }>;
+  history: Array<{ season: number; competitionName: string; position: number; outcome: 'champion' | 'promoted' | 'relegated' | null }>;
+  trophies: Array<{ season: number; competitionName: string }>;
+}
+
+/** Conversas e promessas (Visão geral). */
+export type PlayerTopicDto = 'praise' | 'demand' | 'promise_minutes' | 'promise_renewal';
+export type BoardTopicDto = 'promise_position' | 'promise_wins';
+export interface PromiseDto {
+  id: number; target: 'player' | 'board'; playerId: string | null; playerName: string | null; kind: 'minutes' | 'renewal' | 'position' | 'wins';
+  /** o que foi prometido, em texto */ label: string; madeOn: string; due: string; status: 'open' | 'kept' | 'broken' | 'void'; resolvedOn: string | null;
+  /** andamento (aberta) ou desfecho */ progress: string;
+}
+export interface ConversationsDto {
+  employed: boolean;
+  /** jogadores que pedem conversa (moral baixa) */ requests: Array<{ playerId: string; name: string; position: Position; morale: number; reason: string }>;
+  /** elenco: moral e forma (exatas: são jogadores do seu clube); `topics[t]` = null se o tema está disponível, senão o motivo */
+  players: Array<{ id: string; name: string; position: Position; morale: number; form: number; contractEnd: string; nextTalk: string | null; topics: Record<PlayerTopicDto, string | null> }>;
+  board: { nextTalk: string | null; confidence: number | null; topics: Record<BoardTopicDto, { label: string; detail: string; unavailable: string | null }> };
+  open: PromiseDto[]; recent: PromiseDto[];
+  talks: Array<{ date: string; who: string; topic: string; outcome: string }>;
+}
+export interface TalkResultDto { message: string; conversations: ConversationsDto }
+
 export interface BoardOverviewDto {
   employed: boolean; coachReputation: number;
   /** atributos do treinador (1–20) e pontos ainda não distribuídos */ coachAttributes: CoachAttributes; coachPoints: number;
@@ -447,6 +497,8 @@ export interface BoardOverviewDto {
     secondary: Array<{ label: string; status: BoardStatus; detail: string }>;
     budgets: { transfer: number; spent: number; remaining: number; wageCeiling: number; payroll: number };
     requests: { transfer: boolean; wage: boolean };
+    /** humor da torcida (0–100), derivado dos últimos 5 jogos e da posição na liga em relação ao esperado; indicador, sem efeito no jogo */
+    fans: { mood: number; label: string; detail: string };
   } | null;
 }
 
@@ -470,8 +522,8 @@ export interface GameApi {
   editorImportCsv(packId: string, kind: 'players' | 'clubs'): Promise<IpcResult<CsvImportReportDto | null>>;
   /** salva o modelo (só cabeçalho) ou a exportação completa em CSV (null = cancelou; senão o caminho) */
   editorExportCsv(packId: string, kind: 'players' | 'clubs', template: boolean): Promise<IpcResult<string | null>>;
-  editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
-  editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
+  editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
+  editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
   /** imagens deste pacote (mesmo inativo), para o editor */
   editorImageKeys(packId: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
   editorCreatePack(input: { name: string; author?: string; description?: string }): Promise<IpcResult<EditorSummaryDto>>;
@@ -491,8 +543,10 @@ export interface GameApi {
   getCalendar(profileId: string, careerId: string): Promise<IpcResult<CalendarDto>>;
   listCompetitions(profileId: string, careerId: string): Promise<IpcResult<{ userCompetitionId: string | null; competitions: CompetitionInfoDto[] }>>;
   getCompetitionTable(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionTableDto>>;
+  getCompetitionLeaders(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionLeadersDto>>;
   getCupBracket(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CupBracketDto>>;
   advance(profileId: string, careerId: string, mode: AdvanceMode): Promise<IpcResult<AdvanceResultDto>>;
+  continueDay(profileId: string, careerId: string): Promise<IpcResult<ContinueStepDto>>;
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;
   searchMarket(profileId: string, careerId: string, filter: MarketFilter): Promise<IpcResult<MarketPageDto>>;
   makeOffer(profileId: string, careerId: string, offer: OfferInput): Promise<IpcResult<OfferResultDto>>;
@@ -545,6 +599,10 @@ export interface GameApi {
   startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
   getBoard(profileId: string, careerId: string): Promise<IpcResult<BoardOverviewDto>>;
   getClubInfo(profileId: string, careerId: string, clubId: string): Promise<IpcResult<ClubInfoDto>>;
+  getClubProfile(profileId: string, careerId: string, clubId: string): Promise<IpcResult<ClubProfileDto>>;
+  getConversations(profileId: string, careerId: string): Promise<IpcResult<ConversationsDto>>;
+  talkToPlayer(profileId: string, careerId: string, playerId: string, topic: PlayerTopicDto): Promise<IpcResult<TalkResultDto>>;
+  talkToBoard(profileId: string, careerId: string, topic: BoardTopicDto): Promise<IpcResult<TalkResultDto>>;
   getAiCoach(profileId: string, careerId: string, coachId: string): Promise<IpcResult<AiCoachDetailDto>>;
   listUnemployedCoaches(profileId: string, careerId: string): Promise<IpcResult<AiCoachDto[]>>;
   respondJobOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;

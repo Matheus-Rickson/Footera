@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://footera.local/schema/cups.schema.json",
+  "title": "FOOTERA — Copas e supercopas",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "$remove": {
+        "const": true
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,59}$"
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "cup",
+          "supercup"
+        ]
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "stagesFrom": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "window": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+          },
+          "final": {
+            "type": "string",
+            "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+          }
+        },
+        "required": [
+          "start",
+          "final"
+        ],
+        "additionalProperties": false
+      },
+      "windowCalendarYear": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+              },
+              "final": {
+                "type": "string",
+                "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+              }
+            },
+            "required": [
+              "start",
+              "final"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "yellowLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      },
+      "teams": {
+        "anyOf": [
+          {
+            "const": 2
+          },
+          {
+            "const": 4
+          }
+        ]
+      },
+      "double": {
+        "type": "string",
+        "enum": [
+          "league2",
+          "cup2",
+          "none"
+        ]
+      },
+      "host": {
+        "type": "string",
+        "enum": [
+          "neutral",
+          "cup",
+          "league"
+        ]
+      },
+      "extraTime": {
+        "type": "boolean"
+      },
+      "dates": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+        },
+        "maxItems": 2,
+        "minItems": 1
+      },
+      "datesCalendarYear": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+            },
+            "maxItems": 2,
+            "minItems": 1
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  }
+}

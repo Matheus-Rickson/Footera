@@ -8,13 +8,19 @@
  */
 import type { SqlDb } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
-import { cupFormatFor, type CupFormat } from '../../game/cup-engine/formats.ts';
+import type { CupFormat } from '../../game/cup-engine/formats.ts';
+import { defaultCups, resolveCup, resolveSupercup } from '../../game/cup-engine/catalog.ts';
+import type { WorldCup } from '../../shared/types.ts';
 import { cupDates, cupPrizes, drawPairs, entryStages, hostOf, planByes, rankCupClubs, type CupClub, type CupPrizeTable } from '../../game/cup-engine/bracket.ts';
 import type { MatchDecider } from '../../game/match-engine/types.ts';
 import type { Poster } from './financeRepository.ts';
 import type { CupBracketDto } from '../../shared/api.ts';
 import { addNews } from './newsRepository.ts';
 import { getCareerState } from './careerRepository.ts';
+import { countrySeason } from './countrySeasonRepository.ts';
+import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.ts';
+import { supercupEntrants, supercupFormat, type SupercupInputs } from '../../game/cup-engine/supercups.ts';
+import { addDays } from '../../shared/date.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -32,17 +38,34 @@ export interface CupState {
 export const cupStateOf = (db: SqlDb, competitionId: string): CupState =>
   JSON.parse(S(db.prepare("SELECT format_json FROM competitions WHERE id = ? AND kind = 'cup'").get(competitionId)!.format_json)) as CupState;
 
+/**
+ * Definição da copa ou supercopa do país gravada no save (universo + pacotes). Saves sem nenhuma definição gravada (anteriores ao
+ * editor de copas) usam as padrão do país. null = o país não tem (ou desativou).
+ */
+export function cupDefOf(db: SqlDb, countryId: string, code: string, kind: 'cup' | 'supercup'): WorldCup | null {
+  const rows = db.prepare('SELECT format_json FROM cup_formats WHERE country_id = ? AND kind = ? ORDER BY id').all(countryId, kind).map((r) => JSON.parse(S(r.format_json)) as WorldCup);
+  const any = db.prepare('SELECT 1 AS x FROM cup_formats LIMIT 1').get();
+  const defs = any ? rows : defaultCups([{ id: countryId, code, name: '', economy: 1 }]).filter((k) => k.kind === kind);
+  return defs.find((k) => k.enabled) ?? null;
+}
+
 const roundOf = (state: CupState, stage: number, leg: number) => state.format.stages.slice(0, stage).reduce((s, st) => s + st.legs, 0) + leg;
 
 /**
  * Cria as copas da temporada (uma por país com formato e clubes suficientes). Idempotente. NÃO abre transação.
  * `notBefore`: em saves antigos, só cria a copa se a 1ª fase ainda não passou.
  */
-export function createCups(db: SqlDb, season: number, notBefore?: string): number {
+export function createCups(db: SqlDb, opts: { countryId?: string; notBefore?: string } = {}): number {
   const seed = seedOf(db);
   let created = 0;
-  for (const co of db.prepare('SELECT id, code, name, economy FROM countries ORDER BY rowid').all()) {
-    const format = cupFormatFor(S(co.code));
+  const notBefore = opts.notBefore;
+  for (const co of db.prepare('SELECT id, code, name, economy, season_start FROM countries ORDER BY rowid').all()) {
+    if (opts.countryId && S(co.id) !== opts.countryId) continue;
+    const cs = countrySeason(db, S(co.id));
+    if (cs.transition) continue; // torneio de transição: só a liga
+    const season = cs.season, start = cs.start;
+    const def = cupDefOf(db, S(co.id), S(co.code), 'cup');
+    const format = def ? resolveCup(def, S(co.code)) : null;
     if (!format) continue;
     const compId = `cup_${S(co.id)}_${season}`;
     if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) continue;
@@ -58,7 +81,7 @@ export function createCups(db: SqlDb, season: number, notBefore?: string): numbe
       plan = planByes(format, entrants);
       const avoid = new Set(db.prepare(`SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id
         WHERE c.season = ? AND c.kind = 'league' AND c.country_id = ?`).all(season, S(co.id)).map((r) => S(r.d)));
-      dates = cupDates(format, season, avoid);
+      dates = cupDates(format, season, avoid, start);
     } catch { continue; } // formato que não fecha com os clubes do universo (pacote): o país fica sem copa nesta temporada
     if (notBefore && dates[0]![0]! < notBefore) continue;
     if (plan.entryAll !== undefined) for (const id of entry.keys()) entry.set(id, plan.entryAll); // plano de reserva: todos estreiam juntos
@@ -68,11 +91,66 @@ export function createCups(db: SqlDb, season: number, notBefore?: string): numbe
       clubs: ranked.filter((c) => entry.has(c.id)), prizes: cupPrizes(format, N(co.economy), Number.isFinite(topEntry) ? topEntry : 0),
     };
     db.prepare("INSERT INTO competitions (id, kind, league_id, country_id, season, name, format_json) VALUES (?, 'cup', NULL, ?, ?, ?, ?)")
-      .run(compId, S(co.id), season, `${format.name} ${season}/${String(season + 1).slice(2)}`, JSON.stringify(state));
+      .run(compId, S(co.id), season, `${format.name} ${seasonLabelFor(season, start)}`, JSON.stringify(state));
     drawFrom(db, compId, 0, seed, null, '');
     created++;
   }
   return created;
+}
+
+/** Campeões da temporada anterior do país (liga da 1ª divisão em ordem; campeão e vice da copa). Vazio se não houver. */
+export function previousChampions(db: SqlDb, countryId: string, season: number): SupercupInputs {
+  const prev = db.prepare("SELECT MAX(season) AS s FROM competitions WHERE country_id = ? AND season < ? AND kind = 'league'").get(countryId, season);
+  const none: SupercupInputs = { league: [], cupWinner: null, cupRunnerUp: null };
+  if (prev?.s == null) return none;
+  const ps = N(prev.s);
+  const top = db.prepare(`SELECT c.id FROM competitions c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND c.season = ? AND c.kind = 'league' ORDER BY l.tier LIMIT 1`).get(countryId, ps);
+  const league = top ? db.prepare('SELECT club_id FROM season_results WHERE competition_id = ? ORDER BY position').all(S(top.id)).map((r) => S(r.club_id)) : [];
+  const cup = db.prepare("SELECT id, format_json FROM competitions WHERE id = ? AND status = 'finished'").get(`cup_${countryId}_${ps}`);
+  if (!cup) return { ...none, league };
+  const last = (JSON.parse(S(cup.format_json)) as CupState).format.stages.length - 1;
+  const fin = db.prepare('SELECT club_a, club_b, winner FROM cup_ties WHERE competition_id = ? AND stage = ? AND club_b IS NOT NULL').get(S(cup.id), last);
+  if (!fin || fin.winner == null) return { ...none, league };
+  const w = S(fin.winner);
+  return { league, cupWinner: w, cupRunnerUp: S(fin.club_a) === w ? S(fin.club_b) : S(fin.club_a) };
+}
+
+/**
+ * Supercopa da temporada corrente do país (campeões da anterior). Idempotente; devolve se criou. Datas: as da regra, empurradas um dia
+ * enquanto caírem em dia de jogo do país. NÃO abre transação.
+ */
+export function createSupercup(db: SqlDb, countryId: string): boolean {
+  const co = db.prepare('SELECT id, code FROM countries WHERE id = ?').get(countryId);
+  if (!co) return false;
+  const def = cupDefOf(db, countryId, S(co.code), 'supercup');
+  const rule = def ? resolveSupercup(def, S(co.code)) : null;
+  const cs = countrySeason(db, countryId);
+  if (!rule || cs.transition) return false;
+  const compId = `sup_${countryId}_${cs.season}`;
+  if (rule.dates.length !== (rule.teams === 4 ? 2 : 1)) return false;
+  if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) return false;
+  const entrants = supercupEntrants(rule, previousChampions(db, countryId, cs.season));
+  if (!entrants) return false;
+  const format = supercupFormat(rule);
+  const busy = new Set(db.prepare('SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.country_id = ? AND c.season = ?').all(countryId, cs.season).map((r) => S(r.d)));
+  const mmdd = cs.start === '01-01' && rule.datesCalendarYear ? rule.datesCalendarYear : rule.dates;
+  let after = '';
+  const dates = mmdd.map((x) => {
+    let d = `${yearInSeason(x, cs.season, cs.start)}-${x}`;
+    while (busy.has(d) || d <= after) d = addDays(d, 1);
+    after = d;
+    return [d];
+  });
+  const tiers = new Map(db.prepare('SELECT c.id, l.tier FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ?').all(countryId).map((r) => [S(r.id), N(r.tier)]));
+  const clubs = entrants.map((id, rank) => ({ id, tier: tiers.get(id) ?? 1, rank })); // rank 0 = mandante, quando há mando
+  const state: CupState = {
+    format, byes: format.stages.map(() => 0), pools: format.stages.map((_, i) => entrants.length >> i), declaredByes: false, dates,
+    entry: Object.fromEntries(entrants.map((id) => [id, 0])), clubs, prizes: { perStage: [], win: [], semiLoser: 0, runnerUp: 0, winner: 0 },
+  };
+  db.prepare("INSERT INTO competitions (id, kind, league_id, country_id, season, name, format_json) VALUES (?, 'cup', NULL, ?, ?, ?, ?)")
+    .run(compId, countryId, cs.season, `${format.name} ${seasonLabelFor(cs.season, cs.start)}`, JSON.stringify(state));
+  drawFrom(db, compId, 0, seedOf(db), null, '');
+  return true;
 }
 
 /**
@@ -108,7 +186,8 @@ function drawStage(db: SqlDb, compId: string, stage: number, seed: string): void
   for (const c of pool.filter((x) => byes.has(x.id))) insTie.run(`${compId}_s${stage}_t${slot}`, compId, stage, slot++, c.id, null, c.id, 'bye');
   const isFinal = stage === state.format.stages.length - 1;
   for (const [a, b] of drawPairs(rng, playing, st.draw)) {
-    const h = hostOf(rng, a, b, isFinal ? 'neutral' : st.host);
+    // final em campo neutro, exceto supercopa com mando (Alemanha, Holanda, Bélgica, Croácia, Itália)
+    const h = hostOf(rng, a, b, isFinal && state.format.kind !== 'supercup' ? 'neutral' : st.host);
     const tieId = `${compId}_s${stage}_t${slot}`;
     insTie.run(tieId, compId, stage, slot++, h.home.id, h.away.id, null, null);
     const dates = state.dates[stage]!;
@@ -167,9 +246,9 @@ export function recordCupResult(db: SqlDb, fixtureId: string, r: { winner: 0 | 1
   const name = state.format.name;
   if (stage < n - 1 && state.prizes.win[stage]) post(winner, date, 'prize', state.prizes.win[stage]!, `${name}: vitória na ${state.format.stages[stage]!.name}`);
   if (stage === n - 2 && state.prizes.semiLoser) post(loser, date, 'prize', state.prizes.semiLoser, `${name}: semifinalista`);
-  if (stage === n - 1) {
-    post(winner, date, 'prize', state.prizes.winner, `${name}: campeão`);
-    post(loser, date, 'prize', state.prizes.runnerUp, `${name}: vice-campeão`);
+  if (stage === n - 1) { // supercopa: só troféu (prêmios zerados, sem lançamento)
+    if (state.prizes.winner) post(winner, date, 'prize', state.prizes.winner, `${name}: campeão`);
+    if (state.prizes.runnerUp) post(loser, date, 'prize', state.prizes.runnerUp, `${name}: vice-campeão`);
   }
 }
 
@@ -193,7 +272,7 @@ export function advanceCups(db: SqlDb, date: string): string[] {
     const champ = S(db.prepare('SELECT winner FROM cup_ties WHERE competition_id = ? AND stage = ?').get(compId, stage)!.winner);
     db.prepare("UPDATE competitions SET status = 'finished' WHERE id = ?").run(compId);
     db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(N(c.season), champ, compId, champ === st.clubId ? 1 : 0);
-    if (champ === st.clubId) addNews(db, date, 'board', `Título: campeão da ${state.format.name}!`, `O clube conquistou a ${S(c.name)}. A diretoria parabeniza o elenco e a comissão técnica.\n\nO título vale vaga em: ${state.format.reward} (as competições continentais ainda não existem no jogo).`);
+    if (champ === st.clubId) addNews(db, date, 'board', `Título: campeão da ${state.format.name}!`, `O clube conquistou a ${S(c.name)}. A diretoria parabeniza o elenco e a comissão técnica.${state.format.kind === 'supercup' ? '' : `\n\nO título vale vaga em: ${state.format.reward} (as competições continentais ainda não existem no jogo).`}`);
     finished.push(compId);
   }
   return finished;
@@ -273,6 +352,7 @@ export function getCupBracket(db: SqlDb, competitionId: string): CupBracketDto {
   return {
     id: S(c.id), name: S(c.name), country: S(c.country), countryCode: S(c.code), status: S(c.status) as CupBracketDto['status'],
     champion: champ?.winner != null ? club(S(champ.winner)) : null, regulation: state.format.regulation, reward: state.format.reward, source: state.format.source,
+    logoId: state.format.id, supercup: state.format.kind === 'supercup',
     discipline: { yellowLimit: state.format.discipline.yellowLimit, resetAfter: reset == null ? null : state.format.stages[reset]!.name }, stages,
   };
 }

@@ -13,6 +13,7 @@ import { getCareerState } from './careerRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { cupStateOf } from './cupRepository.ts';
+import { CURRENT_COMP } from './countrySeasonRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -129,7 +130,7 @@ function cupStage(db: SqlDb, fixtureId: string): string | null {
 const userCompetition = (db: SqlDb, date: string): string | null => {
   const st = getCareerState(db);
   if (!st.clubId) return null;
-  const r = db.prepare("SELECT competition_id FROM fixtures WHERE (home_club_id = ? OR away_club_id = ?) AND competition_id IN (SELECT id FROM competitions WHERE season = ? AND kind = 'league') LIMIT 1").get(st.clubId, st.clubId, st.season);
+  const r = db.prepare(`SELECT competition_id FROM fixtures WHERE (home_club_id = ? OR away_club_id = ?) AND competition_id IN (SELECT c.id FROM competitions c WHERE ${CURRENT_COMP} AND c.kind = 'league') LIMIT 1`).get(st.clubId, st.clubId);
   return r ? S(r.competition_id) : null;
 };
 

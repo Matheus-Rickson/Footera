@@ -145,9 +145,12 @@ test('Carreira pela base fixa: escolhe os países completos (o do clube entra se
       assert.deepEqual(d1.prepare("SELECT id FROM leagues WHERE sim_level = 'full' ORDER BY id").all().map((r) => r.id), ['bra-1', 'bra-2', 'bra-3', 'bra-4', club.leagueId, 'eng-1'].sort(), 'só as divisões escolhidas + a do clube');
       const seed = (x: SqlDb) => String(x.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get()!.value);
       assert.notEqual(seed(d1), seed(d2), 'cada carreira tem a própria semente (acaso dos jogos)');
-      const players = (x: SqlDb) => x.prepare('SELECT id, overall, club_id FROM players WHERE youth_club_id IS NULL ORDER BY id').all().map((r) => `${r.id}:${r.overall}:${r.club_id}`);
-      assert.deepEqual(players(d1), players(d2), 'mas o universo (a base) é o mesmo; só os jovens da base de cada clube variam');
-      assert.equal(players(d1).length, baseUniverse().world.players.length);
+      // mesmo universo de partida (a base); os seis meses simulados antes da carreira (Brasil, Argentina, Irlanda em jan–jun) seguem o acaso
+      // de cada carreira (evolução, transferências da IA), então só a identidade dos jogadores da base é comparada
+      const players = (x: SqlDb) => x.prepare("SELECT id FROM players WHERE youth_club_id IS NULL AND id NOT LIKE 'plr_%' ORDER BY id").all().map((r) => String(r.id));
+      assert.deepEqual(players(d1), players(d2), 'mas o universo (a base) é o mesmo');
+      assert.deepEqual(players(d1), baseUniverse().world.players.map((p) => p.id).sort());
+      assert.deepEqual([d1, d2].map((x) => String(x.prepare('SELECT game_date AS d FROM career').get()!.d)), ['2026-07-01', '2026-07-01']);
       assert.equal(String(d1.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), '["footera-base@1.0.0"]');
     } finally { d1.close(); d2.close(); }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

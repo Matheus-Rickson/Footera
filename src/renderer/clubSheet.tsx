@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Building2, ChevronRight, UserRound, Users, X } from 'lucide-react';
+import { Building2, ChevronRight, Maximize2, UserRound, Users, X } from 'lucide-react';
 import type { AiCoachDetailDto, ClubInfoDto } from '../shared/api.ts';
 import { COACH_ATTRS } from '../shared/coachAttributes.ts';
 import { COACH_ATTR_CAP } from '../game/coach-engine/coach.ts';
@@ -31,8 +31,8 @@ function Modal({ label, wide, onClose, children }: { label: string; wide?: boole
 }
 
 /** Ficha de um clube (aberta pela tabela de Competições): dados, técnico (clicável) e elenco (clicável → perfil do jogador). */
-export function ClubSheet({ profileId, careerId, clubId, onClose, onOpenPlayer }: {
-  profileId: string; careerId: string; clubId: string; onClose: () => void; onOpenPlayer?: (id: string) => void;
+export function ClubSheet({ profileId, careerId, clubId, onClose, onOpenPlayer, onOpenFull }: {
+  profileId: string; careerId: string; clubId: string; onClose: () => void; onOpenPlayer?: (id: string) => void; onOpenFull?: (clubId: string) => void;
 }) {
   const [c, setC] = useState<ClubInfoDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,8 +50,9 @@ export function ClubSheet({ profileId, careerId, clubId, onClose, onOpenPlayer }
       <Modal label={c ? `Clube: ${c.name}` : 'Clube'} wide onClose={coach ? () => setCoach(null) : onClose}>
         <header className="modal-head">
           {c && <ClubCrest id={c.id} name={c.name} size={40} src={img.url('clubs', c.id)} />}
-          <div className="cs-title"><h2>{c?.name ?? 'Carregando…'}</h2>
+          <div className="cs-title"><h2>{c && onOpenFull ? <button className="cs-title-btn" title="Abrir a ficha completa do clube" onClick={() => { onClose(); onOpenFull(c.id); }}>{c.name}</button> : c?.name ?? 'Carregando…'}</h2>
             {c && <span className="muted small"><Flag code={c.countryCode} size={12} title={c.country} /> {c.city} · {c.country} · {c.league}</span>}</div>
+          {c && onOpenFull && <button className="secondary" onClick={() => { onClose(); onOpenFull(c.id); }}><Maximize2 size={14} aria-hidden="true" />Ficha completa</button>}
           <button className="secondary icon" aria-label="Fechar" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
         </header>
         <div className="modal-body">

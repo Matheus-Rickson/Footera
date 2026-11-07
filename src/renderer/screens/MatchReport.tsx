@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Ban, Cross, FastForward, Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Ban, CalendarDays, Cloud, CloudRain, Coins, Cross, FastForward, Info, MapPin, Pause, Play, RotateCcw, SkipForward, Snowflake, Star, Sun, Trophy, Users } from 'lucide-react';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSummaryDto } from '../../shared/api.ts';
 import type { TeamStats } from '../../game/match-engine/types.ts';
 import { BUILDUP_LABEL, errMsg, fmtDate, fmtMoney, MENTALITY_LABEL, shortName, unwrap } from '../util.ts';
@@ -18,7 +18,8 @@ interface Props {
 type Speed = 1 | 2 | 4;
 const TICK_MS: Record<Speed, number> = { 1: 1000, 2: 500, 4: 220 };
 const WEATHER: Record<string, string> = { clear: 'tempo bom', rain: 'chuva', heat: 'calor intenso', cold: 'frio' };
-const DECIDED: Record<string, string> = { regular: '', extra_time: ' · decidido na prorrogação', penalties: ' · decidido nos pênaltis' };
+const WEATHER_ICON = { clear: Sun, rain: CloudRain, heat: Sun, cold: Snowflake } as const;
+const FINAL_LABEL: Record<string, string> = { regular: 'Fim', extra_time: 'Fim · prorrogação', penalties: 'Fim · pênaltis' };
 const ratingTone = (r: number) => (r >= 7.5 ? 'great' : r >= 6.8 ? 'good' : r >= 6 ? 'avg' : 'poor');
 const condTone = (c: number) => (c >= 75 ? 'great' : c >= 60 ? 'avg' : 'poor');
 
@@ -263,6 +264,8 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const entered = new Set(r.players.filter((p) => p.team === side && !p.starter).map((p) => p.id));
   const benchLeft = (preview?.bench ?? []).filter((b) => !entered.has(b.id) && !ivs.some((i) => i.kind === 'sub' && i.in === b.id));
   const said = ivs.find((i): i is Extract<LiveInterventionInput, { kind: 'talk' }> => i.kind === 'talk')?.tone ?? null;
+  const logoUrl = r.logo ? img.url(r.logo.kind, r.logo.id) : null;
+  const WeatherIcon = WEATHER_ICON[r.conditions.weather as keyof typeof WEATHER_ICON] ?? Cloud;
   const leave = () => { if (deciding && !finished) { if (window.confirm('Sair agora encerra a partida: o auxiliar decide o restante e a rodada é gravada. Continuar?')) void finish(step).then(onBack); } else onBack(); };
 
   return (
@@ -272,8 +275,16 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           <div className="mc-side"><div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{st.teams[0].formation}</small></div>
             <ClubCrest id={r.home.clubId} name={r.home.name} size={36} src={img.url('clubs', r.home.clubId)} /></div>
           <div className="mc-score"><b>{st.score[0]}</b>
-            <div className="mc-clock"><span className={`mc-status ${status === 'Ao vivo' ? 'on' : ''}`}>{status}</span><strong>{finished ? 'Fim' : st.minuteLabel}</strong>
-              {st.shootout && <span className="small muted">pên. {st.shootout[0]} x {st.shootout[1]}</span>}</div>
+            <div className="mc-clock"><span className={`mc-status ${status === 'Ao vivo' ? 'on' : ''}`}>{status}</span><strong>{finished ? FINAL_LABEL[r.decidedIn] : st.minuteLabel}</strong>
+              {st.shootout && (
+                <div className="mc-pens" aria-label={`Pênaltis: ${st.shootout[0]} a ${st.shootout[1]}`}>
+                  <span className="mc-pens-title">Pênaltis</span>
+                  <span className="mc-pens-score"><b className={finished && st.shootout[0] > st.shootout[1] ? 'win' : ''}>{st.shootout[0]}</b>x<b className={finished && st.shootout[1] > st.shootout[0] ? 'win' : ''}>{st.shootout[1]}</b></span>
+                  {st.kicks.length > 0 && <div className="mc-pens-seq">{([0, 1] as const).map((t) => (
+                    <span key={t} className="mc-pens-row" title={t === 0 ? r.home.name : r.away.name}>{st.kicks.filter((k) => k.team === t).map((k, i) => <i key={i} className={k.scored ? 'in' : 'out'} title={`${i + 1}ª cobrança: ${k.scored ? 'convertida' : 'perdida'}`} />)}</span>
+                  ))}</div>}
+                </div>
+              )}</div>
             <b>{st.score[1]}</b></div>
           <div className="mc-side mc-side-away"><ClubCrest id={r.away.clubId} name={r.away.name} size={36} src={img.url('clubs', r.away.clubId)} />
             <div className="mc-team mc-team-away"><span className="mc-team-name">{r.away.name}</span><small className="muted">{st.teams[1].formation}</small></div></div>
@@ -286,12 +297,28 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           {finished && <button className="secondary" onClick={() => { setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
           <button className="secondary" disabled={busy} onClick={leave}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
         </div>
-        <div className="mc-meta muted small">
-          <span>{r.competitionName} · {r.cup ? `${r.cup.stage}${r.cup.leg ? ` (jogo de ${r.cup.leg === 1 ? 'ida' : 'volta'})` : ''}${r.cup.neutral ? ' · campo neutro' : ''}${r.cup.aggregate ? ` · agregado ${r.cup.aggregate[0]} x ${r.cup.aggregate[1]}` : ''}` : `rodada ${r.round}`} · {fmtDate(r.date)} · {WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
-          {finished && <span>{DECIDED[r.decidedIn] ? `Encerrado${DECIDED[r.decidedIn]}` : 'Encerrado'}{r.manOfTheMatch ? ` · Craque: ${r.manOfTheMatch.name}` : ''}{r.attendance ? ` · Público ${r.attendance.attendance.toLocaleString('pt-BR')} (${Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%) · renda ${fmtMoney(r.attendance.revenue)}` : ''}</span>}
-          {!finished && deciding && <span>Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
-          {r.detail === 'compact' && <span className="notice-text">Relatório resumido (jogo de outros clubes): só eventos-chave.</span>}
-          {!r.timeline && r.detail === 'full' && <span>Partida antiga: notas e estatísticas aparecem no fim.</span>}
+        <div className="mc-meta">
+          <div className="mc-comp">
+            {logoUrl ? <img className="mc-comp-logo" src={logoUrl} alt="" /> : <Trophy size={16} className="mc-comp-ico" aria-hidden="true" />}
+            <strong className="mc-comp-name">{r.competitionName}</strong>
+          </div>
+          <div className="mc-tags">
+            {r.cup ? <span className="mc-tag mc-tag-stage">{r.cup.stage}</span> : <span className="mc-tag">Rodada {r.round}</span>}
+            {r.cup?.leg && <span className="mc-tag">Jogo de {r.cup.leg === 1 ? 'ida' : 'volta'}</span>}
+            {r.cup?.aggregate && <span className="mc-tag mc-tag-agg">Agregado {r.cup.aggregate[0]} x {r.cup.aggregate[1]}</span>}
+            {finished && r.decidedIn !== 'regular' && <span className="mc-tag mc-tag-decided">{r.decidedIn === 'penalties' ? 'Decidido nos pênaltis' : 'Decidido na prorrogação'}</span>}
+          </div>
+          <div className="mc-facts">
+            <span><CalendarDays size={13} aria-hidden="true" />{fmtDate(r.date)}</span>
+            <span><MapPin size={13} aria-hidden="true" />{r.cup?.neutral ? 'Campo neutro' : `Casa do ${r.home.name}`}</span>
+            <span><WeatherIcon size={13} aria-hidden="true" />{WEATHER[r.conditions.weather]}{r.conditions.pitch === 'poor' ? ', gramado ruim' : ''}</span>
+            {finished && r.attendance && <span title={`Capacidade: ${r.attendance.capacity.toLocaleString('pt-BR')}`}><Users size={13} aria-hidden="true" />{r.attendance.attendance.toLocaleString('pt-BR')} ({Math.round((r.attendance.attendance / r.attendance.capacity) * 100)}%)</span>}
+            {finished && r.attendance && <span title="Renda da bilheteria"><Coins size={13} aria-hidden="true" />{fmtMoney(r.attendance.revenue)}</span>}
+            {finished && r.manOfTheMatch && <span><Star size={13} aria-hidden="true" />Craque: {r.manOfTheMatch.name}</span>}
+          </div>
+          {!finished && deciding && <span className="muted small">Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
+          {r.detail === 'compact' && <span className="mc-compact"><Info size={12} aria-hidden="true" />Resumo: só os eventos-chave (jogo de outros clubes)</span>}
+          {!r.timeline && r.detail === 'full' && <span className="mc-compact"><Info size={12} aria-hidden="true" />Partida antiga: notas e estatísticas aparecem no fim.</span>}
         </div>
         <div className="mc-progress"><i style={{ width: `${progress}%` }} /></div>
         {preview && preview.notes.length > 0 && !st.started && <p className="notice small">{preview.notes.join(' ')}</p>}

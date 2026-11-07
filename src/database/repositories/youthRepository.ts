@@ -6,7 +6,8 @@ import { createRng, type Rng } from '../../game/rng.ts';
 import { ageOn } from '../../shared/date.ts';
 import { buildPlayer } from '../../game/world/generator.ts';
 import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
-import { contractEndFor, seasonYearOf } from '../../game/career-engine/contracts.ts';
+import { seasonYearOf } from '../../game/career-engine/contracts.ts';
+import { contractEndIn } from '../../game/career-engine/calendar.ts';
 import { INTAKE_DAY, intakeSize, YOUTH_CAP, YOUTH_MAX_AGE, youthSalary } from '../../game/scouting-engine/scouting.ts';
 import { groupOf, SQUAD_MAX, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { Player, Position } from '../../shared/types.ts';
@@ -18,6 +19,7 @@ import { resetToFreeAgentWage } from './transferRepository.ts';
 import { recordYouthPromotionForBoard } from './boardRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { to20 } from '../../shared/scale.ts';
+import { clubSeasonStart, userSeason } from './countrySeasonRepository.ts';
 
 export class YouthError extends UserError {}
 
@@ -60,8 +62,8 @@ export function playerFactory(db: SqlDb, tag: string, date: string) {
     for (let i = 0; i < 50 && taken.has(`${name.first} ${name.last}`); i++) name = { first: rng.pick(tpl.firstNames), last: rng.pick(tpl.lastNames) };
     const p = buildPlayer(rng, newId, tpl, clubId, youthRep, pos, date, name, { forceAge: age });
     const out: Player = youth
-      ? { ...p, clubId: null, salary: youthSalary(p.overall, N(info.economy)), contractEnd: contractEndFor(date, 4) }
-      : { ...p, contractEnd: contractEndFor(date, 3) };
+      ? { ...p, clubId: null, salary: youthSalary(p.overall, N(info.economy)), contractEnd: contractEndIn(date, 4, clubSeasonStart(db, clubId)) }
+      : { ...p, contractEnd: contractEndIn(date, 3, clubSeasonStart(db, clubId)) };
     insert(out);
     if (youth) db.prepare('UPDATE players SET youth_club_id = ? WHERE id = ?').run(clubId, out.id);
     return out;
@@ -113,7 +115,7 @@ export function youthIntake(db: SqlDb, date: string): number {
 /** Sobe um jogador da base para o elenco principal do mesmo clube (contrato profissional de 3 temporadas). NÃO abre transação. */
 export function promoteFromYouth(db: SqlDb, p: Player, clubId: string, date: string): void {
   const salary = Math.max(Math.round((p.marketValue * 0.012) / 100) * 100, p.salary, Math.round((1500 * economyOf(db, clubId)) / 100) * 100);
-  db.prepare('UPDATE players SET club_id = ?, youth_club_id = NULL, salary = ?, contract_end = ? WHERE id = ? AND youth_club_id = ?').run(clubId, salary, contractEndFor(date, 3), p.id, clubId);
+  db.prepare('UPDATE players SET club_id = ?, youth_club_id = NULL, salary = ?, contract_end = ? WHERE id = ? AND youth_club_id = ?').run(clubId, salary, contractEndIn(date, 3, clubSeasonStart(db, clubId)), p.id, clubId);
 }
 
 export function promoteYouth(db: SqlDb, playerId: string): void {
@@ -125,7 +127,7 @@ export function promoteYouth(db: SqlDb, playerId: string): void {
   withTransaction(db, () => {
     promoteFromYouth(db, p, st.clubId, st.gameDate);
     recordYouthPromotionForBoard(db);
-    addNews(db, st.gameDate, 'youth', `Promovido: ${nameOf(p)} sobe ao elenco principal`, `${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, st.gameDate)} anos) assinou o primeiro contrato profissional, até ${br(contractEndFor(st.gameDate, 3))}.\n\nMinutos em campo aceleram a evolução dele. Promover jovens também conta para a meta da diretoria, quando houver.`, { action: 'tactics', actionLabel: 'Escalar em Táticas' });
+    addNews(db, st.gameDate, 'youth', `Promovido: ${nameOf(p)} sobe ao elenco principal`, `${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, st.gameDate)} anos) assinou o primeiro contrato profissional, até ${br(contractEndIn(st.gameDate, 3, clubSeasonStart(db, st.clubId)))}.\n\nMinutos em campo aceleram a evolução dele. Promover jovens também conta para a meta da diretoria, quando houver.`, { action: 'tactics', actionLabel: 'Escalar em Táticas' });
   });
 }
 
@@ -149,10 +151,11 @@ export function promoteBestOfGroup(db: SqlDb, clubId: string, group: PositionGro
  * Virada: a IA promove os jovens prontos (17+ e com nível do elenco) e dispensa quem chega aos 19; os jovens de 19 do usuário que
  * não foram promovidos saem. Devolve os nomes dos dispensados da base do usuário. NÃO abre transação.
  */
-export function youthTurnover(db: SqlDb, date: string, userClub: string, aiCap: number): string[] {
+export function youthTurnover(db: SqlDb, date: string, userClub: string, aiCap: number, onlyClubs?: ReadonlySet<string>): string[] {
   const releasedUser: string[] = [];
   for (const r of db.prepare('SELECT id FROM clubs ORDER BY rowid').all()) {
     const clubId = S(r.id);
+    if (onlyClubs && !onlyClubs.has(clubId)) continue;
     const youth = youthOf(db, clubId).sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id));
     if (clubId !== userClub) {
       const senior = seniorOf(db, clubId).sort((a, b) => b.overall - a.overall);
@@ -179,7 +182,7 @@ export function youthTurnover(db: SqlDb, date: string, userClub: string, aiCap: 
 
 export function getYouthOverview(db: SqlDb): YouthOverviewDto {
   const st = getCareerState(db);
-  const turnover = `${st.season + 1}-07-01`;
+  const turnover = userSeason(db).turnover;
   const level = (JSON.parse(S(db.prepare('SELECT facilities_json FROM clubs WHERE id = ?').get(st.clubId)!.facilities_json)) as { youth: number }).youth;
   const intakeYear = st.gameDate.slice(5) < INTAKE_DAY || st.gameDate.slice(5) >= '07-01' ? seasonYearOf(st.gameDate) + 1 : seasonYearOf(st.gameDate) + 2;
   const last = (() => {

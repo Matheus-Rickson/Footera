@@ -271,6 +271,53 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Sala de troféus: títulos de copa.
 - [ ] Carreira antiga: ao abrir antes da 1ª fase, a copa da temporada aparece; depois dela, só na próxima temporada.
 
+## 13o2. Cabeçalho da partida
+- [ ] Relatório/ao vivo: nome da competição com logo (se houver no pacote), etiquetas (fase em dourado, ida/volta, agregado, decidido nos pênaltis/prorrogação) e itens com ícone (data, local, tempo, público, renda, craque).
+- [ ] Jogo decidido nos pênaltis: "Fim · pênaltis" e bloco "Pênaltis 7 x 6" com o vencedor em verde e as bolinhas de cada cobrança (cheia = convertida, vazia = perdida).
+- [ ] Jogo de outros clubes: aviso "Resumo: só os eventos-chave" discreto.
+
+## 13p. Temporada por país (ano civil)
+- [ ] Nova carreira com clube do Brasil/Argentina/Irlanda: aviso "a carreira começa em 01/01/2026"; criar leva alguns segundos ("Simulando jul–dez/2025 nos outros países…").
+- [ ] A carreira abre em 01/01/2026, "Temporada 2026"; os clubes estão nas divisões da base (nenhum rebaixado antes de começar).
+- [ ] Competições: "Série A 2026"; ligas europeias em "2025/26" com cerca de metade das rodadas jogadas e copas em andamento; em 1º/jul/2026 viram para 2026/27.
+- [ ] Carreira com clube europeu: começa em 01/07/2026 ("Simulando jan–jun/2026 nos outros países…"); Brasileirão 2026 na metade, com as divisões da base; nenhum "Torneio de Transição".
+- [ ] Calendário: meses de janeiro a dezembro; 1ª rodada no fim de janeiro/início de fevereiro.
+- [ ] Contratos: renovar mostra fim em 31/12; a virada é em 1º/jan ("Iniciar temporada 2028"; janela de janeiro).
+- [ ] Clube europeu: a temporada continua julho a junho; em 1º/jan os países de ano civil viram sozinhos (o relógio não para).
+- [ ] Editor → Países: campo "Temporada" (julho a junho / ano civil).
+
+## 13q. Supercopas
+- [ ] 2ª temporada: Competições → grupo "Supercopas"; jogo no fim de julho (Espanha e Itália em janeiro; ano civil em 24/jan), antes da liga.
+- [ ] Participantes: campeão da liga × campeão da copa (dobradinha pela regra do país); Espanha com semifinais e final; Croácia sem jogo na dobradinha.
+- [ ] Cabeçalho: "Vale só o troféu"; sem lançamento em Finanças; título na Sala de troféus.
+
+## 13r. Copas no editor de dados
+- [ ] Editor → Copas: lista com copa e supercopa por país (filtro por país); "desativada" aparece na lista.
+- [ ] Alterar nome, janela, amarelos; desativar uma supercopa; criar uma copa para um país novo escolhendo "Fases de".
+- [ ] Logo da competição: enviar imagem; aparece em Competições ao lado do seletor (com o pacote ativo, numa carreira nova).
+
+## 13s. Competições (esboço) e Continuar
+- [ ] Competições → liga: classificação com Pts, SG com sinal e Forma (quadradinhos V/E/D); faixa colorida nas posições de acesso, vaga continental e rebaixamento; a legenda nomeia a divisão de destino.
+- [ ] Estatísticas dos jogadores: trocar entre Artilheiros, Assistências e Jogos sem sofrer gols; clicar no nome abre o jogador e no clube abre a ficha.
+- [ ] Jogos da rodada: abre na rodada em andamento; setas mudam a rodada; placar de jogo jogado abre o relatório; seu jogo destacado.
+- [ ] Nenhuma barra de rolagem na tela de Competições (janela maximizada).
+- [ ] Topo: botão "Continuar" no lugar de "Avançar 1 dia"/"Próxima rodada"; a caixa "Avançando o tempo" mostra os dias passando.
+- [ ] O tempo para sozinho no dia de jogo do seu time (aparecem "Simular partida" e "Acompanhar ao vivo") e em proposta/diretoria (aviso com o título da mensagem).
+- [ ] "Parar aqui" para no dia atual; clicar num dia futuro da faixa para nele.
+
+## 13t. Ficha completa do clube, Visão geral e conversas
+- [ ] Competições → clique num clube → na ficha resumida, clicar no nome (ou "Ficha completa") abre a tela cheia; "Voltar" retorna.
+- [ ] Ficha completa: campanha, copas, últimos/próximos jogos (placar abre o relatório), elenco ordenável com J/Min/G/A/JSG/Nota, títulos e histórico; jogador abre o perfil.
+- [ ] Visão geral: treinador, notícias, conversas e promessas, tabela (zonas coloridas), diretoria/torcida/objetivos; sem rolagem na janela maximizada.
+- [ ] "Conversar com jogador": escolher um jogador, ver moral/forma; elogiar/cobrar mostra o resultado; depois, os temas ficam bloqueados por 14 dias.
+- [ ] Prometer minutos/renovação aparece em "Promessas em aberto" com o andamento; no fim, mensagem "Promessa cumprida/quebrada" na Caixa de entrada.
+- [ ] "Falar com a diretoria": prometer posição ou vitórias; confiança sobe na hora; desfecho chega como mensagem (o Continuar para).
+- [ ] Jogador com moral abaixo de 40 aparece em "Pedem conversa".
+
+## 13u. Livres e negociação
+- [ ] Transferências → filtro "só livres": os melhores ficam por volta de 12 (estimativa); só um ou outro 14+ depois de uma virada.
+- [ ] Ficha de um jogador → "Fazer proposta" → "Cancelar negociação"; sair e voltar a Transferências: a janela NÃO reabre.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

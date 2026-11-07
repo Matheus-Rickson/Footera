@@ -29,6 +29,8 @@ export interface CupStage {
 }
 export interface CupFormat {
   id: string; countryCode: string; name: string;
+  /** supercopa: participantes definidos (campeões), sem prêmio; a final pode ter mando (ver supercups.ts) */
+  kind?: 'cup' | 'supercup';
   /** de onde veio cada grupo de regras (exibido na tela e gravado no histórico) */
   source: { structure: Source; tiebreak: Source; host: Source; discipline: Source; prizes: Source };
   /** referência do regulamento (versão usada) */
@@ -36,6 +38,8 @@ export interface CupFormat {
   stages: CupStage[];
   /** janela no calendário do jogo (temporada jul–jun): primeira fase e final (MM-DD; a final pode ser no ano seguinte) */
   window: { start: string; final: string };
+  /** janela quando o país joga no ano civil (jan–dez); ausente = usa `window` dentro do ano */
+  windowCalendarYear?: { start: string; final: string };
   discipline: { yellowLimit: number; /** zera os amarelos ao fim desta fase (índice) */ resetAfterStage?: number };
   /** forma da premiação (moeda local, valores reais ou proporções); escalada para a economia do jogo em `cupPrizes` */
   prizes: { perStage?: number[]; win?: number[]; semiLoser?: number; runnerUp: number; winner: number };
@@ -62,6 +66,7 @@ export const CUP_FORMATS: CupFormat[] = [
       final(PENS),
     ],
     window: { start: '08-19', final: '05-26' },
+    windowCalendarYear: { start: '02-17', final: '12-06' }, // real: fevereiro a dezembro (final em 6/dez/2026)
     // limite de amarelos: Regulamento Geral da CBF (não lido) — 3, padrão da CBF; zera ao fim das quartas (REC art. 25)
     discipline: { yellowLimit: 3, resetAfterStage: 5 },
     prizes: { perStage: [0.83, 1.38, 1.53, 2, 3, 4, 9], runnerUp: 34, winner: 78 },
@@ -193,6 +198,7 @@ export const CUP_FORMATS: CupFormat[] = [
       final(PENS),
     ],
     window: { start: '08-26', final: '05-26' },
+    windowCalendarYear: { start: '02-24', final: '12-01' }, // real: 32 avos de janeiro a abril, final em 2/dez/2026
     // limite de amarelos não está no regulamento; suspensões da copa valem só na copa (REG)
     discipline: { yellowLimit: 3 },
     prizes: { runnerUp: 1, winner: 2 },
@@ -256,6 +262,7 @@ export const CUP_FORMATS: CupFormat[] = [
       final(ET),
     ],
     window: { start: '08-26', final: '11-08' },
+    windowCalendarYear: { start: '05-19', final: '11-08' }, // real: maio a novembro
     discipline: { yellowLimit: 3 },
     prizes: { runnerUp: 1, winner: 2 },
     reward: 'Europa League (1ª pré-eliminatória) e President of Ireland’s Cup',

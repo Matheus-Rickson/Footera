@@ -20,7 +20,7 @@ import type { Coach } from '../shared/types.ts';
 
 const base = generateWorld({ seed: 'pack-test', teamsPerLeagueOverride: 6 });
 const coach: Coach = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession', reputation: 20, photoPath: null };
-const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] };
+const EMPTY: PackData = { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [], cups: [] };
 /** pacote a partir de objetos (passa pela mesma validação de estrutura que um pacote lido do disco) */
 const pack = (id: string, data: Partial<Record<keyof PackData, unknown[]>>, extra: Record<string, unknown> = {}): Pack =>
   parsePack({ manifest: { format: PACK_FORMAT, id, name: id, version: '1.0', ...extra }, files: data }, id);
@@ -109,9 +109,11 @@ test('Criar país, liga e clubes novos com jogadores resumidos (força 1–20); 
   const db = await openDatabase(':memory:');
   createCareer(db, w, coach, 'club-norte', new Date(), r.applied);
   assert.equal(String(db.prepare("SELECT value FROM meta WHERE key = 'data_packs'").get()!.value), '["argentina@1.0"]');
-  advanceTime(db, 'nextMatchday');
-  const day = simulateMatchday(db);
-  assert.ok(day.userMatch, 'o clube novo joga');
+  // Argentina joga no ano civil: a carreira começa em 1º/jan/2026 e a 1ª rodada vem depois da pré-temporada
+  assert.equal(String(db.prepare('SELECT game_date AS d FROM career').get()!.d), '2026-01-01');
+  let day = null;
+  for (let i = 0; i < 20 && !day?.userMatch; i++) { advanceTime(db, 'nextMatchday'); day = simulateMatchday(db); }
+  assert.ok(day?.userMatch, 'o clube novo joga');
 });
 
 test('Remoções: jogador sai do universo; clube removido libera os jogadores (aviso); remover id inexistente é só aviso', () => {

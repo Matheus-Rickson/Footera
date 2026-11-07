@@ -8,7 +8,7 @@ import path from 'node:path';
 import { compileUniverse } from '../game/data-pack/compile.ts';
 import { diffRecord } from '../game/data-pack/diff.ts';
 import { csvHeader, recordToRow, rowsToRecords, toCsv, type CsvKind } from '../game/data-pack/csv.ts';
-import { clubRec, coachRec, countryRec, leagueRec, playerRec, stadiumRec } from '../game/data-pack/export.ts';
+import { clubRec, coachRec, countryRec, cupRec, leagueRec, playerRec, stadiumRec } from '../game/data-pack/export.ts';
 import { fmtIssue, PACK_FORMAT, PackError, type Pack, type PackData } from '../game/data-pack/format.ts';
 import { ageOn } from '../shared/date.ts';
 import { ID_PATTERN, uniqueIds } from '../shared/slug.ts';
@@ -21,7 +21,7 @@ import { readPackDir, writePackDir } from './packService.node.ts';
 import { basePack, baseUniverse, EMPTY_WORLD } from './universeService.node.ts';
 
 type Rec = Record<string, unknown>;
-const KINDS: EditorKind[] = ['countries', 'leagues', 'clubs', 'players', 'coaches'];
+const KINDS: EditorKind[] = ['countries', 'leagues', 'clubs', 'players', 'coaches', 'cups'];
 
 function packDirOf(dataDir: string, packId: string): string {
   if (!ID_PATTERN.test(packId)) throw new ValidationError('Pacote inválido.');
@@ -71,6 +71,7 @@ function formRecord(w: World, kind: EditorKind, id: string): Rec | null {
   if (kind === 'leagues') { const l = w.leagues.find((x) => x.id === id); return l ? leagueRec(l) as Rec : null; }
   if (kind === 'clubs') { const c = w.clubs.find((x) => x.id === id); return c ? clubRec(c) as Rec : null; }
   if (kind === 'coaches') { const k = (w.coaches ?? []).find((x) => x.id === id); return k ? coachRec(k) as Rec : null; }
+  if (kind === 'cups') { const k = (w.cups ?? []).find((x) => x.id === id); return k ? cupRec(k) as Rec : null; }
   const p = w.players.find((x) => x.id === id);
   if (!p) return null;
   const { marketValue: _m, ...rest } = playerRec(p, false);
@@ -125,6 +126,9 @@ export function editorList(dataDir: string, packId: string, q: EditorListQuery):
   if (q.kind === 'coaches') rows = (w.coaches ?? []).filter((k) => (!q.clubId || k.clubId === q.clubId) && (!q.countryId || (k.clubId ? club.get(k.clubId)?.countryId === q.countryId : country.get(q.countryId)?.code === k.nationality)))
     .sort((a, b) => b.reputation - a.reputation || a.id.localeCompare(b.id))
     .map((k) => ({ id: k.id, title: `${k.firstName} ${k.lastName}`, subtitle: `${k.clubId ? club.get(k.clubId)?.name ?? '' : 'Sem clube'} · ${ageOn(k.birthDate, w.startDate)} anos · ${k.nationality}`, status: st(k.id), extra: null }));
+  if (q.kind === 'cups') rows = (w.cups ?? []).filter((k) => !q.countryId || k.countryId === q.countryId)
+    .sort((a, b) => (country.get(a.countryId)?.name ?? '').localeCompare(country.get(b.countryId)?.name ?? '') || a.kind.localeCompare(b.kind))
+    .map((k) => ({ id: k.id, title: k.name, subtitle: `${k.kind === 'cup' ? 'Copa' : 'Supercopa'} · ${country.get(k.countryId)?.name ?? k.countryId}${k.enabled ? '' : ' · desativada'}`, status: st(k.id), extra: null }));
   // entidades removidas pelo pacote não estão no universo: aparecem a partir da base (para poder restaurar)
   for (const r of recordsOf(pack, q.kind).filter((x) => x.$remove)) {
     const id = String(r.id);
@@ -237,7 +241,7 @@ export function editorCreatePack(dataDir: string, input: { name: string; author?
   if (!name) throw new ValidationError('Dê um nome ao pacote.');
   const existing = fs.existsSync(packsDir(dataDir)) ? fs.readdirSync(packsDir(dataDir)) : [];
   const id = uniqueIds([...existing, basePack().manifest.id])(name);
-  const pack: Pack = { manifest: { format: PACK_FORMAT, id, name, version: '1.0.0', ...(input.author?.trim() ? { author: input.author.trim() } : {}), ...(input.description?.trim() ? { description: input.description.trim() } : {}) }, data: { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [] } };
+  const pack: Pack = { manifest: { format: PACK_FORMAT, id, name, version: '1.0.0', ...(input.author?.trim() ? { author: input.author.trim() } : {}), ...(input.description?.trim() ? { description: input.description.trim() } : {}) }, data: { countries: [], leagues: [], stadiums: [], clubs: [], players: [], coaches: [], cups: [] } };
   writePackDir(pack, path.join(packsDir(dataDir), id));
   let order: string[] = [];
   try { order = (JSON.parse(fs.readFileSync(path.join(packsDir(dataDir), 'load-order.json'), 'utf8')) as { enabled: string[] }).enabled; } catch { /* nenhuma */ }
@@ -254,13 +258,14 @@ export function editorUpdateManifest(dataDir: string, packId: string, m: { name:
   return editorSummary(dataDir, packId);
 }
 
-const allIds = (w: World) => [...w.countries, ...w.leagues, ...w.stadiums, ...w.clubs, ...w.players, ...(w.coaches ?? [])].map((x) => x.id);
+const allIds = (w: World) => [...w.countries, ...w.leagues, ...w.stadiums, ...w.clubs, ...w.players, ...(w.coaches ?? []), ...(w.cups ?? [])].map((x) => x.id);
 function newIdFor(w: World, kind: EditorKind, r: Rec): string {
   const gen = uniqueIds(allIds(w));
   if (kind === 'countries') return gen(String(r.code ?? r.name ?? 'pais').toLowerCase());
   if (kind === 'leagues') return gen(r.country && r.tier ? `${String(r.country)}-${String(r.tier)}` : String(r.name ?? 'liga'));
   if (kind === 'clubs') return gen(String(r.name ?? 'clube'));
   if (kind === 'coaches') return gen(`tec ${String(r.firstName ?? '')} ${String(r.lastName ?? '')}`.trim());
+  if (kind === 'cups') return gen(`${r.kind === 'supercup' ? 'sup' : 'cup'}-${String(r.country ?? 'pais')}`);
   return gen(`${String(r.firstName ?? '')} ${String(r.lastName ?? '')} ${String(r.birthDate ?? '').slice(0, 4)}`.trim() || 'jogador');
 }
 

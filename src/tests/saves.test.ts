@@ -15,7 +15,7 @@ import type { CoachInput } from '../shared/api.ts';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fmsim-'));
 const coach: CoachInput = { firstName: 'Ana', lastName: 'Silva', birthDate: '1980-05-10', nationality: 'BRA', methodology: 'possession' };
-const clubId = baseUniverse().world.clubs[0]!.id; // carreiras partem da base fixa (data/base)
+const clubId = (() => { const w = baseUniverse().world; const eng = w.countries.find((c) => c.code === 'ENG')!.id; return w.clubs.find((c) => w.leagues.find((l) => l.id === c.leagueId)!.countryId === eng)!.id; })(); // carreiras partem da base fixa (data/base); clube de país com temporada em julho
 
 test('Perfis: cria, lista, normaliza o nome e impede duplicados e nomes inválidos', () => {
   const base = tmp();
@@ -129,7 +129,9 @@ test('Saves: visão geral traz próxima partida, posição na liga e nacionalida
   assert.equal(cal.fixtures.length, 38);
   const comps = await listCompetitionsFor(base, prof.id, c.id);
   assert.equal(comps.competitions.filter((x) => x.kind === 'league').length, baseUniverse().world.leagues.length, 'uma competição por liga da base fixa');
-  assert.equal(comps.competitions.filter((x) => x.kind === 'cup').length, 14, 'uma copa por país com formato (sem México e Rússia)');
+  // uma copa por país com formato (sem México e Rússia): as 11 de julho (2026/27) e as 3 do ano civil (2026, já em andamento); sem transição
+  assert.equal(comps.competitions.filter((x) => x.kind === 'cup').length, 14);
+  assert.ok(comps.competitions.every((x) => !x.name.includes('Transição')));
   const table = await getTable(base, prof.id, c.id, comps.userCompetitionId!);
   assert.equal(table.rows.length, 20);
   await assert.rejects(() => getTable(base, prof.id, c.id, 'cmp_nao_existe'), /não encontrada/);
@@ -139,14 +141,15 @@ test('Saves: avanço do tempo é persistido e sobrevive a fechar e reabrir o sav
   const base = tmp(); const prof = createProfile(base, 'Teste');
   const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const r1 = await advanceCareer(base, prof.id, c.id, 'nextMatchday');
-  assert.deepEqual([r1.advanced, r1.toDate], [true, '2026-08-01']);
-  assert.equal(r1.pendingMatches, baseUniverse().world.leagues.reduce((s, l) => s + Math.floor(l.teamCount / 2), 0), 'primeira rodada de todas as ligas da base');
+  // os países de ano civil estão no meio da temporada 2026: a próxima rodada deles vem antes das ligas de julho (agosto)
+  assert.ok(r1.advanced && r1.toDate > '2026-07-01' && r1.toDate < '2026-08-01' && r1.pendingMatches > 0, `${r1.toDate}: rodada do ano civil`);
   const r2 = await advanceCareer(base, prof.id, c.id, 'day');
   assert.deepEqual([r2.advanced, r2.reason], [false, 'pending_matches']);
   const ov = await openCareer(base, prof.id, c.id);
-  assert.equal(ov.summary.gameDate, '2026-08-01');
+  assert.equal(ov.summary.gameDate, r1.toDate);
   const list = await listCareerSaves(base, prof.id);
-  assert.equal(list.careers[0]!.gameDate, '2026-08-01');
+  assert.equal(list.careers[0]!.gameDate, r1.toDate);
+  assert.equal(list.careers[0]!.seasonLabel, '2026/27');
   await assert.rejects(() => advanceCareer(base, prof.id, c.id, 'semana' as never), /Modo de avanço inválido/);
 });
 
@@ -164,7 +167,8 @@ test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticam
 test('Elenco: cada jogador traz nacionalidade, altura, situação e estatísticas da temporada iguais às gravadas', async () => {
   const base = tmp(); const prof = createProfile(base, 'Teste');
   const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
-  for (let k = 0; k < 3; k++) { await advanceCareer(base, prof.id, c.id, 'nextMatchday'); await simulateCareerMatchday(base, prof.id, c.id); }
+  // três rodadas da liga inglesa (os torneios de transição de ano civil também param o relógio)
+  for (let d = ''; d < '2026-08-15';) { d = (await advanceCareer(base, prof.id, c.id, 'nextMatchday')).toDate; await simulateCareerMatchday(base, prof.id, c.id); }
   const file = path.join(base, 'saves', prof.id, c.id, 'career.db');
   const db = await openDatabase(file);
   const victim = String(db.prepare('SELECT id FROM players WHERE club_id = ? ORDER BY id LIMIT 1').get(clubId)!.id);

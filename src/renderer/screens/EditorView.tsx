@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, Download, FileSpreadsheet, Flag as FlagIcon, Pencil, Plus, RotateCcw, Save, Search, Shield, Trash2, Trophy, Upload, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, Award, Download, FileSpreadsheet, Flag as FlagIcon, Pencil, Plus, RotateCcw, Save, Search, Shield, Trash2, Trophy, Upload, UserRound, Users, X } from 'lucide-react';
 import type { CsvImportReportDto, EditorEntityDto, EditorKind, EditorListDto, EditorOptionsDto, EditorStatus, EditorSummaryDto, PacksOverviewDto } from '../../shared/api.ts';
 import type { Attributes, Position } from '../../shared/types.ts';
 import { POS_ORDER } from '../../shared/positions.ts';
@@ -15,6 +15,7 @@ import { Stars } from '../stars.tsx';
 import { CSV_COLUMNS } from '../../game/data-pack/csv.ts';
 import { COACH_ATTRS } from '../../shared/coachAttributes.ts';
 import type { Methodology } from '../../shared/types.ts';
+import { CUP_STAGE_CODES } from '../../game/cup-engine/catalog.ts';
 
 type Rec = Record<string, unknown>;
 interface Props { onBack: () => void }
@@ -28,6 +29,7 @@ const KIND_META: Record<EditorKind, { label: string; one: string; icon: typeof U
   clubs: { label: 'Clubes', one: 'clube', icon: Shield, help: 'Nome, liga, cidade, reputação, caixa, torcida, estrutura e estádio.' },
   players: { label: 'Jogadores', one: 'jogador', icon: Users, help: 'Dados pessoais, clube, posições, atributos (1 a 20), potencial e contrato. A força é calculada pelos atributos.' },
   coaches: { label: 'Técnicos', one: 'técnico', icon: UserRound, help: 'Técnicos dos clubes e os sem clube: dados pessoais, clube, reputação, metodologia, os 6 atributos (1 a 20) e foto. Um clube tem um técnico só: pôr um técnico num clube manda o técnico de lá para o mercado.' },
+  cups: { label: 'Copas', one: 'copa', icon: Award, help: 'Copas e supercopas nacionais: nome, ativa ou não, formato de fases, janela no calendário (julho a junho e ano civil), cartões; na supercopa, número de clubes, dobradinha, mando, prorrogação e datas. Logo da competição.' },
 };
 
 export function EditorView({ onBack }: Props) {
@@ -269,6 +271,8 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
                       <ImageField label="Foto do estádio" help="Aparece no painel do clube, no lugar da ilustração. Ideal: horizontal (ex.: 1600×640)." kind="stadiums" id={selected ? String(stadium?.id ?? draft.stadium ?? '') || null : null} img={img} packId={packId} onError={setError} /></>} />}
                   {kind === 'players' && opts && <PlayerForm r={draft} set={setDraft} errors={errors} opts={opts} isNew={selected === ''} derived={entity?.derived ?? null}
                     photo={<ImageField label="Foto do jogador" help="Aparece na ficha do jogador. Ideal: quadrada, rosto centralizado." kind="players" id={selected || null} img={img} packId={packId} onError={setError} />} />}
+                  {kind === 'cups' && opts && <CupForm r={draft} set={setDraft} errors={errors} opts={opts} isNew={selected === ''}
+                    logo={<ImageField label="Logo da competição" help="Aparece na tela de Competições. Ideal: fundo transparente (PNG), formato quadrado." kind="cups" id={selected || null} img={img} packId={packId} onError={setError} />} />}
                   {kind === 'coaches' && opts && <CoachForm r={draft} set={setDraft} errors={errors} opts={opts} derived={entity?.derived ?? null}
                     photo={<ImageField label="Foto do técnico" help="Aparece na tela de nova carreira, na ficha do clube e na ficha do técnico. Ideal: quadrada, rosto centralizado." kind="coaches" id={selected || null} img={img} packId={packId} onError={setError} />} />}
                 </div>
@@ -343,6 +347,8 @@ function CountryForm({ r, set, errors, isNew }: { r: Rec; set: (r: Rec) => void;
         <Field label="Código" help="3 letras maiúsculas (ex.: BRA). É o que liga os jogadores à nacionalidade; mude com cuidado." error={errors.code}>
           <input value={String(r.code ?? '')} maxLength={3} disabled={!isNew} onChange={(e) => set({ ...r, code: e.target.value.toUpperCase() })} /></Field>
         <Field label="Fator econômico" help="1 = referência (Brasil 0,6; Inglaterra 1,6). Escala salários, valores de mercado e receitas dos clubes do país." error={errors.economy}><NumIn r={r} set={set} path="economy" min={0.1} max={5} step={0.1} /></Field>
+        <Field label="Temporada" help="Julho a junho (Europa) ou ano civil (janeiro a dezembro, com pré-temporada em janeiro: Brasil, Argentina, Irlanda). Quem escolhe um clube de ano civil começa a carreira em 01/01/2026, com os países de julho na metade da temporada 2025/26; quem escolhe um clube de julho começa em 01/07/2026, com os de ano civil na metade da temporada 2026. Os seis meses são simulados ao criar a carreira.">
+          <select value={String(r.seasonStart ?? '07-01')} onChange={(e) => set({ ...r, seasonStart: e.target.value })}><option value="07-01">Julho a junho</option><option value="01-01">Ano civil (janeiro a dezembro)</option></select></Field>
       </fieldset>
     </>
   );
@@ -474,6 +480,60 @@ function PlayerForm({ r, set, errors, opts, isNew, derived, photo }: { r: Rec; s
   );
 }
 
+const MMDD = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const DOUBLE_LABEL: Record<string, string> = { league2: 'Vice da liga entra', cup2: 'Vice da copa entra', none: 'Não há jogo' };
+const HOST_LABEL: Record<string, string> = { neutral: 'Campo neutro', cup: 'Campeão da copa manda', league: 'Campeão da liga manda' };
+/** datas MM-DD separadas por vírgula ↔ lista */
+function DatesIn({ r, set, path, placeholder }: { r: Rec; set: (r: Rec) => void; path: string; placeholder: string }) {
+  const v = getIn(r, path);
+  const [text, setText] = useState(Array.isArray(v) ? v.join(', ') : '');
+  useEffect(() => { setText(Array.isArray(v) ? v.join(', ') : ''); }, [JSON.stringify(v)]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <input value={text} maxLength={20} placeholder={placeholder} onChange={(e) => { setText(e.target.value); const list = e.target.value.split(/[,;\s]+/).filter(Boolean); set(setIn(r, path, list.length ? list : undefined)); }} />;
+}
+
+function CupForm({ r, set, errors, opts, isNew, logo }: { r: Rec; set: (r: Rec) => void; errors: Errors; opts: EditorOptionsDto; isNew: boolean; logo: ReactNode }) {
+  const sup = r.kind === 'supercup';
+  const nameOf = (code: string) => opts.countries.find((c) => c.code === code)?.name ?? code;
+  return (
+    <>
+      <fieldset className="ed-section"><legend>Identificação</legend>
+        <Field label="Nome" error={errors.name} wide><TextIn r={r} set={set} path="name" max={80} /></Field>
+        <Field label="País" error={errors.country}>
+          <select value={String(r.country ?? '')} disabled={!isNew} onChange={(e) => set({ ...r, country: e.target.value })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Tipo" help="Copa: mata-mata com os clubes do país. Supercopa: campeão da liga × campeão da copa da temporada anterior (a partir da 2ª temporada da carreira)." error={errors.kind}>
+          <select value={String(r.kind ?? 'cup')} disabled={!isNew} onChange={(e) => set({ ...r, kind: e.target.value })}><option value="cup">Copa</option><option value="supercup">Supercopa</option></select></Field>
+        <Field label="Disputada" help="Desmarque para o país ficar sem esta competição nas próximas carreiras. Cada país tem no máximo uma copa e uma supercopa ativas.">
+          <label className="mf-check"><input type="checkbox" checked={r.enabled !== false} onChange={(e) => set({ ...r, enabled: e.target.checked })} />Ativa</label></Field>
+      </fieldset>
+      {!sup ? (
+        <fieldset className="ed-section"><legend>Regulamento</legend>
+          <Field label="Fases de" help="O formato de fases (quem entra em cada fase, folgas, ida e volta, desempate, mando, premiação) vem do regulamento real deste país, adaptado aos clubes do universo." error={errors.stagesFrom} wide>
+            <select value={String(r.stagesFrom ?? '')} onChange={(e) => set({ ...r, stagesFrom: e.target.value || undefined })}><option value="">Do próprio país</option>{CUP_STAGE_CODES.map((c) => <option key={c} value={c}>{nameOf(c)} ({c})</option>)}</select></Field>
+          <Field label="1ª fase (julho a junho)" help="MM-DD. Temporada de julho: datas a partir de julho caem no 1º ano; antes, no 2º." error={errors['window.start']}><TextIn r={r} set={set} path="window.start" max={5} placeholder="08-19" /></Field>
+          <Field label="Final (julho a junho)" help="MM-DD." error={errors['window.final']}><TextIn r={r} set={set} path="window.final" max={5} placeholder="05-26" /></Field>
+          <Field label="1ª fase (ano civil)" help="MM-DD, para países com temporada de janeiro a dezembro." error={errors['windowCalendarYear.start']}><TextIn r={r} set={set} path="windowCalendarYear.start" max={5} placeholder="02-17" /></Field>
+          <Field label="Final (ano civil)" help="MM-DD." error={errors['windowCalendarYear.final']}><TextIn r={r} set={set} path="windowCalendarYear.final" max={5} placeholder="12-06" /></Field>
+          <Field label="Amarelos para suspensão" help="Cartões amarelos acumulados na copa que suspendem por um jogo (valem só na copa)." error={errors.yellowLimit}><NumIn r={r} set={set} path="yellowLimit" min={1} max={10} /></Field>
+        </fieldset>
+      ) : (
+        <fieldset className="ed-section"><legend>Regulamento</legend>
+          <Field label="Clubes" help="2: final única. 4: semifinais e final (campeão e vice da liga e da copa; vagas repetidas vão para 3º, 4º… da liga), como na Espanha.">
+            <select value={String(r.teams ?? 2)} onChange={(e) => set({ ...r, teams: Number(e.target.value) })}><option value="2">2 (final)</option><option value="4">4 (semifinais e final)</option></select></Field>
+          <Field label="Mesmo campeão da liga e da copa" help="O que acontece na dobradinha.">
+            <select value={String(r.double ?? 'league2')} onChange={(e) => set({ ...r, double: e.target.value })}>{Object.entries(DOUBLE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          <Field label="Mando" help="Na de 4 clubes, sempre campo neutro.">
+            <select value={String(r.host ?? 'neutral')} onChange={(e) => set({ ...r, host: e.target.value })}>{Object.entries(HOST_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          <Field label="Empate" help="Pênaltis direto ou prorrogação antes dos pênaltis.">
+            <label className="mf-check"><input type="checkbox" checked={r.extraTime === true} onChange={(e) => set({ ...r, extraTime: e.target.checked })} />Prorrogação</label></Field>
+          <Field label="Datas (julho a junho)" help="MM-DD; com 4 clubes, duas datas: semifinais e final (ex.: 01-08, 01-11). Se cair em dia de jogo do país, passa para o dia seguinte." error={errors.dates}><DatesIn r={r} set={set} path="dates" placeholder="07-26" /></Field>
+          <Field label="Datas (ano civil)" help="MM-DD, para países com temporada de janeiro a dezembro." error={errors.datesCalendarYear}><DatesIn r={r} set={set} path="datesCalendarYear" placeholder="01-24" /></Field>
+        </fieldset>
+      )}
+      <fieldset className="ed-section ed-images"><legend>Imagem</legend>{logo}</fieldset>
+    </>
+  );
+}
+
 function CoachForm({ r, set, errors, opts, derived, photo }: { r: Rec; set: (r: Rec) => void; errors: Errors; opts: EditorOptionsDto; derived: EditorEntityDto['derived'] | null; photo: ReactNode }) {
   return (
     <>
@@ -570,6 +630,7 @@ function newRecord(kind: EditorKind, f: Filters, opts: EditorOptionsDto | null):
   if (kind === 'countries') return { name: '', code: '', economy: 1 };
   if (kind === 'leagues') return { name: '', country: f.countryId, tier: 1, rules: { promotionSlots: 0, relegationSlots: 0, continentalSlots: 0, rounds: 2, pointsWin: 3, pointsDraw: 1 } };
   if (kind === 'clubs') return { name: '', country: f.countryId, league: f.leagueId, city: '', reputation: 50 };
+  if (kind === 'cups') return { name: '', country: f.countryId, kind: 'cup', enabled: true };
   const club = f.clubId ? opts?.clubs.find((c) => c.id === f.clubId) : undefined;
   const code = opts?.countries.find((c) => c.id === (club?.countryId ?? f.countryId))?.code ?? 'BRA';
   if (kind === 'coaches') return { firstName: '', lastName: '', birthDate: '1975-01-01', nationality: code, club: club?.id ?? null, reputation: 40, methodology: 'possession', attributes: Object.fromEntries(COACH_ATTRS.map((a) => [a.key, 8])) };
@@ -586,6 +647,13 @@ function validate(kind: EditorKind, r: Rec, stadium: Rec | null, isNew: boolean)
   };
   if (kind === 'countries') { req('name', 'Nome'); if (!/^[A-Z]{3}$/.test(String(r.code ?? ''))) e.code = 'Código: 3 letras maiúsculas.'; range('economy', 'Fator econômico', 0.1, 5); }
   if (kind === 'leagues') { req('name', 'Nome'); req('country', 'País'); range('tier', 'Divisão', 1, 10, false); }
+  if (kind === 'cups') {
+    req('name', 'Nome'); req('country', 'País');
+    for (const k of ['window.start', 'window.final', 'windowCalendarYear.start', 'windowCalendarYear.final']) { const v = getIn(r, k); if (v !== undefined && v !== '' && !MMDD.test(String(v))) e[k] = 'Data: MM-DD (ex.: 08-19).'; }
+    range('yellowLimit', 'Amarelos', 1, 10);
+    const want = Number(r.teams ?? 2) === 4 ? 2 : 1;
+    for (const k of ['dates', 'datesCalendarYear']) { const v = r[k] as string[] | undefined; if (v && (v.length !== want || !v.every((x) => MMDD.test(x)))) e[k] = `Datas: ${want} no formato MM-DD${want === 2 ? ' (semifinais, final)' : ''}.`; }
+  }
   if (kind === 'clubs') {
     req('name', 'Nome'); req('country', 'País'); req('league', 'Liga'); range('reputation', 'Reputação', 1, 100);
     const sn = String(r.shortName ?? ''); if (sn && (sn.length < 2 || sn.length > 5)) e.shortName = 'Sigla: 2 a 5 letras.';

@@ -21,6 +21,7 @@ import { baseCoachAttributes, COACH_ATTRS, type CoachAttrKey } from '../../share
 import { boardBrief } from './newsRepository.ts';
 import { toStars } from '../../shared/scale.ts';
 import { dismissAiCoach, hireAiCoach } from './aiCoachRepository.ts';
+import { CURRENT_COMP, followCountry } from './countrySeasonRepository.ts';
 
 export class BoardError extends UserError {}
 
@@ -64,7 +65,7 @@ function changeReputation(db: SqlDb, delta: number): number {
 interface LeagueSituation { position: number; played: number; teams: number; expected: number; rules: LeagueRules; tier: number; competitionId: string }
 export function leagueSituation(db: SqlDb, clubId: string, season: number): LeagueSituation | null {
   const c = db.prepare(`SELECT c.id, l.rules_json, l.tier FROM competitions c JOIN leagues l ON l.id = c.league_id
-    WHERE c.season = ? AND c.id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1`).get(season, clubId, clubId);
+    WHERE c.kind = 'league' AND ${CURRENT_COMP} AND c.id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1`).get(clubId, clubId); void season;
   if (!c) return null;
   const rules = JSON.parse(S(c.rules_json)) as LeagueRules;
   const teams = db.prepare(`SELECT id, reputation FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ? UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)`).all(S(c.id), S(c.id));
@@ -107,12 +108,18 @@ export function ensureBoard(db: SqlDb): void {
   });
 }
 
-function board(db: SqlDb) { return db.prepare('SELECT * FROM board_state WHERE id = 1').get(); }
-function setConfidence(db: SqlDb, value: number) { db.prepare('UPDATE board_state SET confidence = ? WHERE id = 1').run(Math.max(0, Math.min(100, Math.round(value * 10) / 10))); }
+export function board(db: SqlDb) { return db.prepare('SELECT * FROM board_state WHERE id = 1').get(); }
+export function setConfidence(db: SqlDb, value: number) { db.prepare('UPDATE board_state SET confidence = ? WHERE id = 1').run(Math.max(0, Math.min(100, Math.round(value * 10) / 10))); }
 
 // ---------------------------------------------------------------- reações da diretoria
 /** Depois de cada rodada: a partida do clube do usuário mexe na confiança. NÃO abre transação. */
+/** Meses simulados antes do início da carreira (clube de ano civil): o treinador ainda não está no cargo. */
+export function fastForwarding(db: SqlDb): boolean {
+  return db.prepare("SELECT 1 AS x FROM meta WHERE key = 'fast_forward'").get() !== undefined;
+}
+
 export function applyMatchesToBoard(db: SqlDb, results: MatchSummaryDto[]): void {
+  if (fastForwarding(db)) return;
   const st = getCareerState(db);
   const b = board(db);
   if (!st.clubId || !b) return;
@@ -209,6 +216,8 @@ function takeJob(db: SqlDb, clubId: string, date: string): void {
   const from = st.clubId ? clubName(db, st.clubId) : null;
   if (st.clubId) leaveClub(db, date, 'left');
   db.prepare('UPDATE career SET club_id = ? WHERE id = 1').run(clubId);
+  // o treinador passa a seguir a temporada do país do novo clube (jul–jun ou ano civil)
+  followCountry(db, S(db.prepare('SELECT country_id FROM clubs WHERE id = ?').get(clubId)!.country_id));
   dismissAiCoach(db, clubId, date, 'replaced'); // se o clube ainda tinha técnico (clube que chamou o desempregado), ele sai
   db.prepare('DELETE FROM job_vacancies WHERE club_id = ?').run(clubId);
   db.prepare('INSERT INTO coach_spells (club_id, start_date) VALUES (?, ?)').run(clubId, date);
@@ -237,11 +246,13 @@ export function respondJobOffer(db: SqlDb, offerId: number, accept: boolean): vo
  * NÃO abre transação.
  */
 export function processBoardDay(db: SqlDb, date: string): void {
+  // antes do início da carreira (clube de ano civil) não há diretoria avaliando nem propostas ao treinador; as vagas da IA seguem
+  const ff = fastForwarding(db);
   const st = getCareerState(db);
   const seed = seedOf(db);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending' AND expires < ?").run(date);
   const b = board(db);
-  if (st.clubId && b) {
+  if (!ff && st.clubId && b) {
     if (date.slice(8) === '01') {
       const sit = leagueSituation(db, st.clubId, st.season);
       let delta = sit ? monthlyDelta(sit.position, N(b.target_position), sit.played) : 0;
@@ -278,6 +289,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
   }
 
   // propostas ao treinador
+  if (ff) return;
   const coachRep = coachOf(db).reputation;
   const unemployed = !now.clubId;
   const pending = N(db.prepare("SELECT COUNT(*) AS n FROM job_offers WHERE status = 'pending'").get()!.n);
@@ -352,6 +364,23 @@ export function startBoardSeason(db: SqlDb): void {
   if (getCareerState(db).clubId) setBoardForSeason(db, b ? N(b.confidence) : CONFIDENCE.start);
 }
 
+/**
+ * Humor da torcida (0–100): 55 de base, +8 por vitória e −8 por derrota nos últimos 5 jogos (todas as competições) e ±3 por posição na liga
+ * acima/abaixo da esperada pela diretoria. Indicador derivado (nada é gravado); por ora sem efeito no jogo.
+ */
+export function fanMood(db: SqlDb, clubId: string, expected: number, sit: { position: number; played: number } | null): { mood: number; label: string; detail: string } {
+  const last = db.prepare(`SELECT home_club_id, home_goals, away_goals FROM fixtures WHERE status = 'played' AND (home_club_id = ? OR away_club_id = ?)
+    ORDER BY match_date DESC, id DESC LIMIT 5`).all(clubId, clubId)
+    .map((f) => { const d = (S(f.home_club_id) === clubId ? 1 : -1) * (N(f.home_goals) - N(f.away_goals)); return d > 0 ? 'V' : d < 0 ? 'D' : 'E'; });
+  const w = last.filter((x) => x === 'V').length, l = last.filter((x) => x === 'D').length;
+  const table = sit && sit.played > 0 ? (expected - sit.position) * 3 : 0;
+  const mood = Math.max(0, Math.min(100, 55 + 8 * (w - l) + table));
+  const label = mood >= 70 ? 'Empolgada' : mood >= 55 ? 'Satisfeita' : mood >= 40 ? 'Desconfiada' : 'Irritada';
+  const parts = [last.length ? `Últimos jogos: ${last.slice().reverse().join(' ')}` : 'Sem jogos ainda'];
+  if (sit && sit.played > 0) parts.push(sit.position < expected ? `acima do esperado na liga (${sit.position}º; esperado ${expected}º)` : sit.position > expected ? `abaixo do esperado na liga (${sit.position}º; esperado ${expected}º)` : `na posição esperada (${sit.position}º)`);
+  return { mood, label, detail: parts.join(' · ') };
+}
+
 // ---------------------------------------------------------------- tela
 export function getBoardOverview(db: SqlDb): BoardOverviewDto {
   const st = getCareerState(db);
@@ -379,6 +408,7 @@ export function getBoardOverview(db: SqlDb): BoardOverviewDto {
       ] as Array<{ label: string; status: BoardStatus; detail: string }>,
       budgets: { transfer: N(b.transfer_budget), spent: N(b.transfer_spent), remaining: Math.max(0, N(b.transfer_budget) - N(b.transfer_spent)), wageCeiling: N(b.wage_ceiling), payroll },
       requests: { transfer: !N(b.transfer_request_used), wage: !N(b.wage_request_used) },
+      fans: fanMood(db, st.clubId, N(b.expected_position), sit),
     },
   };
 }
