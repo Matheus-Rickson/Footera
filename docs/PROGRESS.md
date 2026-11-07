@@ -1048,3 +1048,17 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - *Verificado pelo usuário (07/11/2026):* 13r (copas no editor: lista por país, edição da Supercoppa Italiana, exportação .zip e logo em Competições).
   - *Verificado pelo usuário (07/11/2026):* 13o2 (cabeçalho da partida), 13p (temporada por país), 13q (supercopas) e 13t (ficha completa do
     clube, Visão geral, conversas e promessas). Checklist da Fase 9 até 13u validado.
+- **Estaduais e Séries C/D — etapa 1: motor de formatos (pedido do usuário, 07/11/2026; sem commit):**
+  - Levantamento em `docs/ESTADUAIS.md` (regulamentos oficiais das Séries C e D 2026; 29 estaduais por fontes secundárias; lacunas como ADAPT).
+    Decisões do usuário: calendário modelo 2026, estaduais dos 27 estados + A2 de SP e RJ, Série D real (96), Série C com a expansão real.
+  - `game/format-engine/engine.ts` (puro): fases de liga (grupo único, grupos, contra os outros grupos, potes), mata-mata (jogo único ou ida
+    e volta, chave fixa/semente/sorteio, mando, vantagem do empate, prorrogação, pênaltis), referências entre fases (posição no grupo ou na
+    geral, n-ésimo melhor/pior entre os de uma posição, vencedor/perdedor de confronto), fases laterais (Taça Rio, Grupo X, quadrangulares),
+    bonificação, campanha somada, classificação final, campeão, títulos, acessos e rebaixamentos, desempate para o motor da partida.
+    `computeStandings` ganhou as opções `countAll` (jogos contra outros grupos) e `bonus` (padrão inalterado).
+  - `game/format-engine/formats.ts`: Série C 2026/2027/2028+ (REG/SEC), Série D 2026 (REG, chaves do Anexo B), vagas da D por estado
+    (`SERIE_D_SPOTS`) e os 29 estaduais (`ESTADUAIS`; formato padrão adaptado onde não houve fonte).
+  - Testes: `format-engine.test.ts` (6): todas as competições simuladas até o fim com 2 sementes (rodadas sem conflito, campeão,
+    classificação completa, zonas), contagem de jogos por tipo de fase, Série D (fases, chave da 2ª fase, Bloco I, playoffs, 6 acessos,
+    65º–96º), regras de confronto, referências e bonificação, determinismo. 277 testes passando. Mutação 8/8.
+  - Ainda NÃO ligado ao jogo (etapas 2–5: dados/estados/sem divisão, Séries C e D no banco, calendário 2026, estaduais completos e telas).

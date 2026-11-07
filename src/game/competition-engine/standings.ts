@@ -14,18 +14,22 @@ function emptyRow(teamId: string): StandingRow {
   return { teamId, position: 0, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 };
 }
 
-/** Tabela simples (sem ordenar) considerando apenas as partidas informadas entre as equipes dadas. */
-function tally(teamIds: readonly string[], results: readonly MatchResult[], pointsWin: number, pointsDraw: number): Map<string, StandingRow> {
+/**
+ * Tabela simples (sem ordenar) considerando apenas as partidas informadas entre as equipes dadas. `countAll`: conta também os jogos
+ * contra equipes fora do conjunto (grupos que enfrentam os outros grupos, como no Carioca); só a equipe do conjunto pontua.
+ */
+function tally(teamIds: readonly string[], results: readonly MatchResult[], pointsWin: number, pointsDraw: number, countAll = false): Map<string, StandingRow> {
   const rows = new Map(teamIds.map((id) => [id, emptyRow(id)]));
+  const side = (row: StandingRow | undefined, gf: number, ga: number) => {
+    if (!row) return;
+    row.played++; row.goalsFor += gf; row.goalsAgainst += ga;
+    if (gf > ga) { row.won++; row.points += pointsWin; } else if (gf < ga) row.lost++; else { row.drawn++; row.points += pointsDraw; }
+  };
   for (const r of results) {
     const h = rows.get(r.home), a = rows.get(r.away);
-    if (!h || !a) continue;
-    h.played++; a.played++;
-    h.goalsFor += r.homeGoals; h.goalsAgainst += r.awayGoals;
-    a.goalsFor += r.awayGoals; a.goalsAgainst += r.homeGoals;
-    if (r.homeGoals > r.awayGoals) { h.won++; a.lost++; h.points += pointsWin; }
-    else if (r.homeGoals < r.awayGoals) { a.won++; h.lost++; a.points += pointsWin; }
-    else { h.drawn++; a.drawn++; h.points += pointsDraw; a.points += pointsDraw; }
+    if (!countAll && (!h || !a)) continue;
+    side(h, r.homeGoals, r.awayGoals);
+    side(a, r.awayGoals, r.homeGoals);
   }
   for (const row of rows.values()) row.goalDiff = row.goalsFor - row.goalsAgainst;
   return rows;
@@ -47,8 +51,10 @@ function groupBy<T>(items: readonly T[], key: (t: T) => string): T[][] {
  * (pontos, saldo, gols pró) e é reaplicado ao subgrupo que continuar empatado.
  * Empates absolutos são resolvidos por ID da equipe, para o resultado ser determinístico.
  */
-export function computeStandings(teamIds: readonly string[], results: readonly MatchResult[], rules: Pick<LeagueRules, 'pointsWin' | 'pointsDraw'> & { tiebreakers: readonly Tiebreaker[] }): StandingRow[] {
-  const table = tally(teamIds, results, rules.pointsWin, rules.pointsDraw);
+export function computeStandings(teamIds: readonly string[], results: readonly MatchResult[], rules: Pick<LeagueRules, 'pointsWin' | 'pointsDraw'> & { tiebreakers: readonly Tiebreaker[] },
+  opts: { /** conta os jogos contra equipes de fora do conjunto */ countAll?: boolean; /** pontos de bonificação (ex.: melhor 5º começa com 1 ponto) */ bonus?: ReadonlyMap<string, number> } = {}): StandingRow[] {
+  const table = tally(teamIds, results, rules.pointsWin, rules.pointsDraw, opts.countAll);
+  for (const [id, pts] of opts.bonus ?? []) { const row = table.get(id); if (row) row.points += pts; }
   const criteria: Tiebreaker[] = rules.tiebreakers.length ? [...rules.tiebreakers] : ['points', 'goalDiff', 'goalsFor'];
 
   const value = (row: StandingRow, c: Exclude<Tiebreaker, 'headToHead'>): number =>
