@@ -1038,3 +1038,10 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     (mundos de teste) começa direto. Testes: `calendar-year.test.ts`, `saves.test.ts` (14 copas, 1ª rodada do ano civil em julho),
     `sim-levels.test.ts` (a metade simulada segue a semente de cada carreira: só a identidade dos jogadores da base é comparada). Mutação 2/2.
     Tela de nova carreira (aviso e "Simulando jan–jun/2026…") NÃO verificada no Electron.
+  - *Verificado pelo usuário (07/11/2026):* criação nos dois sentidos (Brasil em 01/01/2026 com a Premier 2025/26 na rodada 22; Inglaterra em
+    01/07/2026 com o Brasileirão 2026 na rodada 22) e a negociação que não reabre. Pendentes: aviso/rótulo do botão na nova carreira, virada
+    de 1º/jul vista de uma carreira brasileira e os livres (força dos melhores no filtro "só livres").
+  - *Verificado pelo usuário (07/11/2026):* virada de 1º/jul vista de uma carreira brasileira e livres (melhores por volta de 10–12 no filtro
+    "Sem clube"). Aviso de início da carreira passou para uma caixa destacada (`nc-start`, ícone de calendário) a pedido do usuário; NÃO verificada.
+  - *Verificado pelo usuário (07/11/2026):* caixa do aviso de início da carreira. Seções 13u e do início da carreira completas; 13s (Competições e
+    Continuar) confirmada antes pelo usuário. Ainda NÃO verificadas: 13t (ficha completa do clube, Visão geral, conversas e promessas) e 13o2–13r.

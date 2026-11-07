@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Building2, Check, ChevronDown, Coins, Search, Target, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, CalendarClock, Check, ChevronDown, Coins, Search, Target, Users } from 'lucide-react';
 import type { ClubList, ClubOption, PhotoPick } from '../../shared/api.ts';
 import type { Methodology } from '../../shared/types.ts';
 import { errMsg, fmtMoney, fmtNum, METHODOLOGY, unwrap } from '../util.ts';
@@ -321,9 +321,19 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
           </div>
           </div>
 
+          {!!chosen && (civilYear ? hasJuly : hasCivil) && (
+            <div className="nc-start" role="note">
+              <CalendarClock size={22} aria-hidden="true" />
+              <div>
+                <strong>A carreira começa em {civilYear ? `01/01/${startYear}` : `01/07/${startYear}`}</strong>
+                <span>{civilYear
+                  ? `${countries.find((x) => x.id === chosen.countryId)?.name} joga a temporada no ano civil: você começa na pré-temporada, com as divisões como na base. Nos países de julho a junho, a temporada ${startYear - 1}/${String(startYear).slice(2)} já estará na metade.`
+                  : `Você começa na pré-temporada, com as divisões como na base. Nos países de ano civil (Brasil, Argentina...), a temporada ${startYear} já estará na metade.`}</span>
+                <span className="muted small">Os seis meses dos outros países são simulados ao criar a carreira, o que leva alguns segundos.</span>
+              </div>
+            </div>
+          )}
           <div className="row end">
-            {civilYear && hasJuly && <span className="muted small">{countries.find((x) => x.id === chosen.countryId)?.name} joga a temporada no ano civil: a carreira começa em 01/01/{startYear}, na pré-temporada, com as divisões como na base. Nos países de julho a junho, a temporada {startYear - 1}/{String(startYear).slice(2)} já estará na metade (julho a dezembro são simulados ao criar, o que leva alguns segundos).</span>}
-            {!!chosen && !civilYear && hasCivil && <span className="muted small">A carreira começa em 01/07/{startYear}, com as divisões como na base. Nos países de ano civil (Brasil, Argentina...), a temporada {startYear} já estará na metade (janeiro a junho são simulados ao criar, o que leva alguns segundos).</span>}
             {remaining > 0 && <span className="muted small">Distribua os pontos de atributo para iniciar ({remaining} restante{remaining === 1 ? '' : 's'}).</span>}
             <button className="secondary" onClick={() => setStep(2)} disabled={busy}><ArrowLeft size={16} aria-hidden="true" />Clube</button>
             <button disabled={!formOk || busy} onClick={() => void create()}>{busy ? (civilYear && hasJuly ? `Simulando jul–dez/${startYear - 1} nos outros países…` : !civilYear && hasCivil ? `Simulando jan–jun/${startYear} nos outros países…` : 'Criando carreira…') : 'Iniciar carreira'}</button>
