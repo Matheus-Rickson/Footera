@@ -1045,3 +1045,6 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     "Sem clube"). Aviso de início da carreira passou para uma caixa destacada (`nc-start`, ícone de calendário) a pedido do usuário; NÃO verificada.
   - *Verificado pelo usuário (07/11/2026):* caixa do aviso de início da carreira. Seções 13u e do início da carreira completas; 13s (Competições e
     Continuar) confirmada antes pelo usuário. Ainda NÃO verificadas: 13t (ficha completa do clube, Visão geral, conversas e promessas) e 13o2–13r.
+  - *Verificado pelo usuário (07/11/2026):* 13r (copas no editor: lista por país, edição da Supercoppa Italiana, exportação .zip e logo em Competições).
+  - *Verificado pelo usuário (07/11/2026):* 13o2 (cabeçalho da partida), 13p (temporada por país), 13q (supercopas) e 13t (ficha completa do
+    clube, Visão geral, conversas e promessas). Checklist da Fase 9 até 13u validado.
