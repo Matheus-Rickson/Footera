@@ -33,6 +33,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
   const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
   const [countryFilter, setCountryFilter] = useState('all');
   const [leagueFilter, setLeagueFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [clubId, setClubId] = useState<string | null>(null);
 
@@ -84,9 +85,11 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
   const leagues = useMemo(() => [...new Set(pickable.filter((c) => countryFilter === 'all' || c.countryId === countryFilter).sort((a, b) => a.leagueTier - b.leagueTier).map((c) => c.league))], [pickable, countryFilter]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return pickable.filter((c) => (countryFilter === 'all' || c.countryId === countryFilter) && (leagueFilter === 'all' || c.league === leagueFilter) && (!q || c.name.toLowerCase().includes(q)))
+    return pickable.filter((c) => (countryFilter === 'all' || c.countryId === countryFilter) && (leagueFilter === 'all' || c.league === leagueFilter) && (stateFilter === 'all' || c.state === stateFilter) && (!q || c.name.toLowerCase().includes(q)))
       .sort((a, b) => a.country.localeCompare(b.country) || a.leagueTier - b.leagueTier || b.reputation - a.reputation);
-  }, [pickable, countryFilter, leagueFilter, query]);
+  }, [pickable, countryFilter, leagueFilter, stateFilter, query]);
+  // estados do país escolhido no filtro (só aparecem quando o país tem estaduais)
+  const states = useMemo(() => [...new Set(pickable.filter((c) => countryFilter !== 'all' && c.countryId === countryFilter && c.state).map((c) => c.state!))].sort(), [pickable, countryFilter]);
   const chosen = pickable.find((c) => c.id === clubId) ?? null;
   const civilYear = !!chosen && countries.find((x) => x.id === chosen.countryId)?.seasonStart === '01-01';
   const hasCivil = countries.some((x) => x.seasonStart === '01-01'), hasJuly = countries.some((x) => x.seasonStart !== '01-01');
@@ -219,7 +222,7 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
                   <input placeholder="Buscar clube…" aria-label="Buscar clube" value={query} maxLength={40} onChange={(e) => setQuery(e.target.value)} />
                 </label>
                 <div className="row">
-                  <select aria-label="País" value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setLeagueFilter('all'); }}>
+                  <select aria-label="País" value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setLeagueFilter('all'); setStateFilter('all'); }}>
                     <option value="all">Todos os países completos</option>
                     {fullCountries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -227,13 +230,17 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
                     <option value="all">Todas as ligas</option>
                     {leagues.map((l) => <option key={l} value={l}>{l}</option>)}
                   </select>
+                  {states.length > 0 && <select aria-label="Estado" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
+                    <option value="all">Todos os estados</option>
+                    {states.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                  </select>}
                 </div>
               </div>
               <div className="nc-club-scroll" role="listbox" aria-label="Clubes">
                 {visible.map((c) => (
                   <button key={c.id} role="option" aria-selected={c.id === clubId} className={`nc-club-row ${c.id === clubId ? 'on' : ''}`} onClick={() => setClubId(c.id)}>
                     <ClubCrest id={c.id} name={c.name} size={26} src={img.url('clubs', c.id)} />
-                    <span className="nc-club-row-name"><strong>{c.name}</strong><span className="muted small">{c.league}{c.origin.created && <span className="nc-new" title={`Criado pelo pacote "${c.origin.created}"`}>novo</span>}{!c.origin.created && c.origin.edited.length > 0 && <span className="nc-edited" title={`Alterado por: ${c.origin.edited.join(', ')}`}>alterado</span>}</span></span>
+                    <span className="nc-club-row-name"><strong>{c.name}</strong><span className="muted small">{c.league}{c.state ? ` · ${c.state}` : ''}{c.origin.created && <span className="nc-new" title={`Criado pelo pacote "${c.origin.created}"`}>novo</span>}{!c.origin.created && c.origin.edited.length > 0 && <span className="nc-edited" title={`Alterado por: ${c.origin.edited.join(', ')}`}>alterado</span>}</span></span>
                     <span className={`sq-ovr ${tone(c.avgOverall)}`} title="Força média do elenco">{to20(c.avgOverall)}</span>
                   </button>
                 ))}
@@ -406,7 +413,8 @@ function ClubPanel({ c, code, crest, photo, leagueLogo, coachPhoto }: { c: ClubO
         <div>
           <h2>{c.name}</h2>
           <span className="row muted"><Flag code={code} size={14} title={c.country} />{c.city} · {c.country}</span>
-          <span className="row nc-chips"><span className="nc-chip">{leagueLogo && <img className="nc-league-logo" src={leagueLogo} alt="" />}{c.league} · {c.leagueTier}ª divisão</span>
+          <span className="row nc-chips"><span className="nc-chip">{leagueLogo && <img className="nc-league-logo" src={leagueLogo} alt="" />}{c.league === 'Sem divisão' ? c.league : `${c.league} · ${c.leagueTier}ª divisão`}</span>
+            {c.state && <span className="nc-chip" title={c.estadual ? 'Estadual que o clube disputa nesta temporada' : 'Fora do estadual nesta temporada (reserva do estado): sobe quando alguém cai'}>{c.state} · {c.estadual ? `${c.estadual.name}${c.estadual.division === 2 ? ' (segunda divisão)' : ' (elite)'}` : 'fora do estadual'}</span>}
             {c.origin.created && <span className="nc-chip nc-chip-pack" title="Clube que não existe na base do jogo">Criado pelo pacote "{c.origin.created}"</span>}
             {c.origin.edited.length > 0 && <span className="nc-chip nc-chip-pack" title="Dados da base alterados por pacote de dados">Alterado por {c.origin.edited.map((x) => `"${x}"`).join(', ')}</span>}</span>
         </div>

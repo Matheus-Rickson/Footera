@@ -343,3 +343,16 @@ export function outcomes(def: FormatDef, state: FormatState): { champion: string
     relegated: r(def.relegated),
   };
 }
+
+/** Número máximo de datas que o formato usa em sequência (fases principais; as laterais jogam em paralelo). */
+export function formatRounds(def: FormatDef): number {
+  let total = 0;
+  for (const s of def.stages) {
+    if (s.side) continue;
+    if (s.kind === 'knockout') { total += s.legs; continue; }
+    const n = s.entrants.length, g = n / s.groups;
+    const single = s.play === 'cross' ? n - g : s.play === 'pots' ? (g % 2 === 0 ? g - 1 : g) + (s.crossGames ?? 0) : g % 2 === 0 ? g - 1 : g;
+    total += single * s.legs;
+  }
+  return total;
+}

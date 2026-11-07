@@ -29,7 +29,7 @@ import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { boardBrief, squadSize } from './newsRepository.ts';
 import { reviewAiCoaches } from './aiCoachRepository.ts';
-import { formatMetaOf, formatOutcomesOf, rebuildSerieD } from './formatRepository.ts';
+import { estadualResultOf, estadualTurnover, formatMetaOf, formatOutcomesOf, rebuildSerieD } from './formatRepository.ts';
 import { advanceCountrySeason, countrySeason, CURRENT_COMP, followCountry, userCountry, userSeason } from './countrySeasonRepository.ts';
 import { contractEndIn, renewedEnd, seasonLabelFor, type SeasonStart } from '../../game/career-engine/calendar.ts';
 import { addDays } from '../../shared/date.ts';
@@ -381,8 +381,10 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
     // avaliação da diretoria (pode demitir o treinador) e vagas em clubes rebaixados da IA
     const relegatedIds = [...direction].filter(([, d]) => d === 'relegated').map(([id]) => id);
     const userRow = userInBatch ? [...tables.values()].flat().find((r) => r.clubId === st.clubId) : undefined;
+    // clube sem divisão nacional: a diretoria avalia pelo estadual da temporada (classificação final, título, acesso ou rebaixamento)
+    const userEst = userInBatch && !userRow ? estadualResultOf(db, st.clubId, [...cur.values()][0]!.season) : null;
     // a diretoria avalia o treinador na virada do país dele (não no início da carreira, quando ele ainda não comandava o clube)
-    const review = opts.user ? reviewSeason(db, date, userRow && !opts.quiet ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : null, relegatedIds)
+    const review = opts.user ? reviewSeason(db, date, opts.quiet ? null : userRow ? { position: userRow.position, champion: userRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', relegated: direction.get(st.clubId) === 'relegated' } : userEst, relegatedIds)
       : reviewSeason(db, date, null, relegatedIds);
     if (review) report.board = { met: review.verdict.met, lines: review.verdict.lines, sacked: review.sacked };
     reviewAiCoaches(db, comps.map((c) => c.id), date, new Set(relegatedIds), julyBatch); // técnicos da IA: reputação e aposentadoria
@@ -391,6 +393,7 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
     for (const c of countryIds) advanceCountrySeason(db, c);
     if (opts.user) followCountry(db, userCountry(db));
     db.prepare('UPDATE career SET updated_at = ? WHERE id = 1').run(opts.now.toISOString());
+    for (const cid of countryIds) estadualTurnover(db, cid, cur.get(cid)!.season); // acesso e rebaixamento estaduais, antes dos estaduais do ano seguinte
     createSeason(db, undefined, countryIds);
     if (opts.user) startBoardSeason(db); // objetivos e orçamentos da temporada nova
     if (!opts.user) return report;

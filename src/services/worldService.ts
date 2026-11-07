@@ -1,3 +1,4 @@
+import { ESTADUAIS } from '../game/format-engine/formats.ts';
 import type { ClubList } from '../shared/api.ts';
 import type { World } from '../shared/types.ts';
 import { ageOn } from '../shared/date.ts';
@@ -39,6 +40,8 @@ export function listClubs(w: World, origin?: ReadonlyMap<string, { created: stri
         reputation: c.reputation, avgOverall: Math.round((squad.reduce((s, p) => s + p.overall, 0) / Math.max(1, squad.length)) * 10) / 10,
         stadium: st.name, stadiumId: st.id, capacity: st.capacity, city: c.city, fans: c.fans, balance: c.balance, facilities: { ...c.facilities },
         objective: OBJECTIVE_LABEL[obj.objective], expectedPosition: expected, teamCount: reps.length,
+        state: c.state ?? null,
+        estadual: c.state && c.stateDivision ? (() => { const e = ESTADUAIS.find((x) => x.uf === c.state && x.division === c.stateDivision); return e ? { name: e.name, division: c.stateDivision } : null; })() : null,
         squadSize: squad.length, avgAge: Math.round((squad.reduce((s, p) => s + ageOn(p.birthDate, w.startDate), 0) / Math.max(1, squad.length)) * 10) / 10,
         stars: [...squad].sort((a, b) => b.overall - a.overall).slice(0, 3).map((p) => ({ name: `${p.firstName} ${p.lastName}`, position: p.position, overall: p.overall })),
         origin: { created: origin?.get(c.id)?.created ?? null, edited: [...(origin?.get(c.id)?.edited ?? [])] },

@@ -374,10 +374,11 @@ export function leagueFormat(leagueId: string, clubs: number): FormatDef | null 
   return null;
 }
 /** Formato pelo id gravado na competição (o tamanho escolhe a versão da Série C). */
-export function formatById(id: string, clubs: number): FormatDef | null {
+export function formatById(id: string, clubs: number, season = 2026): FormatDef | null {
   if (id === 'bra-serie-c') return leagueFormat('bra-3', clubs);
   if (id === 'bra-serie-d') return leagueFormat('bra-4', clubs);
-  return ESTADUAIS.find((e) => e.id === id)?.format(2026) ?? null;
+  const f = ESTADUAIS.find((e) => e.id === id)?.format(season) ?? null;
+  return f && f.size === clubs ? f : null;
 }
 
 /** Ordem geográfica dos estados (norte → sul), para formar grupos regionais. */

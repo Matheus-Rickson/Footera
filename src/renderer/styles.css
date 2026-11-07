@@ -1339,3 +1339,22 @@ button.cs-title-btn:hover:not(:disabled) { background: none; color: var(--primar
 .nc-start strong { color: var(--info-text); font-size: .95rem; }
 /* editor: estados do país */
 .ed-states { width: 100%; font-family: inherit; font-size: .85rem; resize: vertical; }
+/* campeonatos em fases (Séries C/D, estaduais): abas, grupos e confrontos */
+.cp-phases-btn { align-self: flex-end; min-height: 0; padding: 6px 12px; font-size: .82rem; }
+.sv-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sv-tab { min-height: 0; padding: 4px 12px; font-size: .8rem; border-radius: 999px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); font-weight: 600; }
+.sv-tab.sv-tab-on { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
+.sv-tab.sv-tab-side { font-style: italic; }
+.sv-gold { color: var(--warning-text); vertical-align: -2px; }
+.sv-groups { display: grid; gap: 16px; }
+.sv-groups.sv-groups-many { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.sv-group-title { margin: 0 0 4px; font-size: .85rem; }
+.sv-table td { padding: 3px 6px; }
+.sv-ties { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sv-tie { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); }
+.sv-tie.mine { box-shadow: inset 3px 0 0 var(--primary); }
+.sv-side { min-width: 0; display: flex; }
+.sv-side.sv-side-b { justify-content: flex-end; }
+.sv-side.sv-win { font-weight: 700; }
+.sv-score { display: flex; flex-direction: column; align-items: center; gap: 1px; font-variant-numeric: tabular-nums; }
+.sv-game { min-height: 0; padding: 0; font-size: .85rem; font-weight: 600; }

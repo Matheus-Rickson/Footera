@@ -223,7 +223,8 @@ test('Base real na criação da carreira: 14 copas sorteadas; folgas da 1ª fase
   let checkedByes = 0, checkedLower = 0;
   for (const db of careers) {
   const cups = db.prepare("SELECT id, country_id FROM competitions WHERE kind = 'cup'").all();
-  const leagueDates = new Set(db.prepare('SELECT DISTINCT match_date AS d FROM fixtures WHERE tie_id IS NULL').all().map((r) => String(r.d)));
+  // datas de liga e estaduais por país (a copa evita as do próprio país)
+  const leagueDates = new Set(db.prepare("SELECT DISTINCT c.country_id || '|' || f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.tie_id IS NULL AND c.kind IN ('league', 'state')").all().map((r) => String(r.d)));
   const tierOf = new Map(db.prepare('SELECT c.id, l.tier FROM clubs c JOIN leagues l ON l.id = c.league_id').all().map((r) => [String(r.id), Number(r.tier)]));
   for (const c of cups) {
     const id = String(c.id), state = cupStateOf(db, id);
@@ -238,7 +239,7 @@ test('Base real na criação da carreira: 14 copas sorteadas; folgas da 1ª fase
     const st = state.format.stages[first]!;
     for (const t of ties.filter((x) => x.club_b != null)) {
       const games = db.prepare('SELECT home_club_id, away_club_id, neutral, match_date FROM fixtures WHERE tie_id = ? ORDER BY leg').all(String(t.id));
-      assert.ok(games.every((g) => !leagueDates.has(String(g.match_date))), 'não coincide com a liga');
+      assert.ok(games.every((g) => !leagueDates.has(`${String(c.country_id)}|${String(g.match_date)}`)), 'não coincide com a liga');
       const decisive = games.at(-1)!;
       if (st.host === 'neutral') assert.equal(Number(decisive.neutral), 1);
       if (st.host === 'lower' && tierOf.get(String(t.club_a)) !== tierOf.get(String(t.club_b))) {

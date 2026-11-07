@@ -3,6 +3,7 @@ import { getConversations, talkToBoard, talkToPlayer } from '../database/reposit
 import type { BoardTopicDto, ClubProfileDto, ConversationsDto, PlayerTopicDto, TalkResultDto } from '../shared/api.ts';
 import { ensureAiCoaches, getAiCoachDetail, getClubInfo, listUnemployedCoaches } from '../database/repositories/aiCoachRepository.ts';
 import { createCups, getCupBracket } from '../database/repositories/cupRepository.ts';
+import { getStagedView } from '../database/repositories/formatRepository.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -41,7 +42,7 @@ import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
 import type { Coach, Methodology, World } from '../shared/types.ts';
 import type {
-  AiCoachDetailDto, AiCoachDto, ClubInfoDto, CupBracketDto, BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
+  AiCoachDetailDto, AiCoachDto, ClubInfoDto, CupBracketDto, StagedViewDto, BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, SocialFeedDto, SocialFilter, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPageDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, LiveOptionsInput, LiveMatchDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, ContinueStepDto,
@@ -339,6 +340,7 @@ export const getInfrastructure = (b: string, p: string, c: string): Promise<Infr
 export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind): Promise<true> => withClubCareer(b, p, c, (db) => { startUpgrade(db, k); return true as const; });
 
 export const cupBracket = (b: string, p: string, c: string, competitionId: string): Promise<CupBracketDto> => withPreparedCareer(b, p, c, (db) => getCupBracket(db, competitionId));
+export const stagedView = (b: string, p: string, c: string, competitionId: string): Promise<StagedViewDto> => withPreparedCareer(b, p, c, (db) => getStagedView(db, competitionId));
 export const getBoard = (b: string, p: string, c: string): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => getBoardOverview(db));
 export const clubInfo = (b: string, p: string, c: string, clubId: string): Promise<ClubInfoDto> => withPreparedCareer(b, p, c, (db) => getClubInfo(db, clubId));
 export const clubProfile = (b: string, p: string, c: string, clubId: string): Promise<ClubProfileDto> => withPreparedCareer(b, p, c, (db) => getClubProfile(db, clubId));

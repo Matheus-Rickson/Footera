@@ -42,12 +42,33 @@ export function spreadDates(year: number, from: string, to: string, n: number, f
   return [...head, ...pool];
 }
 
+/**
+ * Datas dos estaduais: 12 datas de janeiro a meados de março (sábado ~10/01, quarta, domingo, quarta, domingo e os domingos seguintes) —
+ * a Série A joga às quartas nesse período —, depois quartas-feiras (as Séries A, B, C e D jogam aos sábados). A Série A2 carioca é de
+ * abril a agosto, às quartas. Cada fase usa as próximas datas livres da lista a partir do dia mínimo.
+ */
+export function estadualPool(year: number, id: string): IsoDate[] {
+  if (id === 'rj-a2') { const out: IsoDate[] = []; for (let d = nextWeekdayOnOrAfter(`${year}-04-29`, WED); out.length < 40; d = addDays(d, 7)) out.push(d); return out; }
+  const s0 = nextWeekdayOnOrAfter(`${year}-01-10`, SAT);
+  const out: IsoDate[] = [s0, addDays(s0, 4), addDays(s0, 8), addDays(s0, 11), addDays(s0, 15)];
+  while (out.length < 12) out.push(addDays(out[out.length - 1]!, 7));
+  for (let d = addDays(out[out.length - 1]!, 10); out.length < 40; d = addDays(d, 7)) out.push(d);
+  return out;
+}
+
+/** Quartas-feiras da Série A durante os estaduais (até a quarta seguinte à última data de domingo deles): 8 rodadas. */
+const SERIE_A_MIDWEEK = 8;
+
 /** Datas das rodadas das Séries A e B (pontos corridos) no ano da temporada; null para as demais ligas. */
 export function brazilLeagueDates(leagueId: string, year: number, rounds: number): IsoDate[] | null {
   if (leagueId === 'bra-1') {
-    if (!worldCupYear(year)) return spreadDates(year, '01-28', '12-02', rounds, '01-28', true);
-    const before = Math.min(18, rounds);
-    return [...spreadDates(year, '01-28', '05-31', before, '01-28'), ...(rounds > before ? spreadDates(year, '07-22', '12-02', rounds - before, '07-22', true) : [])];
+    // durante os estaduais, às quartas (como em 2026); depois, aos sábados
+    const weds: IsoDate[] = [];
+    for (let d = nextWeekdayOnOrAfter(`${year}-01-28`, WED); weds.length < Math.min(SERIE_A_MIDWEEK, rounds); d = addDays(d, 7)) weds.push(d);
+    const after = addDays(weds[weds.length - 1]!, 3).slice(5);
+    if (!worldCupYear(year)) return [...weds, ...spreadDates(year, after, '12-02', rounds - weds.length, undefined, true)];
+    const before = Math.min(18, rounds) - weds.length;
+    return [...weds, ...spreadDates(year, after, '05-31', before), ...(rounds > before + weds.length ? spreadDates(year, '07-22', '12-02', rounds - before - weds.length, '07-22', true) : [])];
   }
   if (leagueId === 'bra-2') return spreadDates(year, '03-21', '11-28', rounds, '03-21');
   return null;

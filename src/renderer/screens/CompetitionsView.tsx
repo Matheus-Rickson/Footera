@@ -6,6 +6,7 @@ import { HelpTip } from '../help.tsx';
 import { useImages } from '../images.ts';
 import { ClubCrest } from '../flags.tsx';
 import { ClubSheet } from '../clubSheet.tsx';
+import { StagedView } from './StagedView.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer?: (id: string) => void; onOpenMatch?: (fixtureId: string) => void; onOpenClub?: (clubId: string) => void }
 
@@ -28,14 +29,19 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
   }, [profileId, careerId]);
 
   const [cup, setCup] = useState<CupBracketDto | null>(null);
-  const isCup = comps?.find((c) => c.id === selected)?.kind === 'cup';
+  const info = comps?.find((c) => c.id === selected);
+  const isCup = info?.kind === 'cup';
+  // campeonato em fases: estaduais sempre na visão por fases; Séries C/D na tabela da 1ª fase, com o botão "Ver fases"
+  const [phases, setPhases] = useState(false);
+  const staged = info?.kind === 'state' || (!!info?.staged && phases);
   useEffect(() => {
     if (!selected || !comps) return;
     let stale = false;
+    if (info?.kind === 'state') return;
     if (isCup) unwrap(window.api.getCupBracket(profileId, careerId, selected)).then((b) => { if (!stale) { setCup(b); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
     else unwrap(window.api.getCompetitionTable(profileId, careerId, selected)).then((t) => { if (!stale) { setTable(t); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
     return () => { stale = true; };
-  }, [profileId, careerId, selected, refreshKey, isCup, comps]);
+  }, [profileId, careerId, selected, refreshKey, isCup, comps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <p className="error" role="alert">{error}</p>;
   const picker = comps && (
@@ -44,9 +50,20 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
         <optgroup label="Ligas">{comps.filter((c) => c.kind === 'league').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         <optgroup label="Copas nacionais">{comps.filter((c) => c.kind === 'cup' && !c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         {comps.some((c) => c.supercup) && <optgroup label="Supercopas">{comps.filter((c) => c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>}
+        {comps.some((c) => c.kind === 'state') && <optgroup label="Estaduais">{comps.filter((c) => c.kind === 'state').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
       </select>
     </label>
   );
+  const phasesBtn = info?.staged && info.kind === 'league'
+    ? <button className="secondary cp-phases-btn" onClick={() => setPhases((p) => !p)}>{phases ? 'Ver tabela' : 'Ver fases'}</button> : null;
+  if (staged && selected) {
+    return (
+      <>
+        <StagedView profileId={profileId} careerId={careerId} competitionId={selected} refreshKey={refreshKey} picker={picker} img={img} onClub={setClub} onOpenMatch={onOpenMatch} extra={phasesBtn} />
+        {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} onOpenFull={onOpenClub} />}
+      </>
+    );
+  }
   if (isCup) {
     if (!cup || cup.id !== selected) return <p className="muted">Carregando copa…</p>;
     return (
@@ -66,7 +83,7 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
       <section className="card cp-head">
         <div className="cp-pick">
           {logo && <img className="cp-league-logo" src={logo} alt={`Logo: ${table.competition.name}`} />}
-          {picker}
+          {picker}{phasesBtn}
         </div>
         <p className="muted small">
           Rodadas concluídas: {table.roundsPlayed} de {table.totalRounds} · Desempate: {table.tiebreakers.map((t) => TIEBREAKER_LABEL[t] ?? t).join(' → ')}

@@ -3,7 +3,7 @@ import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { DEFAULT_CALENDAR, firstMatchday, scheduleLeague } from '../../game/competition-engine/schedule.ts';
 import { leagueFormat } from '../../game/format-engine/formats.ts';
-import { brazilCalendar, createFormatCompetition } from './formatRepository.ts';
+import { brazilCalendar, createEstaduais, createFormatCompetition } from './formatRepository.ts';
 import { brazilLeagueDates } from '../../game/career-engine/brazilCalendar.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
 import { addDays, daysBetween } from '../../shared/date.ts';
@@ -94,6 +94,8 @@ function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
     }
     created++;
   }
+  // estaduais (Brasil): antes das copas, para a Copa do Brasil evitar as datas deles
+  if (created > 0) createEstaduais(db, cs.countryId, cs.season);
   // copas e supercopa: depois da liga (as datas evitam os jogos da liga); só numa temporada nova (saves antigos: saveService, com data mínima)
   if (created > 0) { createCups(db, { countryId: cs.countryId }); createSupercup(db, cs.countryId); }
   return created;
@@ -140,10 +142,10 @@ export function getNextFixture(db: SqlDb): FixtureDto | null {
 export function listCompetitions(db: SqlDb): { userCompetitionId: string | null; competitions: CompetitionInfoDto[] } {
   const st = getCareerState(db);
   const competitions = db.prepare(
-    `SELECT c.id, c.name, c.league_id, l.tier, l.team_count, co.name AS country
+    `SELECT c.id, c.name, c.league_id, l.tier, l.team_count, co.name AS country, c.format_json
        FROM competitions c JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id
       WHERE ${CURRENT_COMP} ORDER BY co.name, l.tier`).all()
-    .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count), kind: 'league' }) as CompetitionInfoDto);
+    .map((r) => ({ id: S(r.id), leagueId: S(r.league_id), name: S(r.name), country: S(r.country), tier: N(r.tier), teamCount: N(r.team_count), kind: 'league', ...(r.format_json != null ? { staged: true } : {}) }) as CompetitionInfoDto);
   // copas nacionais (depois das divisões do país; a do país do usuário primeiro entre as copas)
   const myCountry = st.clubId ? S(db.prepare('SELECT country_id FROM clubs WHERE id = ?').get(st.clubId)?.country_id ?? '') : '';
   const cups = db.prepare(`SELECT c.id, c.name, c.country_id, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.clubs'))) AS n,
@@ -151,9 +153,16 @@ export function listCompetitions(db: SqlDb): { userCompetitionId: string | null;
       FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'cup' AND ${CURRENT_COMP} ORDER BY c.country_id = ? DESC, co.name, c.id`).all(myCountry)
     .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'cup' as const, supercup: r.fk === 'supercup' }));
   competitions.push(...cups);
+  // estaduais (o do clube do usuário primeiro), na ordem das divisões
+  const states = db.prepare(`SELECT c.id, c.name, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.seeds'))) AS n,
+      EXISTS (SELECT 1 FROM fixtures f WHERE f.competition_id = c.id AND (f.home_club_id = ? OR f.away_club_id = ?)) AS mine
+      FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'state' AND ${CURRENT_COMP} ORDER BY mine DESC, c.name`).all(st.clubId, st.clubId)
+    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'state' as const, staged: true, mine: N(r.mine) === 1 }));
+  competitions.push(...states.map(({ mine: _m, ...c }) => c));
   const mine = db.prepare(
     `SELECT c.id FROM competitions c JOIN clubs cl ON cl.league_id = c.league_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND cl.id = ?`).get(st.clubId);
-  return { userCompetitionId: mine ? S(mine.id) : null, competitions };
+  // clube sem divisão: abre no estadual dele
+  return { userCompetitionId: mine ? S(mine.id) : states.find((x) => x.mine)?.id ?? null, competitions };
 }
 
 function zoneFor(position: number, total: number, rules: LeagueRules): TableZone {

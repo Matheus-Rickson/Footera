@@ -9,7 +9,10 @@ import { openDatabase } from '../database/connection.ts';
 import { migrate } from '../database/migrator.ts';
 import { loadWorld, saveWorld } from '../database/repositories/worldRepository.ts';
 import { createCareer } from '../services/careerService.ts';
-import { getCareerState } from '../database/repositories/competitionRepository.ts';
+import { advanceTime, getCareerState, listCompetitions } from '../database/repositories/competitionRepository.ts';
+import { simulateMatchday } from '../database/repositories/matchRepository.ts';
+import { leagueSituation } from '../database/repositories/boardRepository.ts';
+import { estadualResultOf } from '../database/repositories/formatRepository.ts';
 import { baseUniverse } from '../services/universeService.node.ts';
 import { listClubs } from '../services/worldService.ts';
 import type { Coach } from '../shared/types.ts';
@@ -75,7 +78,7 @@ test('CSV de clubes: colunas Estado e Divisão estadual (1, 2 ou vazio), com err
   assert.equal(row[csvHeader('clubs').indexOf('Divisão estadual')], 2);
 });
 
-test('Base real: a escolha do clube lista os sem divisão do Brasil e uma carreira com um deles é criada (ainda sem jogos próprios até os estaduais)', async () => {
+test('Base real: a escolha do clube lista os sem divisão do Brasil e uma carreira com um deles é criada e disputa o estadual', async () => {
   const w = baseUniverse().world;
   const list = listClubs(w);
   const brasil = list.countries.find((c) => c.code === 'BRA')!;
@@ -83,9 +86,35 @@ test('Base real: a escolha do clube lista os sem divisão do Brasil e uma carrei
   assert.equal(brasil.divisions, 4);
   const sd = list.clubs.filter((c) => c.leagueId === 'bra-sd');
   assert.ok(sd.length > 150 && sd.every((c) => c.league === 'Sem divisão'));
+  // escolha do clube: estado e estadual de cada clube (reserva = fora do estadual; continua na lista)
+  const opt = (id: string) => list.clubs.find((c) => c.id === id)!;
+  const sp = w.clubs.find((c) => c.state === 'SP' && c.stateDivision === 1)!;
+  assert.deepEqual([opt(sp.id).state, opt(sp.id).estadual], ['SP', { name: 'Campeonato Paulista', division: 1 }]);
+  const res = w.clubs.find((c) => c.countryId === 'bra' && c.state && !c.stateDivision)!;
+  assert.deepEqual([opt(res.id).state, opt(res.id).estadual], [res.state, null]);
+  assert.ok(list.clubs.filter((c) => c.countryId !== 'bra').every((c) => c.state === null && c.estadual === null));
+  // um sem divisão que disputa a elite do estadual
+  const pick = w.clubs.find((c) => c.leagueId === 'bra-sd' && c.stateDivision === 1)!;
   const db = await openDatabase(':memory:');
-  createCareer(db, { ...w, seed: 'sem-divisao' }, coach, sd[0]!.id, new Date(), [], ['bra-1']);
+  createCareer(db, { ...w, seed: 'sem-divisao' }, coach, pick.id, new Date(), [], ['bra-1']);
   assert.equal(getCareerState(db).gameDate, '2026-01-01');
   assert.equal(Number(db.prepare("SELECT COUNT(*) AS n FROM competitions WHERE league_id = 'bra-sd'").get()!.n), 0, 'a "Sem divisão" não tem competição própria');
   assert.equal(String(db.prepare("SELECT sim_level AS s FROM leagues WHERE id = 'bra-sd'").get()!.s), 'full', 'a divisão do clube escolhido é sempre completa');
+  // o clube joga o estadual: Competições lista os 29 estaduais e abre no dele; ele tem jogos marcados
+  const comps = listCompetitions(db);
+  assert.equal(comps.competitions.filter((c) => c.kind === 'state').length, 29);
+  const mine = comps.competitions.find((c) => c.id === comps.userCompetitionId)!;
+  assert.equal(mine.kind, 'state');
+  assert.ok(Number(db.prepare('SELECT COUNT(*) AS n FROM fixtures WHERE home_club_id = ? OR away_club_id = ?').get(pick.id, pick.id)!.n) > 0, 'clube sem divisão com jogos (estadual)');
+  // diretoria: situação e objetivo pelo estadual (sem tabela de liga)
+  const sit = leagueSituation(db, pick.id, 2026)!;
+  assert.equal(sit.competitionId, mine.id);
+  const size = mine.teamCount;
+  const b = db.prepare('SELECT target_position, expected_position FROM board_state WHERE id = 1').get()!;
+  assert.ok(Number(b.expected_position) >= 1 && Number(b.expected_position) <= size && Number(b.target_position) <= size, 'objetivo dentro do estadual');
+  // até abril: o estadual termina e o resultado do clube nele fica disponível para a avaliação da temporada
+  for (let i = 0; i < 200 && getCareerState(db).gameDate < '2026-04-15'; i++) { advanceTime(db, 'nextMatchday'); simulateMatchday(db); }
+  assert.ok(leagueSituation(db, pick.id, 2026)!.played > 0);
+  const r = estadualResultOf(db, pick.id, 2026)!;
+  assert.ok(r && r.position >= 1 && r.position <= size);
 });

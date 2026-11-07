@@ -17,6 +17,8 @@ export interface ClubOption {
   city: string; fans: number; balance: number; facilities: { training: number; youth: number; medical: number; stadium: number };
   /** objetivo que a diretoria vai cobrar (mesma regra da Diretoria) e posição esperada na liga */
   objective: string; expectedPosition: number; teamCount: number;
+  /** estado (sigla) e o estadual que o clube disputa (null = sem estado; estadual null = fora do estadual, na reserva do estado) */
+  state: string | null; estadual: { name: string; division: 1 | 2 } | null;
   squadSize: number; avgAge: number;
   /** 3 jogadores mais fortes (força 0–100; a tela mostra 1–20) */
   stars: Array<{ name: string; position: Position; overall: number }>;
@@ -104,7 +106,21 @@ export interface FixtureDto {
   /** partida de copa: nome da copa (sem a temporada), fase, jogo de ida/volta (null = jogo único) e campo neutro; null = liga */
   cup: { name: string; stage: string; leg: 1 | 2 | null; neutral: boolean } | null;
 }
-export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa: leagueId = '' e tier = 0 */ kind: 'league' | 'cup'; /** copa que é supercopa */ supercup?: boolean }
+export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa e estadual: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' | 'state'; /** copa que é supercopa */ supercup?: boolean;
+  /** disputado em fases (Séries C/D, estaduais): tem a visão por fases */ staged?: boolean }
+/** Campeonato em fases (Séries C/D, estaduais): cada fase com as tabelas dos grupos ou os confrontos. */
+export interface StagedViewDto {
+  id: string; name: string; kind: 'league' | 'state'; status: 'scheduled' | 'in_progress' | 'finished'; regulation: string;
+  source: { structure: string; tiebreak: string; national: string };
+  champion: { id: string; name: string } | null; titles: Array<{ name: string; club: { id: string; name: string } | null }>;
+  promoted: Array<{ id: string; name: string }>; relegated: Array<{ id: string; name: string }>;
+  stages: Array<{
+    id: string; name: string; kind: 'league' | 'knockout'; side: boolean; built: boolean; legs: number;
+    groups: Array<{ name: string; rows: Array<{ position: number; clubId: string; clubName: string; played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; goalDiff: number; points: number; isUserClub: boolean }> }>;
+    ties: Array<{ a: { id: string; name: string }; b: { id: string; name: string }; games: Array<{ fixtureId: string; date: string; homeId: string; homeGoals: number | null; awayGoals: number | null; hasReport: boolean }>;
+      aggregate: [number, number] | null; winner: string | null; pens: string | null; involvesUser: boolean }>;
+  }>;
+}
 /** Chave de uma copa: fases com os confrontos, a regra de cada fase e de onde veio cada regra. */
 export interface CupBracketDto {
   id: string; name: string; country: string; countryCode: string; status: 'scheduled' | 'in_progress' | 'finished'; champion: { id: string; name: string } | null;
@@ -545,6 +561,7 @@ export interface GameApi {
   getCompetitionTable(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionTableDto>>;
   getCompetitionLeaders(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionLeadersDto>>;
   getCupBracket(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CupBracketDto>>;
+  getStagedView(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<StagedViewDto>>;
   advance(profileId: string, careerId: string, mode: AdvanceMode): Promise<IpcResult<AdvanceResultDto>>;
   continueDay(profileId: string, careerId: string): Promise<IpcResult<ContinueStepDto>>;
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;

@@ -21,6 +21,9 @@ import { countrySeason } from './countrySeasonRepository.ts';
 import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.ts';
 import { supercupEntrants, supercupFormat, type SupercupInputs } from '../../game/cup-engine/supercups.ts';
 import { addDays } from '../../shared/date.ts';
+import { estadualPool } from '../../game/career-engine/brazilCalendar.ts';
+import { ESTADUAIS } from '../../game/format-engine/formats.ts';
+import { formatRounds } from '../../game/format-engine/engine.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -81,6 +84,11 @@ export function createCups(db: SqlDb, opts: { countryId?: string; notBefore?: st
       plan = planByes(format, entrants);
       const avoid = new Set(db.prepare(`SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id
         WHERE c.season = ? AND c.kind = 'league' AND c.country_id = ?`).all(season, S(co.id)).map((r) => S(r.d)));
+      // estaduais: todas as datas possíveis deles (as fases seguintes ainda não existem)
+      for (const e of db.prepare("SELECT DISTINCT json_extract(format_json, '$.formatId') AS f FROM competitions WHERE kind = 'state' AND season = ? AND country_id = ?").all(season, S(co.id))) {
+        const def = ESTADUAIS.find((x) => x.id === S(e.f))?.format(season);
+        for (const d of estadualPool(season, S(e.f)).slice(0, def ? formatRounds(def) : 0)) avoid.add(d);
+      }
       dates = cupDates(format, season, avoid, start);
     } catch { continue; } // formato que não fecha com os clubes do universo (pacote): o país fica sem copa nesta temporada
     if (notBefore && dates[0]![0]! < notBefore) continue;

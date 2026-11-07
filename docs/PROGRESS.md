@@ -1094,3 +1094,17 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - Testes: calendário puro e intervalo mínimo no `series-cd.test.ts`; `calendar-year.test.ts` ajustado (Série A começa em 28/01).
     Mutação 5/5. 284 testes. Fontes das datas: tabela básica da Série D (CBF); âncoras das Séries A, B e C pela imprensa (PDF da tabela
     básica da Série A não obtido).
+- **Estaduais — etapa 5: estaduais no jogo (pedido do usuário, 07/11/2026; sem commit):** ver `docs/ESTADUAIS.md` (item 5).
+  - Migração 024 (tipo 'state'); `createEstaduais`, `estadualPool`, Série A às quartas até meados de março, Copa do Brasil fora das datas dos
+    estaduais; `finishEstadual` (troféu, premiação, notícia); `estadualTurnover`; vagas da D pelo estadual; `estadualSituation`/`estadualResultOf`
+    (diretoria do clube sem divisão); `getStagedView` + `StagedView.tsx` (visão por fases) e Competições com os estaduais.
+  - Correções no caminho: o índice antigo das copas não volta na reconstrução da tabela (copa e supercopa no mesmo país e temporada);
+    rebaixado no estadual não volta ao completar a divisão; a lista de datas evitadas pela Copa do Brasil limitada ao que cada estadual usa
+    (com 40 datas, a copa podia ficar sem datas).
+  - Testes: `series-cd.test.ts` (estaduais na temporada inteira: 29 com campeão, datas, premiação, virada estadual, vagas da D, Copa do
+    Brasil fora das datas, visão por fases) e `states.test.ts` (clube sem divisão: lista, estadual, diretoria). 284 testes. Mutação 15/15
+    (duas sobreviventes na primeira rodada — Copa do Brasil fora das datas e o agregado na visão por fases — passaram a ser detectadas;
+    "acesso da A2" é equivalente: a recomposição da elite pega os mesmos clubes).
+  - Telas NÃO verificadas no Electron (Competições com estaduais, visão por fases, "Ver fases").
+  - Escolha do clube (pedido do usuário): painel com o estado e o estadual ("SP · Campeonato Paulista (elite)", "fora do estadual" para a
+    reserva), estado na lista e filtro "Estado". Clubes de reserva continuam jogáveis (terão calendário com as copas estaduais da etapa 6).

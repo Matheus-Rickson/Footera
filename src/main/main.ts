@@ -10,7 +10,7 @@ import {
   advanceCareer, continueCareerDay, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket,
+  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -276,6 +276,7 @@ function registerHandlers(): void {
   handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
   handle('cup:bracket', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => cupBracket(dataDir(), i.profileId, i.careerId, i.competitionId));
+  handle('staged:view', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => stagedView(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('club:info', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubInfo(dataDir(), i.profileId, i.careerId, i.clubId));
   handle('club:profile', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubProfile(dataDir(), i.profileId, i.careerId, i.clubId));
   handle('talk:list', ref, (i) => conversations(dataDir(), i.profileId, i.careerId));

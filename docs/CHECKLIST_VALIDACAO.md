@@ -335,6 +335,15 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Série D: 1ª rodada em 04/04, final em setembro; Série C: final em outubro.
 - [ ] Nenhum jogo do seu clube com menos de 3 dias de intervalo (copa e liga).
 
+## 13y. Estaduais
+- [ ] Carreira no Brasil (01/01/2026): Competições → grupo "Estaduais" com os 29; o do seu estado primeiro.
+- [ ] Estadual: abas das fases; tabela da 1ª fase (Carioca: 2 grupos que se enfrentam; Paulistão: 4 potes); depois quartas/semis/final com ida, volta, agregado e pênaltis.
+- [ ] Calendário de jan–mar: estadual nos fins de semana (e quartas de janeiro), Série A às quartas; nenhum jogo do seu clube com menos de 3 dias.
+- [ ] Fim do estadual: notícia (título ou colocação), troféu na Sala de troféus se campeão, premiação no extrato.
+- [ ] Séries C/D: botão "Ver fases" mostra os grupos e o mata-mata.
+- [ ] Clube sem divisão (elite do estadual): a carreira tem jogos; Competições abre no estadual; Diretoria com objetivo do estadual.
+- [ ] Virada para 2027: rebaixados do estadual saem (SP: para a A2), promovidos da A2 sobem; a Série D tem os melhores do estadual fora das séries.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

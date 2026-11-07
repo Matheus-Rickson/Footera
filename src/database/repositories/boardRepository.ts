@@ -22,6 +22,8 @@ import { boardBrief } from './newsRepository.ts';
 import { toStars } from '../../shared/scale.ts';
 import { dismissAiCoach, hireAiCoach } from './aiCoachRepository.ts';
 import { CURRENT_COMP, followCountry } from './countrySeasonRepository.ts';
+import { formatStateOf } from './formatRepository.ts';
+import { stageTables } from '../../game/format-engine/engine.ts';
 
 export class BoardError extends UserError {}
 
@@ -66,7 +68,7 @@ interface LeagueSituation { position: number; played: number; teams: number; exp
 export function leagueSituation(db: SqlDb, clubId: string, season: number): LeagueSituation | null {
   const c = db.prepare(`SELECT c.id, l.rules_json, l.tier FROM competitions c JOIN leagues l ON l.id = c.league_id
     WHERE c.kind = 'league' AND ${CURRENT_COMP} AND c.id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1`).get(clubId, clubId); void season;
-  if (!c) return null;
+  if (!c) return estadualSituation(db, clubId);
   const rules = JSON.parse(S(c.rules_json)) as LeagueRules;
   const teams = db.prepare(`SELECT id, reputation FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ? UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)`).all(S(c.id), S(c.id));
   const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' AND (stage IS NULL OR stage = 'f1')").all(S(c.id))
@@ -75,6 +77,25 @@ export function leagueSituation(db: SqlDb, clubId: string, season: number): Leag
   const row = table.find((r) => r.teamId === clubId)!;
   const rep = N(teams.find((t) => S(t.id) === clubId)!.reputation);
   return { position: row.position, played: row.played, teams: teams.length, expected: expectedPosition(rep, teams.map((t) => N(t.reputation))), rules, tier: N(c.tier), competitionId: S(c.id) };
+}
+
+/**
+ * Clube sem campeonato de liga (sem divisão nacional): a situação vem do estadual da temporada — posição na 1ª fase (tabela geral),
+ * esperada pela reputação entre os participantes; "acesso" = os promovidos da A2 e "rebaixamento" = os rebaixados do formato.
+ */
+function estadualSituation(db: SqlDb, clubId: string): LeagueSituation | null {
+  const e = db.prepare(`SELECT c.id FROM competitions c WHERE c.kind = 'state' AND ${CURRENT_COMP}
+    AND c.id IN (SELECT competition_id FROM fixtures WHERE home_club_id = ? OR away_club_id = ?) LIMIT 1`).get(clubId, clubId);
+  if (!e) return null;
+  const fs = formatStateOf(db, S(e.id));
+  if (!fs) return null;
+  const table = fs.state.stages.f1 ? stageTables(fs.def, fs.state, 'f1').overall : [];
+  const row = table.find((r) => r.teamId === clubId);
+  const reps = db.prepare(`SELECT id, reputation FROM clubs WHERE id IN (${fs.state.seeds.map(() => '?').join(',')})`).all(...fs.state.seeds);
+  const rep = N(reps.find((r) => S(r.id) === clubId)?.reputation ?? 1);
+  const rules: LeagueRules = { rounds: 1, pointsWin: 3, pointsDraw: 1, tiebreakers: fs.def.tiebreakers, promotionSlots: fs.def.promoted?.length ?? 0, relegationSlots: fs.def.relegated?.length ?? 0,
+    continentalSlots: 0, maxForeignPlayers: null, squadMin: 18, squadMax: 30 };
+  return { position: row?.position ?? fs.state.seeds.indexOf(clubId) + 1, played: row?.played ?? 0, teams: fs.state.seeds.length, expected: expectedPosition(rep, reps.map((r) => N(r.reputation))), rules, tier: 0, competitionId: S(e.id) };
 }
 
 // ---------------------------------------------------------------- objetivos e orçamentos da temporada

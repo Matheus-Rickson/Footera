@@ -96,7 +96,22 @@ vão para o grupo "sem divisão" do estado e sobem, no lugar deles, os clubes se
    de 04/04 a 29/08, 2ª fase em setembro/outubro e final em outubro (âncoras da imprensa; rodadas distribuídas aos sábados, quartas quando
    faltam datas — ADAPT); Série D nas datas da tabela básica oficial (05/04 a 13/09, REG). Base real: nenhum clube joga duas vezes com
    menos de 3 dias de intervalo numa temporada inteira (todas as competições). Os estaduais entram nas datas livres na etapa 5.
-5. Estaduais completos (finanças, diretoria, troféus, telas) — pendente.
+5. **Estaduais no jogo** — feito:
+   - Competição do tipo "estadual" (migração 024); os 29 criados a cada temporada do Brasil com os clubes de `state`/`stateDivision`.
+   - Datas (`estadualPool`): 12 datas de ~10/01 a ~15/03 (sábado, quarta, domingo, quarta e domingos; a Série A joga às quartas até
+     meados de março, como em 2026), depois quartas-feiras; A2 carioca às quartas de abril a agosto. A Copa do Brasil evita as datas que
+     cada estadual pode usar (`formatRounds`). Base real: os de estados com clubes na Série A acabam até 15/03; o mais longo (A2 paulista)
+     em maio; nenhum clube joga duas vezes com menos de 3 dias.
+   - Fim do estadual: troféu, premiação (ADAPT: campeão = economia × 400 mil, vice = metade; A2 = metade) e notícia para o usuário.
+   - Virada: quem cai desce (elite → A2 em SP/RJ, senão reserva), quem sobe da A2 vai para a elite, cada divisão é completada até o tamanho
+     do ano seguinte (A2 pela classificação, reserva pela reputação — ADAPT); quem acabou de cair não volta.
+   - **Vagas da Série D pelo estadual:** os mais bem colocados na elite do estadual fora das Séries A–C (a regra provisória da etapa 3 ficou
+     só como reserva, quando não há estadual concluído).
+   - Diretoria de clube sem divisão: situação, objetivo e avaliação da temporada pelo estadual.
+   - Telas: Competições lista os estaduais; visão por fases (abas, tabelas dos grupos, confrontos com ida/volta, agregado, pênaltis e
+     vencedor; campeão, títulos paralelos, acessos e rebaixados); Séries C e D com o botão "Ver fases"; clube sem divisão abre no estadual.
+   - Ainda ADAPT/pendente: cartões do estadual contam como os da liga (suspensão vale para a Série A); o playoff do penúltimo do Grupo X
+     com o vice da A2 carioca não é disputado; as vagas da Copa do Brasil (critério 3) ainda saem do ranking do jogo, não dos estaduais.
 
 ## Fontes
 - REC Série C 2026 e REC Série D 2026 (CBF; PDFs oficiais).
