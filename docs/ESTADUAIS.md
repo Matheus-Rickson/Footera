@@ -84,7 +84,13 @@ vão para o grupo "sem divisão" do estado e sobem, no lugar deles, os clubes se
 1. **Motor de formatos** (`src/game/format-engine/`) — feito: regras puras e todos os formatos acima definidos e testados.
 2. **Dados** — feito: estados, "Sem divisão", base 1.1.0 (+299 clubes; Série D com 96), editor (estados do país, divisão disputada, estado
    e divisão estadual do clube), CSV e escolha do clube na nova carreira. Copa do Brasil com o formato real de 126 clubes (9 fases).
-3. Séries C e D reais no banco (Série D montada na virada pelas vagas dos estaduais; expansão da C) — pendente.
+3. **Séries C e D reais no jogo** — feito: as divisões `bra-3` (20/24/28 clubes) e `bra-4` (96) são disputadas em fases
+   (`formatRepository.ts`, migração 023); cada fase é montada quando a anterior termina, na mesma transação da rodada; mata-mata com o
+   desempate do regulamento (saldo e pênaltis; cartões continuam os da liga); tabela de liga = 1ª fase; na virada, acessos e rebaixamentos
+   do formato (Série C cresce sozinha para 24 e 28) e a **Série D é remontada** com 96: rebaixados da C, vagas por estado (até haver os
+   estaduais: os clubes de melhor reputação da elite estadual fora das Séries A–C — ADAPT), até 28 da D anterior (5º–32º) e o restante pela
+   classificação da D e pela reputação; quem fica de fora vai para a "Sem divisão". Base real: Série C 2026 com 216 jogos e Série D com 610
+   (como no regulamento). Datas ainda provisórias (um jogo por semana a partir do fim de janeiro: C até agosto, D até junho) — etapa 4.
 4. Calendário 2026 (Série A a partir de 28/01; estaduais nas datas livres; sem jogos com menos de 2 dias de intervalo) — pendente.
 5. Estaduais completos (finanças, diretoria, troféus, telas) — pendente.
 

@@ -24,6 +24,9 @@ Holanda, Argentina, Bélgica, Japão, Áustria, México, Irlanda, Croácia e Rú
   regra acesso = rebaixamento; pode ter menos de 2 clubes); clube `state` (deve existir no país) e `stateDivision` (exige `state`).
   Banco: migração 022 (`countries.states_json`, `clubs.state`, `clubs.state_division`, `leagues.active`). CSV de clubes: colunas
   "Estado" e "Divisão estadual".
+- **Campeonatos em fases (migração 023):** `competitions.format_json` também em ligas (id do formato, participantes, início, dia dos jogos);
+  `competition_stages` (grupos e confrontos de cada fase montada); `fixtures.stage`, `fixtures.stage_tie`, `fixtures.pens_winner`.
+  Saves anteriores: as Séries C e D criadas antes continuam em pontos corridos até a próxima temporada.
 
 ## Países completos e simplificados
 Na criação da carreira o usuário escolhe os países com **simulação completa** (o do clube entra sempre); os demais ficam **simplificados**

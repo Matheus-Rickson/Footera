@@ -115,7 +115,7 @@ function tableOf(db: SqlDb, competitionId: string): { rows: TableRow[]; name: st
   const c = db.prepare('SELECT c.name, c.league_id, l.rules_json, l.tier FROM competitions c JOIN leagues l ON l.id = c.league_id WHERE c.id = ?').get(competitionId)!;
   const teams = db.prepare('SELECT id, name FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ? UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)').all(competitionId, competitionId);
   const names = new Map(teams.map((t) => [S(t.id), S(t.name)]));
-  const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played'").all(competitionId)
+  const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' AND (stage IS NULL OR stage = 'f1')").all(competitionId)
     .map((r) => ({ home: S(r.home_club_id), away: S(r.away_club_id), homeGoals: N(r.home_goals), awayGoals: N(r.away_goals) }));
   const rows = computeStandings([...names.keys()], results, JSON.parse(S(c.rules_json)) as LeagueRules)
     .map((r) => ({ clubId: r.teamId, name: names.get(r.teamId) ?? '?', points: r.points, played: r.played, position: r.position }));

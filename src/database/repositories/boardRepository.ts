@@ -69,7 +69,7 @@ export function leagueSituation(db: SqlDb, clubId: string, season: number): Leag
   if (!c) return null;
   const rules = JSON.parse(S(c.rules_json)) as LeagueRules;
   const teams = db.prepare(`SELECT id, reputation FROM clubs WHERE id IN (SELECT home_club_id FROM fixtures WHERE competition_id = ? UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)`).all(S(c.id), S(c.id));
-  const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played'").all(S(c.id))
+  const results: MatchResult[] = db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' AND (stage IS NULL OR stage = 'f1')").all(S(c.id))
     .map((r) => ({ home: S(r.home_club_id), away: S(r.away_club_id), homeGoals: N(r.home_goals), awayGoals: N(r.away_goals) }));
   const table = computeStandings(teams.map((t) => S(t.id)), results, rules);
   const row = table.find((r) => r.teamId === clubId)!;

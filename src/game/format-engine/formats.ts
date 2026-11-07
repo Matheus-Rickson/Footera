@@ -364,3 +364,52 @@ export const ESTADUAIS: readonly EstadualDef[] = [
   std('ro', 'RO', 'Campeonato Rondoniense', 7, 1),
   std('to', 'TO', 'Campeonato Tocantinense', 8, 1),
 ];
+
+// ---------------------------------------------------------------- formatos das divisões nacionais
+
+/** Formato de uma divisão nacional pelo id da liga e o número de clubes (null = pontos corridos, como as demais). */
+export function leagueFormat(leagueId: string, clubs: number): FormatDef | null {
+  if (leagueId === 'bra-3') return clubs === 20 ? serieC(2026) : clubs === 24 ? serieC(2027) : clubs === 28 ? serieC(2028) : null;
+  if (leagueId === 'bra-4') return clubs === 96 ? serieD() : null;
+  return null;
+}
+/** Formato pelo id gravado na competição (o tamanho escolhe a versão da Série C). */
+export function formatById(id: string, clubs: number): FormatDef | null {
+  if (id === 'bra-serie-c') return leagueFormat('bra-3', clubs);
+  if (id === 'bra-serie-d') return leagueFormat('bra-4', clubs);
+  return ESTADUAIS.find((e) => e.id === id)?.format(2026) ?? null;
+}
+
+/** Ordem geográfica dos estados (norte → sul), para formar grupos regionais. */
+export const UF_GEO_ORDER = ['AC', 'RO', 'AM', 'RR', 'AP', 'PA', 'TO', 'MA', 'PI', 'CE', 'RN', 'PB', 'PE', 'AL', 'SE', 'BA', 'DF', 'GO', 'MT', 'MS', 'MG', 'ES', 'RJ', 'SP', 'PR', 'SC', 'RS'];
+
+/**
+ * Grupos regionais (Série D: 16 grupos de 6, no máximo 3 clubes do mesmo estado — REC art. 14): os clubes em ordem geográfica formam
+ * blocos consecutivos; quando um grupo passa do limite de um estado, um desses clubes troca de lugar com um clube de outro estado do
+ * grupo mais próximo em que a troca respeita o limite dos dois lados.
+ */
+export function regionalGroups(clubs: ReadonlyArray<{ id: string; state: string | null }>, groups: number, maxSameState = 3): string[][] {
+  const size = clubs.length / groups;
+  if (!Number.isInteger(size)) throw new Error(`${clubs.length} clubes não se dividem em ${groups} grupos.`);
+  const geo = (uf: string | null) => (uf ? UF_GEO_ORDER.indexOf(uf) : 99);
+  const order = [...clubs].sort((a, b) => geo(a.state) - geo(b.state) || a.id.localeCompare(b.id));
+  const out = Array.from({ length: groups }, (_, g) => order.slice(g * size, (g + 1) * size));
+  const count = (g: number, uf: string | null) => (uf ? out[g]!.filter((c) => c.state === uf).length : 0);
+  for (let guard = 0; guard < 10_000; guard++) {
+    const gi = out.findIndex((_, g) => out[g]!.some((c) => count(g, c.state) > maxSameState));
+    if (gi < 0) break;
+    const x = out[gi]!.find((c) => count(gi, c.state) > maxSameState)!;
+    let swapped = false;
+    for (let d = 1; d < groups && !swapped; d++) {
+      for (const gj of [gi + d, gi - d]) {
+        if (gj < 0 || gj >= groups) continue;
+        const y = out[gj]!.find((c) => c.state !== x.state && count(gj, x.state) < maxSameState && count(gi, c.state) < maxSameState);
+        if (!y) continue;
+        out[gi]![out[gi]!.indexOf(x)] = y; out[gj]![out[gj]!.indexOf(y)] = x;
+        swapped = true; break;
+      }
+    }
+    if (!swapped) break; // impossível respeitar o limite (estado com clubes demais): fica como está
+  }
+  return out.map((x) => x.map((c) => c.id));
+}

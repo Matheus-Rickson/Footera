@@ -325,6 +325,11 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] CSV de clubes: exportar mostra as colunas Estado e Divisão estadual; importar com 1/2/vazio funciona e 7 dá erro na linha.
 - [ ] Competições → Copa do Brasil: 1ª fase com 28 clubes; a Série A estreia na 5ª fase.
 
+## 13w. Séries C e D reais
+- [ ] Carreira na Série C: Competições mostra a tabela da 1ª fase (20 clubes, 19 rodadas); depois dela, os jogos da 2ª fase aparecem no calendário.
+- [ ] Jogo de volta empatado no agregado (C ou D): vai para os pênaltis; o relatório mostra a fase e o agregado.
+- [ ] Na virada para 2027: Série C com 24 clubes; Série D com 96 (alguns clubes antes sem divisão entram).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

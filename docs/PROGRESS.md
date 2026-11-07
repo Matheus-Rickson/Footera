@@ -1074,3 +1074,14 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - Testes: `states.test.ts` (4) e ajustes de testes que dependiam da base 1.0.0 (versão, divisões, competições, Copa do Brasil) e de
     mundos pequenos (jogos de copa sorteados no meio da temporada; técnico padrão contratado nos meses simulados). 281 testes passando.
     Mutação 6/6. Telas do editor e da nova carreira NÃO verificadas no Electron.
+- **Estaduais — etapa 3: Séries C e D reais no jogo (pedido do usuário, 07/11/2026; sem commit):**
+  - `formatRepository.ts` + migração 023: criação da divisão em fases, montagem das fases seguintes depois de cada rodada (`advanceFormats`),
+    estado lido das partidas, desempate do jogo decisivo (`formatFixtureRule`; partida completa e resultado rápido), pênaltis gravados.
+    A competição em fases não é encerrada quando acabam os jogos agendados (só no fim do formato).
+  - Tabelas de liga (Competições, diretoria, técnicos da IA, notícias) usam só a 1ª fase. Relatório da partida mostra a fase/ida-volta.
+  - Virada (`runTurnover`): classificação final, acessos e rebaixamentos pelo formato; `rebuildSerieD` remonta a Série D (96).
+  - Grupos regionais da Série D (`regionalGroups`): blocos em ordem geográfica + trocas com o grupo vizinho para no máximo 3 por estado.
+  - Testes: `series-cd.test.ts` (2; temporada inteira da base real com C e D lance a lance, ~29 s). 283 testes passando. Mutação 9/9 (uma
+    sobrevivente na primeira rodada — desempate na partida completa — passou a ser detectada com a Série D lance a lance no teste).
+  - Pendente: telas das fases (grupos da D, mata-mata) em Competições (etapa 5); datas do calendário 2026 (etapa 4); vagas da D pelos
+    estaduais (etapa 5). Telas NÃO verificadas no Electron.

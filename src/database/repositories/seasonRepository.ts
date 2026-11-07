@@ -29,6 +29,7 @@ import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { fmtMoney } from '../../shared/money.ts';
 import { boardBrief, squadSize } from './newsRepository.ts';
 import { reviewAiCoaches } from './aiCoachRepository.ts';
+import { formatMetaOf, formatOutcomesOf, rebuildSerieD } from './formatRepository.ts';
 import { advanceCountrySeason, countrySeason, CURRENT_COMP, followCountry, userCountry, userSeason } from './countrySeasonRepository.ts';
 import { contractEndIn, renewedEnd, seasonLabelFor, type SeasonStart } from '../../game/career-engine/calendar.ts';
 import { addDays } from '../../shared/date.ts';
@@ -217,7 +218,13 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
       `SELECT c.id, c.name, c.league_id, l.tier, l.country_id, l.rules_json, co.name AS country, co.economy FROM competitions c
          JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = l.country_id WHERE c.kind = 'league' AND ${CURRENT_COMP} AND c.country_id IN (${ph}) ORDER BY co.rowid, l.tier`).all(...countryIds)
       .map((r) => ({ id: S(r.id), name: S(r.name), leagueId: S(r.league_id), tier: N(r.tier), countryId: S(r.country_id), country: S(r.country), economy: N(r.economy), rules: JSON.parse(S(r.rules_json)) as LeagueRules }));
-    const tables = new Map(comps.map((c) => [c.id, getCompetitionTable(db, c.id).rows]));
+    // classificação final: tabela (pontos corridos) ou, num campeonato em fases (Séries C/D), quem foi mais longe (game/format-engine)
+    const fmtOut = new Map(comps.map((c) => [c.id, formatOutcomesOf(db, c.id)]));
+    const tables = new Map(comps.map((c) => {
+      const f = fmtOut.get(c.id);
+      if (!f) return [c.id, getCompetitionTable(db, c.id).rows.map((r) => ({ clubId: r.clubId, clubName: r.clubName, position: r.position }))];
+      return [c.id, f.ranking.map((id, i) => ({ clubId: id, clubName: clubName(id), position: i + 1 }))];
+    }));
     const outcome = new Map<string, 'champion' | 'promoted' | 'relegated'>();
     const direction = new Map<string, 'promoted' | 'relegated'>(); // o campeão da 2ª divisão também sobe
     const moves: Array<{ clubId: string; toLeague: string }> = [];
@@ -226,9 +233,17 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
       const lower = comps.find((c) => c.countryId === upper.countryId && c.tier === upper.tier + 1);
       if (!lower) continue;
       const up = tables.get(upper.id)!, down = tables.get(lower.id)!;
-      const k = Math.min(upper.rules.relegationSlots, lower.rules.promotionSlots, up.length, down.length);
-      if (k <= 0) continue;
-      const relegated = up.slice(-k).map((r) => r.clubId), promoted = down.slice(0, k).map((r) => r.clubId);
+      const fu = fmtOut.get(upper.id), fl = fmtOut.get(lower.id);
+      let relegated: string[], promoted: string[];
+      if (fu || fl) { // campeonato em fases: o formato diz quem cai e quem sobe (as divisões podem mudar de tamanho: Série C 20 → 24 → 28)
+        relegated = fu ? fu.relegated : up.slice(-Math.min(upper.rules.relegationSlots, up.length)).map((r) => r.clubId);
+        promoted = fl ? fl.promoted : down.slice(0, Math.min(lower.rules.promotionSlots, down.length)).map((r) => r.clubId);
+      } else {
+        const k = Math.min(upper.rules.relegationSlots, lower.rules.promotionSlots, up.length, down.length);
+        if (k <= 0) continue;
+        relegated = up.slice(-k).map((r) => r.clubId); promoted = down.slice(0, k).map((r) => r.clubId);
+      }
+      if (!relegated.length && !promoted.length) continue;
       for (const id of relegated) { outcome.set(id, 'relegated'); direction.set(id, 'relegated'); moves.push({ clubId: id, toLeague: lower.leagueId }); }
       for (const id of promoted) { outcome.set(id, 'promoted'); direction.set(id, 'promoted'); moves.push({ clubId: id, toLeague: upper.leagueId }); }
       report.movements.push({ country: upper.country, promoted: promoted.map(clubName), relegated: relegated.map(clubName) });
@@ -255,6 +270,13 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
     }
     for (const m of moves) {
       db.prepare('UPDATE clubs SET league_id = ?, reputation = MAX(1, MIN(99, reputation + ?)) WHERE id = ?').run(m.toLeague, direction.get(m.clubId) === 'relegated' ? -3 : 3, m.clubId);
+    }
+    // Série D: não é divisão fixa; é remontada para a temporada seguinte (rebaixados da C, vagas dos estados, melhores da D, ranking)
+    for (const c of comps) {
+      const f = fmtOut.get(c.id);
+      if (f && formatMetaOf(db, c.id)?.formatId === 'bra-serie-d') {
+        rebuildSerieD(db, c.countryId, c.leagueId, f.ranking, new Set(f.promoted), moves.filter((m) => m.toLeague === c.leagueId).map((m) => m.clubId));
+      }
     }
     for (const c of comps) { const champ = tables.get(c.id)![0]; if (champ) db.prepare('UPDATE clubs SET reputation = MIN(99, reputation + 2) WHERE id = ?').run(champ.clubId); }
     const prev = report.previous;

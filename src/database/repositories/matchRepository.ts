@@ -22,6 +22,7 @@ import { applyMatchesToBoard, fastForwarding } from './boardRepository.ts';
 import { processSocialMatchday } from './socialRepository.ts';
 import { quickKnockout, quickResult, teamStrength } from '../../game/match-engine/quickResult.ts';
 import { advanceCups, applyCupCards, cupFixtureRule, cupSuspensions, recordCupResult, serveCupSuspension } from './cupRepository.ts';
+import { advanceFormats, formatFixtureRule, recordFormatShootout } from './formatRepository.ts';
 import { lightClubIds } from './simLevelRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { aiCoachAttributes } from './aiCoachRepository.ts';
@@ -59,7 +60,8 @@ interface StoredReport {
   /** só nas partidas do usuário (relatório completo); ausente em saves anteriores à lapidação */ timeline?: MatchTick[];
 }
 
-interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string; cup?: ReturnType<typeof cupFixtureRule> }
+interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string; cup?: ReturnType<typeof cupFixtureRule>;
+  /** mata-mata de campeonato em fases (Séries C/D, estaduais): desempate do jogo decisivo; os cartões continuam os da liga */ ko?: ReturnType<typeof formatFixtureRule> }
 
 function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasReport = true): MatchSummaryDto {
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
@@ -105,6 +107,7 @@ function runFixture(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixt
   return simulateMatch(prep.hSheet, prep.aSheet, {
     seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves,
     ...(f.cup ? { neutral: f.cup.neutral, ...(f.cup.decider ? { decider: f.cup.decider } : {}) } : {}),
+    ...(f.ko ? { neutral: f.ko.neutral, ...(f.ko.decider ? { decider: f.ko.decider } : {}) } : {}),
     ...(live && involves ? { control: { team: side, until: live.controlUntil ?? Number.MAX_SAFE_INTEGER }, interventions: ivs } : {}),
   });
 }
@@ -117,6 +120,7 @@ function storedOf(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixtur
     homeGoals: out.homeGoals, awayGoals: out.awayGoals, decidedIn: out.decidedIn, shootout: out.shootout, winner: out.winner,
     extraTime: out.events.some((e) => e.type === 'period_end' && e.detail === 'extra1'),
     ...(f.cup ? { cup: { stage: f.cup.stageName, leg: f.cup.leg, aggregate: out.aggregate, neutral: f.cup.neutral } } : {}),
+    ...(f.ko ? { cup: { stage: f.ko.stageName, leg: f.ko.leg, aggregate: out.aggregate, neutral: f.ko.neutral } } : {}),
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
     lineups: out.lineups, events: involves ? out.events : out.events.filter((e) => COMPACT_TYPES.has(e.type)), manOfTheMatch: out.manOfTheMatch,
@@ -131,6 +135,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
 
   applyResult(db, f.id, out.homeGoals, out.awayGoals);
   if (f.cup) recordCupResult(db, f.id, out, ctx.post);
+  if (f.ko) recordFormatShootout(db, f.id, out);
   const report = storedOf(f, ctx, prep, out);
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
@@ -220,6 +225,12 @@ function simulateLight(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, st
     recordCupResult(db, f.id, k, ctx.post);
     return summaryOf(f, k.homeGoals, k.awayGoals, ctx.userClub, false);
   }
+  if (f.ko?.decider) {
+    const k = quickKnockout(strengthOf(f.homeId), strengthOf(f.awayId), rng, f.ko.decider, f.ko.neutral);
+    applyResult(db, f.id, k.homeGoals, k.awayGoals);
+    recordFormatShootout(db, f.id, k);
+    return summaryOf(f, k.homeGoals, k.awayGoals, ctx.userClub, false);
+  }
   const r = quickResult(strengthOf(f.homeId), strengthOf(f.awayId), rng);
   applyResult(db, f.id, r.homeGoals, r.awayGoals);
   if (f.cup) recordCupResult(db, f.id, { winner: null, decidedIn: 'regular', shootout: null }, ctx.post); // ida: só a cota
@@ -232,7 +243,7 @@ function pendingFixtures(db: SqlDb, date: string): FixtureRow[] {
        FROM fixtures f JOIN competitions c ON c.id = f.competition_id JOIN clubs h ON h.id = f.home_club_id JOIN clubs a ON a.id = f.away_club_id
       WHERE f.status = 'scheduled' AND f.match_date <= ? ORDER BY f.match_date, f.id`).all(date)
     .map((r): FixtureRow => ({ id: S(r.id), competitionId: S(r.competition_id), competitionName: S(r.competition_name), round: N(r.round), date: S(r.match_date),
-      homeId: S(r.home_club_id), awayId: S(r.away_club_id), homeName: S(r.home_name), awayName: S(r.away_name), cup: cupFixtureRule(db, S(r.id)) }));
+      homeId: S(r.home_club_id), awayId: S(r.away_club_id), homeName: S(r.home_name), awayName: S(r.away_name), cup: cupFixtureRule(db, S(r.id)), ko: formatFixtureRule(db, S(r.id)) }));
 }
 function contextOf(db: SqlDb): Ctx {
   return {
@@ -263,6 +274,7 @@ export function simulateMatchday(db: SqlDb, live?: LiveOptions): SimulationSumma
     const post = makePoster(db, st.clubId);
     const out = rows.map((f) => (allLight || (light.has(f.homeId) && light.has(f.awayId)) ? simulateLight(db, f, { ...ctx, post }, strengthOf) : simulateOne(db, f, { ...ctx, post }, live)));
     advanceCups(db, st.gameDate); // copas: fase encerrada → sorteio da próxima (ou título), na mesma transação
+    advanceFormats(db, st.gameDate); // campeonatos em fases (Séries C/D): fase definida → jogos da próxima, na mesma transação
     applyMatchesToBoard(db, out); // a partida do clube do usuário mexe na confiança da diretoria
     processSocialMatchday(db, st.gameDate, out.map((r) => r.fixtureId)); // rede social: resultados, zebras, hat-tricks, lesões, rodada
     return out;

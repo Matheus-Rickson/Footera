@@ -157,7 +157,7 @@ test('Saves: save no formato da Fase 2 (sem calendário) é reparado automaticam
   const base = tmp(); const prof = createProfile(base, 'Teste');
   const c = await createCareerSave(base, { profileId: prof.id, clubId, coach });
   const db = await openDatabase(path.join(base, 'saves', prof.id, c.id, 'career.db'));
-  db.exec('DELETE FROM cup_ties; DELETE FROM fixtures; DELETE FROM competitions;');
+  db.exec('DELETE FROM cup_ties; DELETE FROM competition_stages; DELETE FROM fixtures; DELETE FROM competitions;');
   db.close();
   const ov = await openCareer(base, prof.id, c.id);
   assert.equal(ov.nextFixture?.date, '2026-08-01');

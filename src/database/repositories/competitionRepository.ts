@@ -1,7 +1,9 @@
 import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
-import { DEFAULT_CALENDAR, scheduleLeague } from '../../game/competition-engine/schedule.ts';
+import { DEFAULT_CALENDAR, firstMatchday, scheduleLeague } from '../../game/competition-engine/schedule.ts';
+import { leagueFormat } from '../../game/format-engine/formats.ts';
+import { createFormatCompetition } from './formatRepository.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
 import { addDays, daysBetween } from '../../shared/date.ts';
 import { turnoverDate } from '../../game/career-engine/contracts.ts';
@@ -65,6 +67,16 @@ function createCountrySeason(db: SqlDb, cs: CountrySeason): number {
     if (teams.length < 2) continue;
     const rules = JSON.parse(S(lg.rules_json)) as LeagueRules;
     const base = rules.calendar ?? DEFAULT_CALENDAR;
+    // divisão disputada em fases (Séries C e D reais): a 1ª fase já com jogos; as seguintes quando os participantes ficam definidos
+    const fdef = leagueFormat(leagueId, teams.length);
+    if (fdef) {
+      const cal = cs.start === '01-01' && !rules.calendar ? { ...DEFAULT_CALENDAR, seasonStart: CALENDAR_YEAR_LEAGUE_START } : base;
+      const seeds = db.prepare(`SELECT id FROM clubs WHERE league_id = ? ORDER BY reputation DESC, id`).all(leagueId).map((r) => S(r.id));
+      createFormatCompetition(db, { compId, leagueId, countryId: cs.countryId, season: cs.season, name: `${S(lg.name)} ${seasonLabelFor(cs.season, cs.start)}`,
+        def: fdef, seeds, start: firstMatchday(cs.season, cal), weekday: cal.matchWeekday, intervalDays: cal.intervalDays });
+      created++;
+      continue;
+    }
     // ano civil: liga depois da pré-temporada de janeiro
     const cal = cs.start === '01-01' && !rules.calendar ? { ...DEFAULT_CALENDAR, seasonStart: CALENDAR_YEAR_LEAGUE_START } : base;
     const games = scheduleLeague(teams, rules.rounds, cs.season, cal, createRng(`schedule:${seed}:${cs.season}:${leagueId}`));
@@ -159,15 +171,15 @@ export function getCompetitionTable(db: SqlDb, competitionId: string): Competiti
     UNION SELECT away_club_id FROM fixtures WHERE competition_id = ?)`).all(competitionId, competitionId);
   const names = new Map(teams.map((t) => [S(t.id), S(t.name)]));
   const results: MatchResult[] = db.prepare(
-    "SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played'").all(competitionId)
+    "SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' AND (stage IS NULL OR stage = 'f1')").all(competitionId)
     .map((r) => ({ home: S(r.home_club_id), away: S(r.away_club_id), homeGoals: N(r.home_goals), awayGoals: N(r.away_goals) }));
   const table = computeStandings([...names.keys()], results, rules);
   const roundsPlayed = N(db.prepare(
-    `SELECT COUNT(*) AS n FROM (SELECT round FROM fixtures WHERE competition_id = ? GROUP BY round HAVING SUM(status = 'scheduled') = 0)`).get(competitionId)!.n);
-  const totalRounds = N(db.prepare('SELECT COALESCE(MAX(round), 0) AS n FROM fixtures WHERE competition_id = ?').get(competitionId)!.n);
+    `SELECT COUNT(*) AS n FROM (SELECT round FROM fixtures WHERE competition_id = ? AND (stage IS NULL OR stage = 'f1') GROUP BY round HAVING SUM(status = 'scheduled') = 0)`).get(competitionId)!.n);
+  const totalRounds = N(db.prepare("SELECT COALESCE(MAX(round), 0) AS n FROM fixtures WHERE competition_id = ? AND (stage IS NULL OR stage = 'f1')").get(competitionId)!.n);
   // forma: últimos 5 jogos de cada clube na competição (ordem do calendário)
   const form = new Map<string, Array<'V' | 'E' | 'D'>>();
-  for (const m of db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' ORDER BY match_date, round, id").all(competitionId)) {
+  for (const m of db.prepare("SELECT home_club_id, away_club_id, home_goals, away_goals FROM fixtures WHERE competition_id = ? AND status = 'played' AND (stage IS NULL OR stage = 'f1') ORDER BY match_date, round, id").all(competitionId)) {
     const h = N(m.home_goals), a = N(m.away_goals);
     for (const [id, d] of [[S(m.home_club_id), h - a], [S(m.away_club_id), a - h]] as const) {
       const l = form.get(id) ?? []; l.push(d > 0 ? 'V' : d < 0 ? 'D' : 'E'); form.set(id, l.slice(-5));
@@ -214,9 +226,10 @@ export function applyResult(db: SqlDb, fixtureId: string, homeGoals: number, awa
   if (S(f.status) !== 'scheduled') throw new ResultError('Esta partida já foi disputada.');
   db.prepare("UPDATE fixtures SET status = 'played', home_goals = ?, away_goals = ? WHERE id = ?").run(homeGoals, awayGoals, fixtureId);
   const left = N(db.prepare("SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND status = 'scheduled'").get(S(f.competition_id))!.n);
-  // copa: as fases seguintes só existem depois do sorteio; quem encerra a copa é a final (advanceCups)
-  const isCup = S(db.prepare('SELECT kind FROM competitions WHERE id = ?').get(S(f.competition_id))!.kind) === 'cup';
-  db.prepare('UPDATE competitions SET status = ? WHERE id = ?').run(left === 0 && !isCup ? 'finished' : 'in_progress', S(f.competition_id));
+  // copa e campeonato em fases: as fases seguintes só existem depois de definidas; quem os encerra é a final (advanceCups / advanceFormats)
+  const comp = db.prepare('SELECT kind, format_json FROM competitions WHERE id = ?').get(S(f.competition_id))!;
+  const staged = S(comp.kind) === 'cup' || comp.format_json != null;
+  db.prepare('UPDATE competitions SET status = ? WHERE id = ?').run(left === 0 && !staged ? 'finished' : 'in_progress', S(f.competition_id));
 }
 
 /** Versão transacional de `applyResult` (usada em testes e ferramentas). */
