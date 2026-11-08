@@ -30,7 +30,31 @@ export const K = {
   controlExp: 3,
   homeControl: 0.028,
   homeAttack: 1.11,
+  /**
+   * Limites da razão ataque/defesa na criação de chances e do controle do jogo (posse). Bateria de 08/11/2026 (73 mil jogos): com 0,4–2,4 e
+   * 0,22–0,78, grande contra pequeno chegava a 19x0 e o mais fraco quase nunca vencia com 14+ pontos de diferença; estreitados nos extremos.
+   */
+  ratioMin: 0.5, ratioMax: 1.9, controlMin: 0.27, controlMax: 0.73,
+  /** quanto o peso de um setor (em relação à referência) amplifica a força dele: retornos decrescentes (ver ZONE_SHAPE) */
+  zoneExp: 0.35,
+  /** desvio da forma do dia de cada time (limite: 1 ± 2 desvios); era 0,04 */
+  dayFormSd: 0.08,
+  /** quem vence por 3+ gols tira o pé: o ataque é multiplicado por leadEase^(vantagem − 2) (3 gols: ×0,7; 4: ×0,49…); 1 = desligado */
+  leadEase: 0.7,
+  /**
+   * Mentalidade: ataque (a), defesa (d) e frequência de chances (chance). A defensiva era a pior escolha mesmo para segurar resultado
+   * (−0,19 ponto/jogo: perdia ataque sem ganhar defesa suficiente); a ofensiva, a melhor. Rebalanceadas para empatar em pontos e mudar o estilo.
+   */
+  ment: { attacking: { a: 1.06, d: 0.93, chance: 1.1 }, balanced: { a: 1, d: 1, chance: 1 }, defensive: { a: 0.94, d: 1.12, chance: 0.9 } },
 };
+
+/**
+ * Saturação suave em torno de `mid`: igual a x perto do centro e se aproxima de `lo`/`hi` sem nunca chegar (tanh). Ao contrário de um
+ * limite rígido, uma melhora (substituição, tática, treinador) sempre conta, mesmo num jogo muito desigual.
+ */
+export function soft(x: number, mid: number, lo: number, hi: number): number {
+  return x >= mid ? mid + (hi - mid) * Math.tanh((x - mid) / (hi - mid)) : mid - (mid - lo) * Math.tanh((mid - x) / (mid - lo));
+}
 
 type Side = 0 | 1;
 interface Live {
@@ -171,7 +195,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   }
   const T: [TeamState, TeamState] = [mk(home, 0), mk(away, 1)];
   // Forma do dia (evento aleatório controlado): ±8% no máximo, independente por equipe e constante na partida.
-  const dayForm: [number, number] = [clamp(rng.normal(1, 0.04), 0.92, 1.08), clamp(rng.normal(1, 0.04), 0.92, 1.08)];
+  const dayForm: [number, number] = [clamp(rng.normal(1, K.dayFormSd), 1 - 2 * K.dayFormSd, 1 + 2 * K.dayFormSd), clamp(rng.normal(1, K.dayFormSd), 1 - 2 * K.dayFormSd, 1 + 2 * K.dayFormSd)];
 
   const emit = (type: EventType, team: Side, extra: Partial<MatchEvent> = {}): MatchEvent => {
     const e: MatchEvent = { i: events.length, minute: clock.minute, label: clock.label, type, team, ...extra };
@@ -200,15 +224,16 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       aggr += a20(l.p.attributes.mental.aggression);
     }
     // retornos decrescentes por setor: 0,35 (era 0,5, que punia demais formações desbalanceadas — 5-3-2, 4-1-4-1 — com SA/CA e funções)
-    const zone = (k: 'att' | 'mid' | 'def') => (w[k] > 0 ? (sum[k] / w[k]) * Math.pow(Math.max(w[k], 0.5) / REF[k], ZONE_EXP) : 20);
+    const zone = (k: 'att' | 'mid' | 'def') => (w[k] > 0 ? (sum[k] / w[k]) * Math.pow(Math.max(w[k], 0.5) / REF[k], K.zoneExp) : 20);
     const tac = t.sheet.tactics;
     const lead = t.goals - o.goals;
     const late = clock.minute >= 70 ? (clock.minute - 60) / 30 : 0; // urgência cresce no fim
     const urgency = lead < 0 ? 1 + 0.05 * late * Math.min(-lead, 2) : lead > 0 ? 1 - 0.04 * late : 1;
-    const ment = tac.mentality === 'attacking' ? { a: 1.06, d: 0.965 } : tac.mentality === 'defensive' ? { a: 0.94, d: 1.05 } : { a: 1, d: 1 };
+    const ment = K.ment[tac.mentality];
+    const ease = lead >= 3 ? Math.pow(K.leadEase, lead - 2) : 1;
     const coh = t.sheet.cohesion * tacticsMultiplier(t.sheet.coach); // conhecimento tático do treinador soma ao entrosamento
     t.r = {
-      att: zone('att') * ment.a * urgency * coh * dayForm[t.idx] * (t.idx === 0 ? Math.pow(K.homeAttack, hAdv) : 1),
+      att: zone('att') * ment.a * ease * urgency * coh * dayForm[t.idx] * (t.idx === 0 ? Math.pow(K.homeAttack, hAdv) : 1),
       mid: zone('mid') * coh * dayForm[t.idx] * (1 + 0.012 * (tac.defensiveLine - 3)),
       def: zone('def') * ment.d / Math.sqrt(urgency) * coh * dayForm[t.idx],
       gk, pass: passN ? pass / passN : 40, aggression: t.active.length ? aggr / t.active.length : 0.5,
@@ -447,8 +472,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     const atac = att.sheet.tactics, dtac = def.sheet.tactics;
     const pFoul = K.foul * (0.75 + 0.5 * def.r.aggression) * (1 + 0.06 * (dtac.pressing - 3));
     const pOffside = K.offside * (1 + 0.18 * (dtac.defensiveLine - 3));
-    const ratio = clamp(Math.pow(att.r.att / Math.max(def.r.def, 1), 1.6), 0.4, 2.4);
-    const mentMod = atac.mentality === 'attacking' ? 1.1 : atac.mentality === 'defensive' ? 0.88 : 1;
+    const ratio = soft(Math.pow(att.r.att / Math.max(def.r.def, 1), 1.6), 1, K.ratioMin, K.ratioMax);
+    const mentMod = K.ment[atac.mentality].chance;
     // contra-ataque: funções que deixam espaço nas costas aumentam; goleiro líbero cobrindo a profundidade reduz
     const exposure = clamp(1 + 0.05 * def.fx.risk - 0.12 * def.fx.sweep, 0.7, 1.4);
     const pChance = K.chance * ratio * mentMod * (counter ? K.counterBoost * (1 + 0.12 * (dtac.defensiveLine - 3)) * exposure : 1);
@@ -627,7 +652,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     if (!added && SUB_MINUTES.has(minute % 90 === 0 ? 90 : minute)) { aiSubs(T[0], minute); aiSubs(T[1], minute); refresh(T[0], T[1]); refresh(T[1], T[0]); }
     const cA = Math.pow(T[0].r.mid * (1 + 0.01 * (T[0].sheet.tactics.tempo - 3)) * (1 - 0.018 * (T[1].sheet.tactics.pressing - 3)), K.controlExp);
     const cB = Math.pow(T[1].r.mid * (1 + 0.01 * (T[1].sheet.tactics.tempo - 3)) * (1 - 0.018 * (T[0].sheet.tactics.pressing - 3)), K.controlExp);
-    pHome = clamp(cA / (cA + cB) + K.homeControl * hAdv, 0.22, 0.78);
+    pHome = soft(cA / (cA + cB) + K.homeControl * hAdv, 0.5, K.controlMin, K.controlMax);
     const mean = K.phasesPerMinute * (1 + 0.05 * ((T[0].sheet.tactics.tempo + T[1].sheet.tactics.tempo) / 2 - 3)) * (etFactor > 1 ? 0.9 : 1);
     const n = Math.floor(mean) + (rng.next() < mean - Math.floor(mean) ? 1 : 0);
     for (let i = 0; i < n; i++) phase();

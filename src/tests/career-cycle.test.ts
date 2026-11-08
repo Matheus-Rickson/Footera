@@ -69,6 +69,8 @@ test('Virada: só com todas as partidas disputadas e no dia 1º/jul; a entressaf
 test('Virada: rebaixados e promovidos trocam de liga por país, troféus e registro batem com a tabela derivada das partidas', async () => {
   const { db, clubId } = await setup('cycle-moves');
   playSeason(db); toTurnover(db);
+  // este teste é sobre acesso, rebaixamento, troféus e histórico: a diretoria não demite (senão o histórico do treinador fica vazio por causa do sorteio)
+  db.prepare('UPDATE board_state SET confidence = 100').run();
   const comps = listCompetitions(db).competitions.filter((c) => c.kind === 'league');
   const before = new Map(comps.map((c) => [c.id, getCompetitionTable(db, c.id)]));
   const report = startNextSeason(db);

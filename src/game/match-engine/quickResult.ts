@@ -7,9 +7,14 @@ import type { Rng } from '../rng.ts';
 import type { MatchDecider } from './types.ts';
 
 export const QUICK = {
-  /** gols esperados de cada time em jogo equilibrado, campo neutro */ base: 1.28,
+  /** gols esperados de cada time em jogo equilibrado, campo neutro (1,28 até 08/11/2026; menor com o k novo, para manter ~2,6 gols/jogo) */ base: 1.24,
   /** vantagem de jogar em casa (multiplica os gols esperados do mandante; divide os do visitante) */ home: 1.13,
-  /** sensibilidade à diferença de força: a cada 10 pontos, os gols esperados se multiplicam por e^0,55 ≈ 1,7 */ k: 0.055,
+  /**
+   * Sensibilidade à diferença de força: a cada 10 pontos, os gols esperados se multiplicam por e^1,05 ≈ 2,9. Era 0,055: a bateria de 08/11/2026
+   * mostrou que o modo rápido dava mais que o dobro de zebras do motor completo (favorito com 8–10 pontos de vantagem vencia 53% × 74%).
+   * 0,105 reproduz a curva de vitória do favorito do motor completo (recalibrado na mesma data).
+   */ k: 0.105,
+  /** a diferença de força satura suavemente (tanh) perto deste valor: sem isso, 30+ pontos davam placares como 12x1 (o motor completo tira o pé) */ dCap: 25,
 };
 
 function poisson(rng: Rng, lambda: number): number {
@@ -20,7 +25,7 @@ function poisson(rng: Rng, lambda: number): number {
 }
 
 export function quickResult(homeStrength: number, awayStrength: number, rng: Rng): { homeGoals: number; awayGoals: number } {
-  const d = homeStrength - awayStrength;
+  const d = QUICK.dCap * Math.tanh((homeStrength - awayStrength) / QUICK.dCap);
   const lh = QUICK.base * QUICK.home * Math.exp((QUICK.k * d) / 2);
   const la = (QUICK.base / QUICK.home) * Math.exp((-QUICK.k * d) / 2);
   return { homeGoals: poisson(rng, lh), awayGoals: poisson(rng, la) };
@@ -39,7 +44,7 @@ export function teamStrength(overalls: number[]): number {
  * `neutral` tira o fator casa.
  */
 export function quickKnockout(homeStrength: number, awayStrength: number, rng: Rng, decider: MatchDecider, neutral = false): QuickKnockoutResult {
-  const d = homeStrength - awayStrength;
+  const d = QUICK.dCap * Math.tanh((homeStrength - awayStrength) / QUICK.dCap);
   const home = neutral ? 1 : QUICK.home;
   const lh = QUICK.base * home * Math.exp((QUICK.k * d) / 2);
   const la = (QUICK.base / home) * Math.exp((-QUICK.k * d) / 2);

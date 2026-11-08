@@ -120,8 +120,31 @@ melhor e a pior formação caiu de 0,34 para 0,16 ponto por jogo na bateria de 5
 As faixas de referência são ordens de grandeza típicas do futebol profissional (não vêm de uma base de dados oficial) e servem para detectar
 descalibragem. Os testes (`match-engine.test.ts`) usam faixas **mais largas** e falham se o motor sair delas. Constantes em `K` (engine.ts).
 
+## Correções da bateria de 08/11/2026 (73 mil jogos no universo real; relatórios PDF antes × depois)
+A bateria (3 temporadas completas com a base + pacote "Licenças Brasil 2026" e 22.700 jogos de laboratório) mostrou:
+goleadas sem teto (até 19x0; 327 jogos com 8+ de saldo, 217 nos estaduais), zebra quase impossível com 14+ pontos de
+diferença (0,6%), resultado rápido com o dobro de zebras do motor completo e mentalidade defensiva sempre pior.
+- **Saturação suave** (`soft`, tanh) no lugar dos limites rígidos da razão ataque/defesa (`K.ratioMin/ratioMax` 0,4–2,4 → 0,5–1,9)
+  e do controle do jogo (`K.controlMin/controlMax` 0,22–0,78 → 0,27–0,73): comprime os extremos, mas uma melhora (troca, tática,
+  treinador) sempre conta — com limite rígido estreito, a razão batia no teto e nada mais mudava (o teste de adaptabilidade pegou isso).
+- **Tirar o pé**: quem vence por 3+ gols tem o ataque × `K.leadEase`^(vantagem − 2) (0,7).
+- **Forma do dia** mais variável (`K.dayFormSd` 0,04 → 0,08).
+- **Mentalidade** em `K.ment`: defensiva d 1,05 → 1,12 e chance 0,88 → 0,90; ofensiva d 0,965 → 0,93.
+- **Resultado rápido** (`quickResult.ts`): `k` 0,055 → 0,105 (mesma curva de vitória do favorito do motor completo), `base` 1,28 → 1,24
+  (mantém ~2,6 gols/jogo) e a diferença de força satura em `dCap` 25 (sem isso, 30+ pontos davam 12x1).
+- Banco de calibração (4.000 confrontos entre clubes reais sorteados, com a formação e as táticas da IA) — antes → depois:
+  favorito com 20+ pontos de vantagem 6,82 → 3,8 gols/jogo (268 → 1 jogo com 8+ de saldo); zebra com 15–20 pontos 0,5% → 3,7%;
+  jogos equilibrados (até 6 pontos) 3,26 → 3,15 gols, empates ~24%.
+- Laboratório (mesmo elenco dos dois lados): mentalidade defensiva −0,19 → −0,08 ponto/jogo contra o neutro (dentro do ruído de ±0,12) e
+  sofre ~16% menos gols que a equilibrada (antes ~9%); ofensiva +0,14 → +0,13 (no limite do ruído). Pressão 5 ficou em −0,16 e a
+  metodologia agressiva (pressão 5 + linha 4) 0,11 abaixo da defensiva: **pendente**, não mexido nesta rodada.
+- **Formações**: a diferença entre elas (4-2-3-1/4-3-3 ~0,16 ponto/jogo acima de 4-4-2/3-5-2) vem do encaixe dos jogadores — mesmo com elenco
+  "universal" (todos podendo jogar em qualquer posição), a nota média dos titulares na Série A é 70,7 no 4-2-3-1 e 69,2 no 4-4-2, na mesma
+  ordem dos pontos. Não é viés estrutural do motor e a IA já escolhe a formação que melhor encaixa o elenco; nada foi alterado.
+- Testes: `engine-balance.test.ts` (saturação, jogo muito desigual, mentalidade, resultado rápido); mutação 5/5.
+
 ## Limitações conhecidas
-- Desníveis extremos (XI ~70 × ~50) rendem ~100% de vitórias do favorito; no futebol real haveria ~1% de zebras.
+- Desníveis extremos (XI ~70 × ~50): depois das correções de 08/11/2026, o favorito vence ~90% e o mais fraco ~4% (antes ~100% / 0,6%).
 - Vermelhos (0,16) estão no limite superior da faixa.
 - Não há gols contra, bola parada ensaiada, goleiro-linha tático, cobrança de falta por especialista designado, nem clima mudando durante o jogo.
 - Desarmes e interceptações são contados como estatística (por jogador), mas **não** viram eventos individuais na linha do tempo.

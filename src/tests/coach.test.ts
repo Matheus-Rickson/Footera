@@ -83,8 +83,10 @@ test('Treinador na partida: disciplina reduz cartões; conhecimento tático melh
   assert.ok(d1.every((d) => d === 6), `motivação 20: ${d1}`);
   // adaptabilidade: com uma troca do técnico, quem entra rende mais (a partida muda); sem troca, nada muda
   const subIv = (s: TeamSheet) => [{ tick: 40, kind: 'sub' as const, team: 0 as const, out: s.lineup[9]!.player.id, in: s.bench.find((b) => b.position !== 'GK')!.id }];
-  const withSub = (c?: CoachAttributes) => simulateMatch(withCoach(h, c), a, { seed: 'adapt', control: { team: 0, until: 0 }, interventions: subIv(h) });
-  assert.notDeepEqual(withSub(maxed('adaptability')).events, withSub().events, 'adaptabilidade muda a partida depois da troca');
+  // o efeito é pequeno (só quem entra): numa partida isolada pode não virar nenhum sorteio, então basta mudar alguma de 10
+  const withSub = (c: CoachAttributes | undefined, seed: string) => simulateMatch(withCoach(h, c), a, { seed, control: { team: 0, until: 0 }, interventions: subIv(h) });
+  const changed = Array.from({ length: 10 }, (_, i) => `adapt-${i}`).filter((sd) => JSON.stringify(withSub(maxed('adaptability'), sd).events) !== JSON.stringify(withSub(undefined, sd).events));
+  assert.ok(changed.length > 0, 'adaptabilidade muda a partida depois da troca');
   assert.deepEqual(simulateMatch(withCoach(h, maxed('adaptability')), a, { seed: 'adapt' }), simulateMatch(h, a, { seed: 'adapt' }), 'sem troca do técnico, adaptabilidade não age');
 });
 

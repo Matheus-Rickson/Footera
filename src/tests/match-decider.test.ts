@@ -133,6 +133,7 @@ test('Resultado rápido: mesma regra de desempate (pênaltis sem prorrogação, 
   assert.ok(strong / 2000 > 0.7, `o mais forte avança mais (${strong}/2000)`);
   // nos pênaltis, a força pesa pouco, mas pesa (±5 pontos no acerto)
   let sh = 0, shWins = 0;
-  for (let i = 0; i < 6000; i++) { const r = quickKnockout(75, 50, createRng(`p-${i}`), PENS, true); if (r.decidedIn === 'penalties') { sh++; if (r.winner === 0) shWins++; } }
+  // com o resultado rápido calibrado (k 0,105), 75 × 50 quase não empata: mais jogos para ter 300+ disputas de pênaltis
+  for (let i = 0; i < 16000; i++) { const r = quickKnockout(75, 50, createRng(`p-${i}`), PENS, true); if (r.decidedIn === 'penalties') { sh++; if (r.winner === 0) shWins++; } }
   assert.ok(sh > 300 && shWins / sh > 0.53 && shWins / sh < 0.75, `mais forte nos pênaltis: ${shWins}/${sh}`);
 });

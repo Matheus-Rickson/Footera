@@ -1143,6 +1143,20 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   Por fim, o usuário enviou a imagem do painel: quadro-negro com uma jogada desenhada a giz (`src/renderer/assets/home-tactics.png`, 1024×1536,
   fornecida pelo usuário), em `object-fit: cover`, com 55% de opacidade e degradê escuro por cima para o slogan ficar legível. Conferida por
   captura (1600×900 escuro e 1024×640 claro, sem rolagem); não verificada no app.
+- **Bateria de simulação e correções do motor (08/11/2026; sem commit):** pedido do usuário — 73.389 partidas (3 temporadas completas do
+  universo real + laboratório de formações/táticas) com relatório PDF; depois, as correções e a mesma bateria de novo (73.342 partidas) com
+  relatório comparativo. Detalhes e números em `docs/MATCH_ENGINE.md` ("Correções da bateria de 08/11/2026").
+  - Funcional e testado: saturação suave (`soft`) da razão ataque/defesa e do controle do jogo, "tirar o pé" com 3+ gols de vantagem,
+    forma do dia mais variável, mentalidades rebalanceadas (`K.ment`), resultado rápido com k 0,105 / base 1,24 / saturação em 25 pontos.
+    Resultado: jogos com 8+ gols de diferença 327 → 11 (maior 19x0 → 0x9); mais fraco vence 0,6% → 3,8% com 14+ pontos; zebras motor
+    completo × rápido 10,4% × 24,7% → 15,8% × 16,8%; mentalidade defensiva −0,19 → −0,08 ponto/jogo; 1ª divisões 2,83 gols e 23,6% de empates.
+  - Formações não foram alteradas: a diferença entre elas vem do encaixe dos jogadores (a conclusão do 1º relatório estava errada; corrigida no comparativo).
+  - Testes: `engine-balance.test.ts` (4 novos; mutação 5/5). Três testes antigos dependiam do sorteio antigo e foram tornados robustos, sem
+    mudar o que verificam: adaptabilidade do treinador (basta mudar 1 de 10 partidas), virada com troca de divisão (a diretoria não demite
+    nesse teste) e pênaltis no resultado rápido (mais jogos para ter 300+ disputas). Suíte: 302/302.
+  - Pendente: pressão 5 ainda custa −0,16 ponto/jogo (e a metodologia agressiva fica 0,11 abaixo da defensiva); com o "tirar o pé", o xG
+    fica acima dos gols na faixa de xG 3+ (3,6 × 3,1; no total são iguais). Partidas ao vivo e telas NÃO verificadas no Electron depois das mudanças.
+  - Observação: o disco C: do usuário chegou a 0 bytes livres durante a bateria (os scripts passaram a simular na memória).
 - **Correção — estadual sumia com pacote que muda o estado de um clube (08/11/2026; sem commit):** um estadual sem exatamente o número de
   clubes do formato não era criado, sem aviso (ex.: pacote que levou um clube do PR para a elite do RJ → Carioca com 13 → sem Carioca). Agora
   `fitStateDivisions` (`formatRepository.ts`) encaixa as divisões antes de criar os estaduais: o excesso (mais fracos por série nacional e
