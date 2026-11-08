@@ -108,7 +108,7 @@ export interface FixtureDto {
 }
 export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa e estadual: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' | 'state'; /** copa que é supercopa */ supercup?: boolean;
   /** disputado em fases (Séries C/D, estaduais): tem a visão por fases */ staged?: boolean;
-  /** competição sem liga: estadual, copa regional ou copa estadual do 2º semestre */ scope?: 'estadual' | 'regional' | 'copa' }
+  /** competição sem liga: estadual, copa regional, copa estadual do 2º semestre ou copa nacional em fases (Copa da Rússia) */ scope?: 'estadual' | 'regional' | 'copa' | 'nacional' }
 /** Campeonato em fases (Séries C/D, estaduais): cada fase com as tabelas dos grupos ou os confrontos. */
 export interface StagedViewDto {
   id: string; name: string; kind: 'league' | 'state'; status: 'scheduled' | 'in_progress' | 'finished'; regulation: string;

@@ -106,7 +106,7 @@ test('Séries C e D reais na carreira (base fixa): fases montadas conforme avan�
     assert.ok(String(db.prepare('SELECT MAX(match_date) AS d FROM fixtures WHERE competition_id = ?').get(id)!.d) <= '2026-03-15', `${uf}: estadual até 15/03`);
   }
   // Copa do Brasil existe e nenhuma data dela coincide com uma data usada pelos estaduais
-  const estDates = new Set(db.prepare("SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.kind = 'state' AND c.id NOT LIKE 'cest%' AND c.id NOT IN ('est_sp-a2_2026', 'est_rj-a2_2026') AND c.season = 2026").all().map((r) => String(r.d)));
+  const estDates = new Set(db.prepare("SELECT DISTINCT f.match_date AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.kind = 'state' AND c.country_id = 'bra' AND c.id NOT LIKE 'cest%' AND c.id NOT IN ('est_sp-a2_2026', 'est_rj-a2_2026') AND c.season = 2026").all().map((r) => String(r.d)));
   const cupDays = db.prepare("SELECT DISTINCT match_date AS d FROM fixtures WHERE competition_id = 'cup_bra_2026'").all().map((r) => String(r.d));
   assert.ok(cupDays.length > 0 && cupDays.every((dd) => !estDates.has(dd)), 'Copa do Brasil fora das datas das elites estaduais e das regionais (as A2 não entram pela vaga do estadual)');
   const paulista = formatOutcomesOf(db, 'est_sp-a1_2026')!;

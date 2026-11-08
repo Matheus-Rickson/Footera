@@ -112,7 +112,7 @@ export function CalendarView({ profileId, careerId, refreshKey, club, onOpenMatc
                   <span className="cl-crest"><ClubCrest id={o.id} name={o.name} size={30} src={img.url('clubs', o.id)} /></span>
                   <span className="cl-info">
                     {out ? <span className="cl-score"><b className={`cl-res ${out.o}`}>{out.o}</b>{out.score}</span> : <span className="cl-vs">{o.name}</span>}
-                    <span className="cl-meta">{where} · {f.cup ? f.cup.name : /^(est|reg|cest)_/.test(f.competitionId) ? f.competitionName.replace(/\s\d{4}$/, '') : 'Liga'}</span>
+                    <span className="cl-meta">{where} · {f.cup ? f.cup.name : /^(est|reg|cest|rcup)_/.test(f.competitionId) ? f.competitionName.replace(/\s\d{4}$/, '') : 'Liga'}</span>
                     {f.cup && <span className="cl-stage">{stage}</span>}
                   </span>
                 </>}

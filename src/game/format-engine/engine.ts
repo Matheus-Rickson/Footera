@@ -39,6 +39,8 @@ export interface LeagueStage {
   legs: 1 | 2;
   /** pontos de bonificação no início da fase */
   bonus?: Array<{ ref: Ref; points: number }>;
+  /** empate vai direto aos pênaltis (Copa da Rússia): vitória 3, vitória nos pênaltis 2, derrota nos pênaltis 1, derrota 0 */
+  drawPens?: boolean;
   side?: boolean;
 }
 export interface KnockoutStage {
@@ -49,8 +51,8 @@ export interface KnockoutStage {
   /** reordena os entrantes pela campanha somada antes de parear; `permute` aplica a ordem da chave sobre essa lista */
   byCampaign?: boolean; permute?: number[];
   legs: 1 | 2;
-  /** quem manda o jogo único ou o jogo de VOLTA */
-  host: 'first' | 'campaign' | 'neutral' | 'draw';
+  /** quem manda o jogo único ou o jogo de VOLTA; underdog = o de pior semente (divisão inferior: Copa da Rússia) */
+  host: 'first' | 'campaign' | 'neutral' | 'draw' | 'underdog';
   /** empate (no jogo ou no agregado) classifica quem tem o mando: sem pênaltis */
   advantage?: boolean;
   extraTime?: boolean;
@@ -96,6 +98,8 @@ export function stageTables(def: FormatDef, state: FormatState, id: string): { g
   if (stage.kind !== 'league' || !st?.groups) return { groups: [], overall: [] };
   const bonus = new Map<string, number>();
   for (const b of stage.bonus ?? []) { const c = resolveRef(def, state, b.ref); if (c) bonus.set(c, (bonus.get(c) ?? 0) + b.points); }
+  // pênaltis depois do empate: +1 ponto para quem venceu a disputa (o empate já deu 1 a cada um)
+  if (stage.drawPens) for (const r of st.results) if (r.homeGoals === r.awayGoals && r.pens) bonus.set(r.pens, (bonus.get(r.pens) ?? 0) + 1);
   const opts = { countAll: true, bonus };
   return {
     groups: st.groups.map((g) => computeStandings(g, st.results, RULES(def), opts)),
@@ -276,7 +280,8 @@ export function buildStage(def: FormatDef, state: FormatState, id: string, rng: 
   else { const l = stage.pairing === 'draw' ? rng.shuffle(list) : list; for (let i = 0; i < l.length; i += 2) pairs.push([l[i]!, l[i + 1]!]); }
   const cmp = byCampaign(def, state);
   const ties: Tie[] = pairs.map(([a, b]) => {
-    const host = stage.host === 'campaign' ? (cmp(a, b) <= 0 ? a : b) : stage.host === 'draw' ? (rng.next() < 0.5 ? a : b) : a;
+    const host = stage.host === 'campaign' ? (cmp(a, b) <= 0 ? a : b) : stage.host === 'draw' ? (rng.next() < 0.5 ? a : b)
+      : stage.host === 'underdog' ? (state.seeds.indexOf(b) > state.seeds.indexOf(a) ? b : a) : a;
     return { a, b, host, neutral: stage.host === 'neutral' };
   });
   const fixtures: Fixture[] = [];
@@ -302,6 +307,12 @@ export function deciderFor(def: FormatDef, state: FormatState, id: string, tieId
   // placar da ida visto pelo mandante da volta (o host): [gols do host, gols do outro]
   const firstLeg: [number, number] = first.home === tie.host ? [first.homeGoals, first.awayGoals] : [first.awayGoals, first.homeGoals];
   return { extraTime: !!stage.extraTime, penalties: true, firstLeg };
+}
+
+/** Desempate de um jogo de fase de liga com pênaltis depois do empate (null se a fase não tem essa regra). */
+export function leagueDeciderFor(def: FormatDef, id: string): { extraTime: boolean; penalties: boolean } | null {
+  const stage = stageOf(def, id);
+  return stage.kind === 'league' && stage.drawPens ? { extraTime: false, penalties: true } : null;
 }
 
 // ---------------------------------------------------------------- desfecho

@@ -7,10 +7,10 @@ import type { SqlDb } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { addDays, nextWeekdayOnOrAfter } from '../../shared/date.ts';
 import {
-  buildableStages, buildStage, deciderFor, finalRanking, formatComplete, outcomes, stageEntrants, stageOf, stageTables, tieOutcome,
+  buildableStages, buildStage, deciderFor, finalRanking, leagueDeciderFor, formatComplete, outcomes, stageEntrants, stageOf, stageTables, tieOutcome,
   type FormatDef, type FormatState, type FxResult, type StageState,
 } from '../../game/format-engine/engine.ts';
-import { COPA_DO_BRASIL_SPOTS, COPA_ESTADUAL_NOMES, COPA_ESTADUAL_SIZE, copaEstadual, copaEstadualPrize, ESTADUAIS, formatById, REGIONAIS, regionalGroups, SERIE_D_SPOTS } from '../../game/format-engine/formats.ts';
+import { COPA_DO_BRASIL_SPOTS, COPA_ESTADUAL_NOMES, COPA_RUSSIA_ID, COPA_RUSSIA_RPL, copaDaRussia, copaDaRussiaDates, COPA_ESTADUAL_SIZE, copaEstadual, copaEstadualPrize, ESTADUAIS, formatById, REGIONAIS, regionalGroups, SERIE_D_SPOTS } from '../../game/format-engine/formats.ts';
 import type { MatchDecider } from '../../game/match-engine/types.ts';
 import { makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
@@ -91,7 +91,8 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
       const comp = db.prepare('SELECT season, country_id, kind FROM competitions WHERE id = ?').get(compId)!;
       const rounds = Math.max(...b.fixtures.map((f) => f.round));
       let planned = brazilCalendar(db, { countryId: S(comp.country_id) }) ? brazilStageDates(fs.meta.formatId, id, N(comp.season), rounds, fs.def.size) : null;
-      if (S(comp.kind) === 'state') { // estadual ou regional: as próximas datas da lista a partir do dia mínimo
+      if (fs.meta.formatId === COPA_RUSSIA_ID) planned = copaDaRussiaDates(N(comp.season), id);
+      else if (S(comp.kind) === 'state') { // estadual ou regional: as próximas datas da lista a partir do dia mínimo
         const pool = fs.meta.formatId.startsWith('reg_') ? regionalPool(db, S(comp.country_id), N(comp.season)) : estadualPool(N(comp.season), fs.meta.formatId), i = pool.findIndex((d) => d >= notBefore);
         planned = i >= 0 && i + rounds <= pool.length ? pool.slice(i, i + rounds) : null;
       }
@@ -135,10 +136,16 @@ export function advanceFormats(db: SqlDb, date: string): void {
 
 /** Regra do jogo de mata-mata de um campeonato em fases: desempate no jogo decisivo (null = pontos corridos ou jogo de ida). */
 export function formatFixtureRule(db: SqlDb, fixtureId: string): { decider: MatchDecider | undefined; neutral: boolean; stageName: string; leg: 1 | 2 | null } | null {
-  const f = db.prepare('SELECT competition_id, stage, stage_tie, leg, neutral FROM fixtures WHERE id = ? AND stage IS NOT NULL AND stage_tie IS NOT NULL').get(fixtureId);
+  const f = db.prepare('SELECT competition_id, stage, stage_tie, leg, neutral FROM fixtures WHERE id = ? AND stage IS NOT NULL').get(fixtureId);
   if (!f) return null;
+  const meta = f.stage_tie == null ? formatMetaOf(db, S(f.competition_id)) : null;
+  if (f.stage_tie == null && meta?.formatId !== COPA_RUSSIA_ID) return null; // pontos corridos: só a fase de grupos da Copa da Rússia tem pênaltis
   const fs = formatStateOf(db, S(f.competition_id));
   if (!fs) return null;
+  if (f.stage_tie == null) {
+    const d = leagueDeciderFor(fs.def, S(f.stage));
+    return d ? { decider: d, neutral: false, stageName: stageOf(fs.def, S(f.stage)).name, leg: null } : null;
+  }
   const leg = (f.leg == null ? 1 : N(f.leg)) as 1 | 2;
   const d = deciderFor(fs.def, fs.state, S(f.stage), N(f.stage_tie), leg);
   return { decider: d ?? undefined, neutral: N(f.neutral) === 1, stageName: stageOf(fs.def, S(f.stage)).name, leg: f.leg == null ? null : leg };
@@ -225,9 +232,10 @@ export function createEstaduais(db: SqlDb, countryId: string, season: number): n
 
 /**
  * Premiação dos estaduais, copas regionais e copas estaduais (ADAPT — sem tabela oficial no levantamento): campeão = economia × 400 mil,
- * vice = metade; segunda divisão (A2 de SP e RJ) × 0,5; copa estadual × 0,25; copa regional × 1,5. Em euros, pelo extrato (regra 1).
+ * vice = metade; segunda divisão (A2 de SP e RJ) × 0,5; copa estadual × 0,25; copa regional × 1,5; Copa da Rússia × 6 (economia × 2,4 mi,
+ * o prêmio de campeão das outras copas nacionais). Em euros, pelo extrato (regra 1).
  */
-export const ESTADUAL_PRIZE = { champion: 400_000, runnerUp: 200_000, secondDivision: 0.5, stateCup: 0.25, regional: 1.5 } as const;
+export const ESTADUAL_PRIZE = { champion: 400_000, runnerUp: 200_000, secondDivision: 0.5, stateCup: 0.25, regional: 1.5, nationalCup: 6 } as const;
 
 /** Estadual encerrado: troféu do campeão, premiação de campeão e vice e notícia para o clube do usuário. NÃO abre transação. */
 function finishEstadual(db: SqlDb, compId: string, fs: NonNullable<ReturnType<typeof formatStateOf>>, date: string): void {
@@ -239,7 +247,7 @@ function finishEstadual(db: SqlDb, compId: string, fs: NonNullable<ReturnType<ty
   const user = getCareerState(db).clubId;
   db.prepare('INSERT INTO trophies (season, club_id, competition_id, won_by_user) VALUES (?,?,?,?)').run(N(c.season), champ, compId, champ === user ? 1 : 0);
   const economy = N(db.prepare('SELECT economy FROM countries WHERE id = ?').get(S(c.country_id))!.economy);
-  const div = fs.meta.formatId.startsWith('cest_') ? ESTADUAL_PRIZE.stateCup : fs.meta.formatId.startsWith('reg_') ? ESTADUAL_PRIZE.regional
+  const div = fs.meta.formatId === COPA_RUSSIA_ID ? ESTADUAL_PRIZE.nationalCup : fs.meta.formatId.startsWith('cest_') ? ESTADUAL_PRIZE.stateCup : fs.meta.formatId.startsWith('reg_') ? ESTADUAL_PRIZE.regional
     : ESTADUAIS.find((e) => e.id === fs.meta.formatId)?.division === 2 ? ESTADUAL_PRIZE.secondDivision : 1;
   const post = makePoster(db, user);
   const name = S(c.name);
@@ -489,4 +497,29 @@ export function createCopasEstaduais(db: SqlDb, countryId: string, season: numbe
     created++;
   }
   return created;
+}
+
+/**
+ * Copa da Rússia da temporada (docs/COPA_RUSSIA.md): os 16 da Premier Liga e os da Pervaya Liga, cada divisão pela posição na temporada
+ * anterior (na primeira, pela reputação). Só se a Premier Liga tiver 16 clubes. Devolve se criou. NÃO abre transação.
+ */
+export function createCopaDaRussia(db: SqlDb, countryId: string, season: number): boolean {
+  const co = db.prepare('SELECT code FROM countries WHERE id = ?').get(countryId);
+  if (!co || S(co.code) !== 'RUS') return false;
+  const compId = `${COPA_RUSSIA_ID}_${season}`;
+  if (db.prepare('SELECT 1 AS x FROM competitions WHERE id = ?').get(compId)) return false;
+  // posição anterior na mesma divisão; quem subiu vem depois dos que ficaram, quem caiu vem antes
+  const prev = new Map(db.prepare(`SELECT r.club_id, r.position, l.tier FROM season_results r JOIN competitions c ON c.id = r.competition_id
+      JOIN leagues l ON l.id = c.league_id WHERE r.season = ?`).all(season - 1).map((r) => [S(r.club_id), { pos: N(r.position), tier: N(r.tier) }]));
+  const byTier = (tier: number) => db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id
+      WHERE c.country_id = ? AND l.active = 1 AND l.tier = ? ORDER BY c.reputation DESC, c.id`).all(countryId, tier)
+    .map((r) => { const p = prev.get(S(r.id)); return { id: S(r.id), key: !p ? 5000 : p.tier === tier ? 1000 + p.pos : p.tier < tier ? p.pos : 3000 + p.pos }; })
+    .sort((a, b) => a.key - b.key).map((c) => c.id);
+  const rpl = byTier(1), fnl = byTier(2);
+  if (rpl.length !== COPA_RUSSIA_RPL) return false;
+  const def = copaDaRussia(rpl.length + fnl.length);
+  if (!def) return false;
+  createFormatCompetition(db, { compId, leagueId: null, countryId, season, name: `Copa da Rússia ${season}/${String(season + 1).slice(2)}`, def, seeds: [...rpl, ...fnl],
+    start: copaDaRussiaDates(season, 'g')![0]!, weekday: 3, intervalDays: 7 });
+  return true;
 }

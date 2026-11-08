@@ -350,6 +350,11 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Copa do Brasil: 1ª fase em fevereiro; em 2027, os campeões de 2026 (Séries C e D e regionais) na 3ª fase.
 - [ ] Com um clube sem divisão: ser campeão da copa estadual do seu estado dá vaga na Copa do Brasil do ano seguinte (ES e SE: Série D).
 
+## 13z2. Copa da Rússia
+- [ ] Competições → "Copas nacionais" → Copa da Rússia: botões das fases (4ª a 6ª rodadas das Regiões, grupos da RPL, quartas, semifinais, finais dos caminhos, superfinal).
+- [ ] Grupos da RPL: um empate mostra o vencedor nos pênaltis e a tabela dá 2 pontos a ele e 1 ao outro.
+- [ ] Com um clube russo: jogos da copa às quartas-feiras no calendário, com o nome "Copa da Rússia".
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

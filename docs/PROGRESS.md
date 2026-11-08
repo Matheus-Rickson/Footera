@@ -1119,3 +1119,12 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     `states.test.ts`; o teste das copas passou a conferir, por clube, que não há outro jogo a menos de 3 dias. Mutação 7/7 (três
     sobreviventes na primeira rodada — pares da Copa do Nordeste, campeões na 3ª fase, vagas pela classificação — passaram a ser detectadas).
   - Verificado pelo usuário: Séries C e D por fases em Competições; calendário com o nome da competição (estadual/regional/copa estadual) no lugar de "Liga". Data do topo redesenhada (ícone, data em destaque, temporada à parte). Grupos novos de copas em Competições ainda não verificados.
+- **Copa da Rússia (07/11/2026; sem commit):** ver `docs/COPA_RUSSIA.md` (estrutura SEC pela Wikipédia en/ru e imprensa; regulamento
+  da RFS não obtido). Motor de formatos: fase de liga com pênaltis depois do empate (`drawPens`, 3/2/1/0) e mando do azarão
+  (`host: 'underdog'`, pior semente = divisão inferior). Caminho da RPL (grupos, quartas, semifinal e final em ida e volta), caminho das
+  Regiões com a Pervaya Liga (preliminar, 5ª e 6ª rodadas, quartas e semifinal em duas etapas com os perdedores da RPL, final em jogo
+  único) e superfinal em campo neutro; competição `rcup_<ano>` em "Copas nacionais".
+  - Testes: `russia-cup.test.ts` (formato e datas; temporada inteira na base: pênaltis nos empates, pontos 3/2/1/0, quem vai para onde,
+    mando, perdedores da RPL nas Regiões, perdedor da final da RPL eliminado, superfinal, troféu, premiação, 3 dias entre jogos).
+    Mutação 10/10. O teste das Séries C/D passou a filtrar as competições do Brasil (a copa russa também é do tipo 'state').
+  - Não feito: Supercopa da Rússia; edição da copa no editor. Telas NÃO verificadas no Electron.

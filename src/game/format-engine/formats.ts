@@ -2,7 +2,7 @@
  * Formatos reais (2026) das Séries C e D e dos estaduais, montados com o motor de formatos. Fontes e adaptações em docs/ESTADUAIS.md:
  * `source` diz se cada parte vem do regulamento oficial (REG), de fonte secundária (SEC) ou foi adaptada por falta de fonte (ADAPT).
  */
-import type { FormatDef, KnockoutStage, LeagueStage, Ref, Tiebreaker } from './engine.ts';
+import type { FormatDef, KnockoutStage, LeagueStage, Ref, Stage, Tiebreaker } from './engine.ts';
 
 const TB: Tiebreaker[] = ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'];
 const seeds = (n: number): Ref[] => Array.from({ length: n }, (_, i) => ({ seed: i }));
@@ -377,6 +377,7 @@ export function leagueFormat(leagueId: string, clubs: number): FormatDef | null 
 export function formatById(id: string, clubs: number, season = 2026): FormatDef | null {
   if (id === 'bra-serie-c') return leagueFormat('bra-3', clubs);
   if (id === 'bra-serie-d') return leagueFormat('bra-4', clubs);
+  if (id === COPA_RUSSIA_ID) return copaDaRussia(clubs);
   const reg = REGIONAIS.find((r) => r.id === id);
   if (id.startsWith('cest_')) return clubs >= COPA_ESTADUAL_SIZE.min && clubs <= COPA_ESTADUAL_SIZE.max && clubs % 2 === 0 ? copaEstadual(id.slice(5).toUpperCase(), clubs) : clubs >= COPA_ESTADUAL_SIZE.min && clubs <= 8 ? copaEstadual(id.slice(5).toUpperCase(), clubs) : null;
   const f = reg ? reg.format() : ESTADUAIS.find((e) => e.id === id)?.format(season) ?? null;
@@ -509,3 +510,90 @@ export function copaEstadual(uf: string, n: number): FormatDef {
       final2('sf'),
     ], champion: W('final', 0) };
 }
+
+// ---------------------------------------------------------------- Copa da Rússia (docs/COPA_RUSSIA.md)
+
+/** Id do formato e prefixo da competição da Copa da Rússia. */
+export const COPA_RUSSIA_ID = 'rcup';
+/** Clubes da Premier Liga no caminho da RPL (4 grupos de 4). */
+export const COPA_RUSSIA_RPL = 16;
+
+/**
+ * Copa da Rússia 2025/26 (SEC — Wikipédia en/ru e imprensa; regulamento da RFS não obtido): dois caminhos com dupla eliminação.
+ * Sementes: os 16 da Premier Liga (do mais forte ao mais fraco) e depois os da 1ª divisão (Pervaya Liga).
+ * - Caminho das Regiões, rodadas classificatórias em jogo único, manda o de divisão inferior: a base só tem a Pervaya Liga (o real começa
+ *   na 1ª rodada com amadores e a 2ª divisão): uma rodada preliminar entre os de pior semente até sobrar uma potência de 2, depois até 4
+ *   (as rodadas levam os números reais, a última é a 6ª — ADAPT).
+ * - Caminho da RPL: 4 grupos de 4 (potes pela semente), ida e volta; empate vai aos pênaltis (3/2/1/0); 1º e 2º → quartas da RPL;
+ *   3º → quartas das Regiões; 4º eliminado. Quartas, semifinais e final da RPL em ida e volta, pênaltis direto no agregado.
+ * - Quartas das Regiões, etapa 1: os 4 classificados das rodadas × os 3º dos grupos, em casa do clube das Regiões (REG do sorteio);
+ *   etapa 2: vencedores × perdedores das quartas da RPL. Semifinal das Regiões, etapa 1 entre os 4; etapa 2 × perdedores das semifinais da
+ *   RPL. Final das Regiões em jogo único. O perdedor da final da RPL está eliminado (mudança de 2025/26).
+ * - Superfinal: campeão do caminho da RPL × campeão do caminho das Regiões, jogo único em campo neutro (ADAPT: Moscou no real).
+ * Cruzamento das quartas da RPL (1º × 2º de outro grupo) e mando da volta: ADAPT (no real, a chave inteira é sorteada antes da copa).
+ */
+export function copaDaRussia(clubs: number): FormatDef | null {
+  const m = clubs - COPA_RUSSIA_RPL;
+  if (m < 4) return null;
+  const S = (i: number): Ref => ({ seed: i });
+  const stages: Stage[] = [];
+  // caminho das Regiões: rodadas classificatórias até sobrarem 4
+  let p = 4; while (p * 2 <= m) p *= 2;
+  const total = Math.log2(p / 4) + (m > p ? 1 : 0);
+  const num = (k: number) => 6 - total + 1 + k;
+  const rid = (k: number) => `r${num(k)}`, rname = (k: number) => `${num(k)}ª rodada (Regiões)`;
+  const one = { legs: 1 as const, pairing: 'draw' as const, host: 'underdog' as const };
+  let field: Ref[] = Array.from({ length: m }, (_, i) => S(COPA_RUSSIA_RPL + i));
+  let k = 0;
+  if (m > p) { // preliminar: os 2·(m − p) de pior semente
+    const n = 2 * (m - p), id = rid(k);
+    stages.push(ko(id, rname(k), field.slice(m - n), one));
+    field = [...field.slice(0, m - n), ...Array.from({ length: n / 2 }, (_, i) => W(id, i))];
+    k++;
+  }
+  for (; k < total; k++) {
+    const id = rid(k);
+    stages.push(ko(id, rname(k), field, one));
+    field = Array.from({ length: field.length / 2 }, (_, i) => W(id, i));
+  }
+  const last = rid(total - 1);
+  const C = 2, D = 3;
+  stages.push(
+    league('g', 'Fase de grupos (RPL)', Array.from({ length: COPA_RUSSIA_RPL }, (_, i) => S(i)), { groups: 4, assign: 'snake', legs: 2, drawPens: true }),
+    ko('qf', 'Quartas de final (RPL)', [gp('g', A, 1), gp('g', B, 2), gp('g', B, 1), gp('g', A, 2), gp('g', C, 1), gp('g', D, 2), gp('g', D, 1), gp('g', C, 2)], { host: 'first' }),
+    ko('rq1', 'Quartas (Regiões) — etapa 1', [W(last, 0), gp('g', A, 3), W(last, 1), gp('g', B, 3), W(last, 2), gp('g', C, 3), W(last, 3), gp('g', D, 3)], { legs: 1, host: 'first' }),
+    ko('rq2', 'Quartas (Regiões) — etapa 2', [0, 1, 2, 3].flatMap((i) => [W('rq1', i), L('qf', i)]), { legs: 1, host: 'underdog' }),
+    ko('sf', 'Semifinal (RPL)', Ws('qf', [0, 1, 2, 3]), { host: 'first' }),
+    ko('rs1', 'Semifinal (Regiões) — etapa 1', Ws('rq2', [0, 1, 2, 3]), { legs: 1, host: 'underdog' }),
+    ko('rs2', 'Semifinal (Regiões) — etapa 2', [W('rs1', 0), L('sf', 0), W('rs1', 1), L('sf', 1)], { legs: 1, host: 'first' }),
+    ko('fr', 'Final do caminho da RPL', Ws('sf', [0, 1]), { host: 'first' }),
+    ko('freg', 'Final do caminho das Regiões', Ws('rs2', [0, 1]), { legs: 1, host: 'draw' }),
+    ko('super', 'Superfinal', [W('fr', 0), W('freg', 0)], { legs: 1, host: 'neutral' }),
+  );
+  return {
+    id: COPA_RUSSIA_ID, name: 'Copa da Rússia', regulation: 'Copa da Rússia 2025/26 (formato pela imprensa e Wikipédia)',
+    source: { structure: 'SEC', tiebreak: 'SEC', national: 'ADAPT' }, size: clubs,
+    tiebreakers: ['points', 'headToHead', 'wins', 'goalDiff', 'goalsFor'], stages, champion: W('super', 0),
+  };
+}
+
+/**
+ * Datas da Copa da Rússia por fase (as de 2025/26 levadas à quarta-feira mais próxima; superfinal no domingo): os jogos de liga da base
+ * são aos sábados, a 3 ou 4 dias. `season` = ano de início da temporada. null = fase sem data fixa.
+ */
+export function copaDaRussiaDates(season: number, stageId: string): string[] | null {
+  const y = season, z = season + 1;
+  const T: Record<string, string[]> = {
+    g: [`${y}-07-29`, `${y}-08-12`, `${y}-08-26`, `${y}-09-16`, `${y}-09-30`, `${y}-10-21`],
+    r1: [`${y}-08-05`], r2: [`${y}-08-19`], r3: [`${y}-09-09`], r4: [`${y}-09-23`], r5: [`${y}-10-14`], r6: [`${y}-10-28`],
+    qf: [`${y}-11-04`, `${y}-11-25`], rq1: [`${y}-11-25`], rq2: [`${z}-03-03`], sf: [`${z}-03-03`, `${z}-03-17`], rs1: [`${z}-03-17`],
+    rs2: [`${z}-04-07`], fr: [`${z}-04-07`, `${z}-05-05`], freg: [`${z}-05-05`],
+  };
+  if (stageId === 'super') return [nextOn(`${z}-05-23`, 0)];
+  return T[stageId]?.map((d) => nextOn(d, 3)) ?? null;
+}
+const nextOn = (iso: string, weekday: number): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + ((weekday - d.getUTCDay() + 7) % 7));
+  return d.toISOString().slice(0, 10);
+};
