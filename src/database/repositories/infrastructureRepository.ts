@@ -5,8 +5,10 @@ import { addDays } from '../../shared/date.ts';
 import {
   FACILITY_KINDS, MAX_FACILITY_LEVEL, recoveryFactor, qualityFactor, stadiumExpansion, UNSTAFFED_QUALITY, upgradeCost, upgradeDays, type FacilityKind,
 } from '../../game/training-engine/training.ts';
-import { maintenanceMonthly, staffUserMonthly, type ClubEcon } from '../../game/finance-engine/finance.ts';
-import type { InfrastructureOverviewDto } from '../../shared/api.ts';
+import { facilityMonthly, maintenanceMonthly, staffUserMonthly, ticketPrice, type ClubEcon } from '../../game/finance-engine/finance.ts';
+import type { FacilityStat, InfrastructureOverviewDto } from '../../shared/api.ts';
+import { foreignChance, intakeRange, maxScoutsFor, recruitBonus, trackedFor, YOUTH_CAP } from '../../game/scouting-engine/scouting.ts';
+import { CURRENT_COMP } from './countrySeasonRepository.ts';
 import { getCareerState } from './careerRepository.ts';
 import { loadClubEcon, makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
@@ -20,18 +22,21 @@ const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const br = (d: string) => d.split('-').reverse().join('/');
-export const FACILITY_LABEL: Record<FacilityKind, string> = { training: 'Centro de treinamento', youth: 'Categorias de base', medical: 'Departamento médico', stadium: 'Estádio' };
+export const FACILITY_LABEL: Record<FacilityKind, string> = { training: 'Centro de treinamento', youth: 'Categorias de base', medical: 'Departamento médico', stadium: 'Estádio', scouting: 'Departamento de scouting', recruitment: 'Rede de captação' };
 /** O que cada instalação melhora no jogo (texto das mensagens). */
 export const FACILITY_EFFECT: Record<FacilityKind, string> = {
   training: 'O centro de treinamento acelera a evolução mensal dos jogadores do elenco e o aprendizado das funções táticas.',
   youth: 'As categorias de base melhores trazem safras maiores e mais talentosas na peneira e aceleram a evolução dos jovens.',
   medical: 'O departamento médico encurta o tempo de recuperação das lesões.',
   stadium: 'O estádio maior aumenta a capacidade e a renda de bilheteria nos jogos em casa.',
+  scouting: 'O departamento de scouting maior comporta mais olheiros (tarefas ativas ao mesmo tempo) e mais jogadores acompanhados por tarefa.',
+  recruitment: 'A rede de captação maior traz mais jovens na peneira anual e aumenta a chance de revelar jovens de outros países.',
 };
 
 /** Custo mensal fixo que muda quando o nível sobe (comissão/base e manutenção usam os níveis). */
 function monthlyCostAt(econ: ClubEcon, kind: FacilityKind, level: number): number {
   const e = { ...econ, facilities: { ...econ.facilities, [kind]: level } };
+  if (kind === 'scouting' || kind === 'recruitment') return staffUserMonthly(e);
   return kind === 'stadium' ? maintenanceMonthly(e) : staffUserMonthly(e);
 }
 
@@ -40,17 +45,60 @@ function effectText(kind: FacilityKind, level: number): string {
   if (kind === 'training') return `Evolução dos jogadores ${pct(qualityFactor(level))}`;
   if (kind === 'youth') return `Qualidade e tamanho das safras; evolução na base ${pct(qualityFactor(level))}`;
   if (kind === 'medical') { const d = (recoveryFactor(UNSTAFFED_QUALITY, level) - 1) * 100; return `Lesões duram ${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'a mais' : 'a menos'} que a referência (sem médico contratado; um bom médico reduz mais)`; }
+  if (kind === 'scouting') return `Até ${maxScoutsFor(level)} olheiros (tarefas ativas) e ${trackedFor(level)} jogadores acompanhados por tarefa`;
+  if (kind === 'recruitment') return `+${recruitBonus(level)} jovem(ns) na peneira; ${Math.round(foreignChance(level) * 100)}% de chance de cada um vir de outro país`;
   return 'Ampliação: +5% de lugares (mais bilheteria) e maior manutenção';
+}
+
+/** Faixa qualitativa do nível (1–20) para os cards. */
+const tier = (level: number): { text: string; tone: 'great' | 'good' | 'avg' | 'poor' } =>
+  level >= 17 ? { text: 'Muito alto', tone: 'great' } : level >= 13 ? { text: 'Alto', tone: 'good' } : level >= 9 ? { text: 'Médio', tone: 'avg' } : level >= 5 ? { text: 'Baixo', tone: 'poor' } : { text: 'Muito baixo', tone: 'poor' };
+
+function statsOf(db: SqlDb, kind: FacilityKind, f: Record<FacilityKind, number>): FacilityStat[] {
+  const level = f[kind];
+  const pct = (x: number) => `${x >= 1 ? '+' : ''}${Math.round((x - 1) * 100)}%`;
+  if (kind === 'training') return [{ label: 'Ganho de treino', value: `${tier(level).text} (${pct(qualityFactor(level))})`, tone: tier(level).tone, help: 'Velocidade da evolução mensal do elenco e do aprendizado das funções táticas (a comissão técnica soma ao efeito).' }];
+  if (kind === 'youth') return [
+    { label: 'Desenvolvimento de jovens', value: `${tier(level).text} (${pct(qualityFactor(level))})`, tone: tier(level).tone, help: 'Qualidade das safras da peneira e evolução dos jovens na base.' },
+    { label: 'Capacidade da academia', value: String(YOUTH_CAP.user), help: 'Máximo de jovens na base do clube; a peneira não traz ninguém além disso.' },
+  ];
+  if (kind === 'recruitment') {
+    const r = intakeRange(f.youth, level);
+    return [
+      { label: 'Menor entrada', value: String(r.min), help: 'Menor safra possível na peneira anual (15/mar), com o nível atual da base e da rede de captação.' },
+      { label: 'Maior entrada', value: String(r.max), help: 'Maior safra possível na peneira anual.' },
+      { label: 'Chance no exterior', value: `${Math.round(foreignChance(level) * 100)}%`, help: 'Chance de cada jovem da peneira vir de outro país (com a nacionalidade de lá).' },
+    ];
+  }
+  if (kind === 'scouting') {
+    const scouts = N(db.prepare('SELECT COUNT(*) AS n FROM scouts').get()!.n), active = N(db.prepare("SELECT COUNT(*) AS n FROM scout_tasks WHERE status = 'active'").get()!.n);
+    return [
+      { label: 'Tarefas ativas', value: `${active} / ${maxScoutsFor(level)}`, help: 'Cada tarefa ativa ocupa um olheiro; o nível define quantos olheiros o departamento comporta.' },
+      { label: 'Olheiros contratados', value: String(scouts), help: 'Olheiros do clube (contratar e demitir em "Gerenciar").' },
+      { label: 'Jogadores por tarefa', value: String(trackedFor(level)), help: 'Jogadores que cada tarefa acompanha ao mesmo tempo até o relatório completo.' },
+    ];
+  }
+  if (kind === 'medical') {
+    const d = (recoveryFactor(UNSTAFFED_QUALITY, level) - 1) * 100;
+    return [{ label: 'Tempo de recuperação', value: `${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'mais longo' : 'mais curto'}`, tone: d <= -5 ? 'good' : d < 0 ? 'avg' : 'poor', help: 'Duração das lesões em relação à referência, sem médico contratado (um bom médico reduz mais; ver Departamento médico).' }];
+  }
+  return [];
 }
 
 export function getInfrastructureOverview(db: SqlDb): InfrastructureOverviewDto {
   const st = getCareerState(db);
   const econ = loadClubEcon(db, st.clubId);
   const f = facilitiesOf(db, st.clubId);
+  const ecoF: ClubEcon = { ...econ, facilities: { ...econ.facilities, scouting: f.scouting, recruitment: f.recruitment } };
   const active = db.prepare("SELECT * FROM construction_projects WHERE club_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1").get(st.clubId);
-  const balance = N(db.prepare('SELECT balance FROM clubs WHERE id = ?').get(st.clubId)!.balance);
+  const club = db.prepare('SELECT c.balance, c.fans, s.name AS stadium FROM clubs c LEFT JOIN stadiums s ON s.id = c.stadium_id WHERE c.id = ?').get(st.clubId)!;
+  const att = db.prepare(`SELECT AVG(m.attendance) AS a, COUNT(*) AS n FROM fixtures f JOIN matches m ON m.fixture_id = f.id JOIN competitions c ON c.id = f.competition_id
+    WHERE f.home_club_id = ? AND f.status = 'played' AND m.attendance IS NOT NULL AND COALESCE(f.neutral, 0) = 0 AND ${CURRENT_COMP}`).get(st.clubId)!;
+  const avg = N(att.n) > 0 ? Math.round(N(att.a)) : null;
   return {
-    balance, capacity: econ.capacity,
+    balance: N(club.balance), capacity: econ.capacity,
+    stadium: { name: club.stadium == null ? 'Estádio' : S(club.stadium), capacity: econ.capacity, monthly: facilityMonthly(ecoF, 'stadium'), avgAttendance: avg,
+      occupancy: avg === null ? null : Math.round((100 * avg) / Math.max(1, econ.capacity)), homeGames: N(att.n), fans: N(club.fans), ticketPrice: ticketPrice(econ) },
     project: active ? {
       kind: S(active.kind) as FacilityKind, label: FACILITY_LABEL[S(active.kind) as FacilityKind], toLevel: N(active.from_level) + 1, cost: N(active.cost),
       start: S(active.start_date), end: S(active.end_date),
@@ -59,9 +107,10 @@ export function getInfrastructureOverview(db: SqlDb): InfrastructureOverviewDto 
     facilities: FACILITY_KINDS.map((kind) => {
       const level = f[kind], maxed = level >= MAX_FACILITY_LEVEL;
       return {
-        kind, label: FACILITY_LABEL[kind], level, maxed, effect: effectText(kind, level), nextEffect: maxed ? null : effectText(kind, level + 1),
+        kind, label: FACILITY_LABEL[kind], level, maxLevel: MAX_FACILITY_LEVEL, maxed, monthly: facilityMonthly(ecoF, kind), stats: statsOf(db, kind, f),
+        effect: effectText(kind, level), nextEffect: maxed ? null : effectText(kind, level + 1),
         cost: maxed ? null : upgradeCost(kind, level, econ.econ), days: maxed ? null : upgradeDays(kind, level),
-        extraMonthly: maxed ? null : monthlyCostAt(econ, kind, level + 1) - monthlyCostAt(econ, kind, level),
+        extraMonthly: maxed ? null : monthlyCostAt(ecoF, kind, level + 1) - monthlyCostAt(ecoF, kind, level),
         extraSeats: kind === 'stadium' && !maxed ? stadiumExpansion(econ.capacity) : null,
       };
     }),

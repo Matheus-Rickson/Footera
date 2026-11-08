@@ -7,7 +7,8 @@ import { ANCHORS, FORMATIONS, customFormationId, formationLabel, getFormation } 
 import { isRelatedPosition } from '../../game/match-engine/roles.ts';
 import { roleFactorFrom } from '../../game/match-engine/playerRoles.ts';
 import { BUILDUP_LABEL, MENTALITY_LABEL, errMsg, fmtDate, shortName, unwrap } from '../util.ts';
-import { initials, POS_NAME, posLabel, PosPill, to20, tone } from '../playerUi.tsx';
+import { PlayerFace, POS_NAME, posLabel, PosPill, to20, tone } from '../playerUi.tsx';
+import { useImages } from '../images.ts';
 import { PlayerQuickView } from './PlayerProfile.tsx';
 import { RoleField } from '../roleField.tsx';
 
@@ -41,6 +42,7 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
 }
 
 export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
+  const img = useImages();
   const [ov, setOv] = useState<TacticsOverviewDto | null>(null);
   const [work, setWork] = useState<Work | null>(null);
   const [autoXI, setAutoXI] = useState<string[]>([]);
@@ -264,7 +266,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
                       <td>{anchor ? <span className="tc-badge" title={anchorTitle(anchor)}>{anchorLabel(anchor)}</span> : <span className="muted small">—</span>}</td>
                       <td><PosPill pos={p.position} /></td>
                       <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
-                      <td><span className="sq-player"><span className="tr-avatar" aria-hidden="true">{initials(p.name)}</span><span className="tc-name">{p.name}</span>
+                      <td><span className="sq-player"><PlayerFace img={img} id={p.id} name={p.name} className="tr-avatar" /><span className="tc-name">{p.name}</span>
                         {p.unavailable?.kind === 'injured' && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.unavailable.until)}`}><Cross size={11} aria-hidden="true" /></span>}
                         {p.unavailable?.kind === 'suspended' && <span className="tr-flag tr-flag-susp" title={`Suspenso (${p.unavailable.matches} jogo(s))`}><Ban size={11} aria-hidden="true" /></span>}</span></td>
                       <td className="right">{Math.round(p.condition)}%</td>
@@ -296,7 +298,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
               if (!p) return <button key={a.id} className={`tc-empty ${dragOver === a.id ? 'over' : ''} ${selected ? 'armed' : ''}`} style={style} title={`Posição livre: ${anchorTitle(a.id)}`} aria-label={`Posição livre ${anchorTitle(a.id)}`} {...common}><span>{anchorLabel(a.id)}</span></button>;
               return (
                 <button key={a.id} className={`tc-chip-p ${dragOver === a.id ? 'over' : ''} ${selected === p.id ? 'sel' : ''}`} style={style} title={`${p.name} — ${anchorTitle(a.id)} (rende ${to20(p.slotScores[a.pos])} de 20)`} {...dragProps(p.id)} {...common}>
-                  <span className={`tc-face ${fitTone(p, a.pos)}`}>{initials(p.name)}</span>
+                  <PlayerFace img={img} id={p.id} name={p.name} className={`tc-face ${fitTone(p, a.pos)}`} />
                   <span className="tc-chip-name">{shortName(p.name)}</span>
                   <span className="tc-chip-pos"><b>{anchorLabel(a.id)}</b><i className={fitTone(p, a.pos)}>{to20(p.slotScores[a.pos])}</i></span>
                   {chipRole(anchors.indexOf(a.id))}

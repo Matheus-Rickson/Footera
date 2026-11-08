@@ -16,6 +16,8 @@ import { CSV_COLUMNS } from '../../game/data-pack/csv.ts';
 import { COACH_ATTRS } from '../../shared/coachAttributes.ts';
 import type { Methodology } from '../../shared/types.ts';
 import { CUP_STAGE_CODES } from '../../game/cup-engine/catalog.ts';
+import { nationalityOptions } from '../../shared/nations.ts';
+import { NationPicker } from '../nationPicker.tsx';
 
 type Rec = Record<string, unknown>;
 interface Props { onBack: () => void }
@@ -160,6 +162,12 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
 
   const totalChanges = summary ? Object.values(summary.changes).reduce((s, c) => s + c.created + c.edited + c.removed, 0) : 0;
   const set = (patch: Partial<Filters>) => { setFilters((f) => ({ ...f, ...patch })); setLimit(100); };
+  /** filtros que valem para a planilha (os mesmos da lista; a busca por nome e "só o que mudou" não entram) */
+  const csvFilter = {
+    countryId: filters.countryId || undefined, leagueId: filters.leagueId || undefined,
+    clubId: kind === 'players' ? filters.clubId || undefined : undefined, position: kind === 'players' ? (filters.position || undefined) as Position | undefined : undefined,
+  };
+  const csvFiltered = Object.values(csvFilter).some(Boolean);
 
   return (
     <main className="shell nc-fit nc-wide ed">
@@ -198,11 +206,11 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
               <select aria-label="País" value={filters.countryId} onChange={(e) => set({ countryId: e.target.value, leagueId: '', clubId: '' })}>
                 <option value="">Todos os países</option>{opts.countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              {(kind === 'clubs') && <select aria-label="Liga" value={filters.leagueId} onChange={(e) => set({ leagueId: e.target.value })}>
+              {(kind === 'clubs' || kind === 'players') && <select aria-label="Liga" value={filters.leagueId} onChange={(e) => set({ leagueId: e.target.value, clubId: '' })}>
                 <option value="">Todas as ligas</option>{opts.leagues.filter((l) => !filters.countryId || l.countryId === filters.countryId).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>}
               {(kind === 'players' || kind === 'coaches') && <select aria-label="Clube" value={filters.clubId} onChange={(e) => set({ clubId: e.target.value })}>
-                <option value="">Todos os clubes</option>{opts.clubs.filter((c) => !filters.countryId || c.countryId === filters.countryId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="">Todos os clubes</option>{opts.clubs.filter((c) => (!filters.countryId || c.countryId === filters.countryId) && (kind !== 'players' || !filters.leagueId || c.leagueId === filters.leagueId)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>}
               {kind === 'players' && <select aria-label="Posição" value={filters.position} onChange={(e) => set({ position: e.target.value })}>
                 <option value="">Todas as posições</option>{POS_ORDER.filter((p) => p !== 'ST').map((p) => <option key={p} value={p}>{POS_NAME[p]}</option>)}
@@ -219,8 +227,11 @@ function Workspace({ packId, onClose, onBack }: { packId: string; onClose: () =>
                 setCsv(r);
                 if (!r.errors.length) { await refreshSummary(); await refreshOpts(); await loadList(); }
               })}><Upload size={14} aria-hidden="true" />Importar</button>
-              <button className="nc-ghost" disabled={busy} onClick={() => void run(async () => { const p = await unwrap(window.api.editorExportCsv(packId, kind, false)); if (p) setNotice(`Planilha salva em ${p}.`); })}><Download size={14} aria-hidden="true" />Exportar</button>
-              <button className="nc-ghost" disabled={busy} onClick={() => void run(async () => { const p = await unwrap(window.api.editorExportCsv(packId, kind, true)); if (p) setNotice(`Modelo salvo em ${p}.`); })}>Modelo</button>
+              <button className="nc-ghost" disabled={busy} title={csvFiltered ? 'Exporta só o que os filtros mostram (país, liga, clube, posição)' : 'Exporta todos os registros (use os filtros para exportar só uma parte)'} onClick={() => void run(async () => {
+                const r = await unwrap(window.api.editorExportCsv(packId, kind, false, csvFilter));
+                if (r) setNotice(`Planilha salva em ${r.path} (${fmtNum(r.rows)} ${kind === 'players' ? 'jogador(es)' : 'clube(s)'}${csvFiltered ? ', só os filtrados' : ''}).`);
+              })}><Download size={14} aria-hidden="true" />{csvFiltered ? 'Exportar filtrados' : 'Exportar'}</button>
+              <button className="nc-ghost" disabled={busy} onClick={() => void run(async () => { const r = await unwrap(window.api.editorExportCsv(packId, kind, true)); if (r) setNotice(`Modelo salvo em ${r.path}.`); })}>Modelo</button>
             </div>
           )}
           <div className="ed-rows" role="listbox" aria-label={KIND_META[kind].label}>
@@ -442,6 +453,7 @@ const ATTR_GROUPS: Array<[keyof Attributes, string, Array<[string, string]>]> = 
 ];
 
 function PlayerForm({ r, set, errors, opts, isNew, derived, photo }: { r: Rec; set: (r: Rec) => void; errors: Errors; opts: EditorOptionsDto; isNew: boolean; derived: EditorEntityDto['derived'] | null; photo: ReactNode }) {
+  const natOpts = useMemo(() => nationalityOptions(opts.countries), [opts.countries]);
   const secs = (r.secondaryPositions as Position[] | undefined) ?? [];
   const toggleSec = (p: Position) => set({ ...r, secondaryPositions: secs.includes(p) ? secs.filter((x) => x !== p) : [...secs, p].slice(0, 3) });
   return (
@@ -451,7 +463,7 @@ function PlayerForm({ r, set, errors, opts, isNew, derived, photo }: { r: Rec; s
         <Field label="Sobrenome" error={errors.lastName}><TextIn r={r} set={set} path="lastName" max={40} /></Field>
         <Field label="Nascimento" help={`Idade de 15 a 45 anos no início da carreira (01/07/2026).${derived?.age != null ? ` Hoje: ${derived.age} anos.` : ''}`} error={errors.birthDate}><input type="date" value={String(r.birthDate ?? '')} onChange={(e) => set({ ...r, birthDate: e.target.value })} /></Field>
         <Field label="Nacionalidade" error={errors.nationality}>
-          <select value={String(r.nationality ?? '')} onChange={(e) => set({ ...r, nationality: e.target.value })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></Field>
+          <NationPicker value={String(r.nationality ?? '')} options={natOpts} onChange={(code) => set({ ...r, nationality: code })} /></Field>
         <Field label="Pé"><select value={String(r.foot ?? 'right')} onChange={(e) => set({ ...r, foot: e.target.value })}><option value="right">Destro</option><option value="left">Canhoto</option><option value="both">Ambidestro</option></select></Field>
         <Field label="Altura (cm)" error={errors.heightCm}><NumIn r={r} set={set} path="heightCm" min={140} max={220} /></Field>
         <Field label="Peso (kg)" error={errors.weightKg}><NumIn r={r} set={set} path="weightKg" min={40} max={130} /></Field>
@@ -559,6 +571,7 @@ function CupForm({ r, set, errors, opts, isNew, logo }: { r: Rec; set: (r: Rec) 
 }
 
 function CoachForm({ r, set, errors, opts, derived, photo }: { r: Rec; set: (r: Rec) => void; errors: Errors; opts: EditorOptionsDto; derived: EditorEntityDto['derived'] | null; photo: ReactNode }) {
+  const natOpts = useMemo(() => nationalityOptions(opts.countries), [opts.countries]);
   return (
     <>
       <fieldset className="ed-section"><legend>Dados pessoais</legend>
@@ -566,7 +579,7 @@ function CoachForm({ r, set, errors, opts, derived, photo }: { r: Rec; set: (r: 
         <Field label="Sobrenome" error={errors.lastName}><TextIn r={r} set={set} path="lastName" max={40} /></Field>
         <Field label="Nascimento" help={`Idade de 25 a 85 anos no início da carreira (01/07/2026). Os técnicos da IA se aposentam aos 70.${derived?.age != null ? ` Hoje: ${derived.age} anos.` : ''}`} error={errors.birthDate}><input type="date" value={String(r.birthDate ?? '')} onChange={(e) => set({ ...r, birthDate: e.target.value })} /></Field>
         <Field label="Nacionalidade" error={errors.nationality}>
-          <select value={String(r.nationality ?? '')} onChange={(e) => set({ ...r, nationality: e.target.value })}><option value="">Escolha…</option>{opts.countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></Field>
+          <NationPicker value={String(r.nationality ?? '')} options={natOpts} onChange={(code) => set({ ...r, nationality: code })} /></Field>
       </fieldset>
       <fieldset className="ed-section ed-images"><legend>Foto</legend>{photo}</fieldset>
       <fieldset className="ed-section"><legend>Clube e perfil</legend>

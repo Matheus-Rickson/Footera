@@ -4,7 +4,9 @@ import type { SquadRow } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { POS_ORDER } from '../../shared/positions.ts';
 import { fmtDate } from '../util.ts';
-import { Flag, initials, PosPill, to20, tone } from '../playerUi.tsx';
+import { Flag, PlayerFace, PosPill, to20, tone } from '../playerUi.tsx';
+import { useImages } from '../images.ts';
+
 
 type Group = 'all' | 'GK' | 'DEF' | 'MID' | 'ATT';
 const GROUPS: Array<[Group, string]> = [['all', 'Todos'], ['GK', 'Goleiros'], ['DEF', 'Defensores'], ['MID', 'Meio-campistas'], ['ATT', 'Atacantes']];
@@ -23,6 +25,7 @@ const meterTone = (v: number) => (v >= 75 ? 'great' : v >= 60 ? 'good' : v >= 45
 const ratingTone = (r: number) => (r >= 7.3 ? 'great' : r >= 6.8 ? 'good' : r >= 6.2 ? 'avg' : 'poor');
 
 export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPlayer: (id: string) => void }) {
+  const img = useImages();
   const [group, setGroup] = useState<Group>('all');
   const [sort, setSort] = useState<{ key: Key; asc: boolean }>({ key: 'pos', asc: true });
 
@@ -88,7 +91,7 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
                 <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
                 <td>
                   <div className="sq-player">
-                    <span className="tr-avatar" aria-hidden="true">{initials(p.name)}</span>
+                    <PlayerFace img={img} id={p.id} name={p.name} className="tr-avatar" />
                     <button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button>
                     {p.status.injuredUntil && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.status.injuredUntil)}`} aria-label="Lesionado"><Cross size={11} aria-hidden="true" /></span>}
                     {p.status.suspension > 0 && <span className="tr-flag tr-flag-susp" title={`Suspenso por ${p.status.suspension} jogo(s)`} aria-label="Suspenso"><Ban size={11} aria-hidden="true" /></span>}

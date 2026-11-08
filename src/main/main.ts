@@ -12,7 +12,7 @@ import {
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
-  playerProfile, getScouting, hireScoutFor, fireScoutFor, assignScoutFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
+  playerProfile, getScouting, hireScoutFor, fireScoutFor, createScoutTaskFor, previewScoutTaskFor, removeScoutTaskFor, scoutTaskPlayersFor, scoutedPlayersFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
 import { UserError } from '../shared/errors.ts';
@@ -21,7 +21,7 @@ import type { EditorListQuery, IpcResult, MarketFilter, OfferInput, PackImportDt
 import { setBaseUniverseDir } from '../services/universeService.node.ts';
 import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, packsDir, removePack, setLoadOrder } from '../services/packManager.node.ts';
 import { imagesVersion, listPackImages, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
-import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest, editorImportCsv, editorExportCsv } from '../services/editorService.node.ts';
+import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest, editorImportCsv, editorExportCsvRows } from '../services/editorService.node.ts';
 import { decodeCsv } from '../game/data-pack/csv.ts';
 
 // O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
@@ -87,13 +87,19 @@ function registerHandlers(): void {
     // o Excel em português salva CSV em Windows-1252 por padrão; UTF-8 (com ou sem BOM) também é aceito
     return editorImportCsv(dataDir(), i.packId, i.kind, decodeCsv(new Uint8Array(buf)));
   });
-  handle('editor:exportCsv', csvRef.extend({ template: z.boolean() }), async (i) => {
-    const opts: SaveDialogOptions = { title: i.template ? 'Salvar modelo de planilha' : 'Exportar planilha', defaultPath: `${i.kind === 'players' ? 'jogadores' : 'clubes'}${i.template ? '-modelo' : ''}.csv`, filters: [{ name: 'Planilha CSV', extensions: ['csv'] }] };
+  const idRef = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/);
+  const csvFilter = z.object({ countryId: idRef.optional(), leagueId: idRef.optional(), clubId: idRef.optional(),
+    position: z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF']).optional() }).strict();
+  handle('editor:exportCsv', csvRef.extend({ template: z.boolean(), filter: csvFilter.optional() }), async (i) => {
+    const f = i.filter ?? {};
+    const suffix = i.template ? '-modelo' : [f.countryId, f.leagueId, f.clubId, f.position?.toLowerCase()].filter(Boolean).map((x) => `-${x}`).join('');
+    const opts: SaveDialogOptions = { title: i.template ? 'Salvar modelo de planilha' : 'Exportar planilha', defaultPath: `${i.kind === 'players' ? 'jogadores' : 'clubes'}${suffix}.csv`, filters: [{ name: 'Planilha CSV', extensions: ['csv'] }] };
     const win = BrowserWindow.getFocusedWindow();
     const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
     if (res.canceled || !res.filePath) return null;
-    fs.writeFileSync(res.filePath, editorExportCsv(dataDir(), i.packId, i.kind, i.template), 'utf8');
-    return res.filePath;
+    const out = editorExportCsvRows(dataDir(), i.packId, i.kind, i.template, f);
+    fs.writeFileSync(res.filePath, out.text, 'utf8');
+    return { path: res.filePath, rows: out.rows };
   });
   handle('editor:removeImage', imgRef, (i) => { removePackImage(packDirFor(i.packId), i.kind as ImageKind, i.id); return packImageKeys(i.packId); });
   handle('packs:order', z.object({ enabled: z.array(packId).max(100) }), (i) => setLoadOrder(dataDir(), i.enabled));
@@ -253,9 +259,24 @@ function registerHandlers(): void {
   handle('scouting:get', ref, (i) => getScouting(dataDir(), i.profileId, i.careerId));
   handle('scouting:hire', ref.extend({ candidateId: id60 }), (i) => hireScoutFor(dataDir(), i.profileId, i.careerId, i.candidateId));
   handle('scouting:fire', ref.extend({ scoutId: id60 }), (i) => fireScoutFor(dataDir(), i.profileId, i.careerId, i.scoutId));
-  handle('scouting:assign', ref.extend({ scoutId: id60, assignment: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('shortlist') }), z.object({ kind: z.literal('country'), countryCode: z.string().regex(/^[A-Z]{3}$/) }),
-  ]) }), (i) => assignScoutFor(dataDir(), i.profileId, i.careerId, i.scoutId, i.assignment));
+  const posEnum = z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']);
+  const numRange = z.object({ min: z.number().finite().optional(), max: z.number().finite().optional() }).strict().optional();
+  const scoutTask = z.object({
+    scope: z.enum(['country', 'league', 'world']), area: z.string().max(60), name: z.string().max(80).optional(), months: z.number().int().min(1).max(24).nullable(),
+    criteria: z.object({
+      positions: z.array(posEnum).max(16).optional(), secondary: z.array(posEnum).max(16).optional(),
+      overall: numRange, potential: numRange, age: numRange, value: numRange, salary: numRange, reputation: numRange, condition: numRange, morale: numRange,
+      foot: z.enum(['left', 'right', 'both']).optional(), status: z.enum(['free', 'expiring', 'contracted']).optional(),
+      attributes: z.record(z.string().max(30), z.number().finite()).optional(),
+      stats: z.object({ appearances: z.number().finite().optional(), minutes: z.number().finite().optional(), goals: z.number().finite().optional(),
+        assists: z.number().finite().optional(), avgRating: z.number().finite().optional() }).strict().optional(),
+    }).strict(),
+  });
+  handle('scouting:task-create', ref.extend({ input: scoutTask }), (i) => createScoutTaskFor(dataDir(), i.profileId, i.careerId, i.input));
+  handle('scouting:task-preview', ref.extend({ input: scoutTask }), (i) => previewScoutTaskFor(dataDir(), i.profileId, i.careerId, i.input));
+  handle('scouting:task-remove', ref.extend({ taskId: id60 }), (i) => removeScoutTaskFor(dataDir(), i.profileId, i.careerId, i.taskId));
+  handle('scouting:task-players', ref.extend({ taskId: id60 }), (i) => scoutTaskPlayersFor(dataDir(), i.profileId, i.careerId, i.taskId));
+  handle('scouting:players', ref.extend({ playerIds: z.array(id60).max(60) }), (i) => scoutedPlayersFor(dataDir(), i.profileId, i.careerId, i.playerIds));
   handle('scouting:shortlist', ref.extend({ playerId: id60, on: z.boolean() }), (i) => shortlistFor(dataDir(), i.profileId, i.careerId, i.playerId, i.on));
   handle('player:profile', ref.extend({ playerId: id60 }), (i) => playerProfile(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('youth:get', ref, (i) => getYouth(dataDir(), i.profileId, i.careerId));
@@ -273,7 +294,7 @@ function registerHandlers(): void {
   handle('staff:fire', ref.extend({ staffId: id60 }), (i) => fireStaffFor(dataDir(), i.profileId, i.careerId, i.staffId));
   handle('medical:get', ref, (i) => getMedical(dataDir(), i.profileId, i.careerId));
   handle('infra:get', ref, (i) => getInfrastructure(dataDir(), i.profileId, i.careerId));
-  handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
+  handle('infra:upgrade', ref.extend({ kind: z.enum(['training', 'youth', 'medical', 'stadium', 'scouting', 'recruitment']) }), (i) => startUpgradeFor(dataDir(), i.profileId, i.careerId, i.kind));
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
   handle('cup:bracket', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => cupBracket(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('staged:view', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => stagedView(dataDir(), i.profileId, i.careerId, i.competitionId));

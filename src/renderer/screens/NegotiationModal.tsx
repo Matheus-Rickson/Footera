@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, CircleCheck, X } from 'lucide-react';
 import type { NegotiationDto, OfferResultDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
-import { fmtRange, fmtRange20, initials, PlayerFlags, PosPill } from '../playerUi.tsx';
+import { fmtRange, fmtRange20, PlayerFace, PlayerFlags, PosPill } from '../playerUi.tsx';
+import { useImages } from '../images.ts';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { YearsPicker } from './YearsPicker.tsx';
 
@@ -29,6 +30,7 @@ function Gauge({ label, value, hint }: { label: string; value: number; hint: str
 }
 
 export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpenPlayer, onSigned }: Props) {
+  const img = useImages();
   const [n, setN] = useState<NegotiationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('fee');
@@ -87,7 +89,7 @@ export function NegotiationModal({ profileId, careerId, playerId, onClose, onOpe
           <div className="neg-grid">
             <aside className="neg-side">
               <div className="neg-id">
-                <div className="tr-avatar" aria-hidden="true">{initials(p.name)}</div>
+                <PlayerFace img={img} id={playerId} name={p.name} className="tr-avatar" />
                 <div>
                   <button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button><PlayerFlags p={p} />
                   <div className="row small muted"><span>{p.nationalityName}</span><PosPill pos={p.position} /><span>{p.age} anos</span></div>

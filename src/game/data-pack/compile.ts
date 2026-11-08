@@ -57,6 +57,10 @@ function mergeAttributes(cur: Attributes | null, patch: NonNullable<PlayerRec['a
     mental: { ...(cur?.mental ?? {}), ...(patch.mental ?? {}) },
     physical: { ...(cur?.physical ?? {}), ...(patch.physical ?? {}) },
   };
+  // jogador novo com o grupo de goleiro completo (como a planilha CSV exporta): o "goalkeeping" técnico é calculado dele
+  if ((out.technical as Record<string, unknown>).goalkeeping === undefined && gkComplete(patch)) {
+    (out.technical as Record<string, number>).goalkeeping = syncGoalkeeping({ ...(out as unknown as Attributes), goalkeeper: patch.goalkeeper as Attributes['goalkeeper'] }).technical.goalkeeping;
+  }
   const n = Object.keys(out.technical).length + Object.keys(out.mental).length + Object.keys(out.physical).length;
   if (n !== ATTR_COUNT) return null;
   const a = out as unknown as Attributes;
@@ -68,8 +72,12 @@ function mergeAttributes(cur: Attributes | null, patch: NonNullable<PlayerRec['a
   else a.goalkeeper = cur?.goalkeeper ? { ...cur.goalkeeper } : base;
   return a;
 }
+const GK_GROUP_KEYS = ['reflexes', 'oneOnOne', 'handling', 'aerial', 'rushingOut', 'kicking'] as const;
+const gkComplete = (patch: NonNullable<PlayerRec['attributes']>) => GK_GROUP_KEYS.every((k) => patch.goalkeeper?.[k] !== undefined);
 const missingAttributes = (patch: NonNullable<PlayerRec['attributes']>) =>
-  (['technical', 'mental', 'physical'] as const).flatMap((g) => ATTR_KEYS[g].filter((k) => (patch[g] as Record<string, unknown> | undefined)?.[k] === undefined));
+  (['technical', 'mental', 'physical'] as const).flatMap((g) => ATTR_KEYS[g].filter((k) => (patch[g] as Record<string, unknown> | undefined)?.[k] === undefined
+    && !(k === 'goalkeeping' && gkComplete(patch))))
+    .map((k) => (k === 'goalkeeping' ? 'atributos de goleiro (reflexos, um contra um, manejo, jogo aéreo, saídas do gol, reposição)' : k));
 
 export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const issues: PackIssue[] = [];

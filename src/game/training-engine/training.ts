@@ -94,13 +94,18 @@ export function staffCandidates(seed: string, month: string, templates: readonly
 }
 
 // ---------------------------------------------------------------- infraestrutura
-export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium';
-export const FACILITY_KINDS: FacilityKind[] = ['training', 'youth', 'medical', 'stadium'];
+export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium' | 'scouting' | 'recruitment';
+export const FACILITY_KINDS: FacilityKind[] = ['stadium', 'training', 'youth', 'recruitment', 'scouting', 'medical'];
+/**
+ * Departamento de scouting e rede de captação (reformulação de 07/11/2026): só o clube do usuário usa; saves e carreiras sem o nível gravado
+ * começam no 10, que reproduz o jogo de antes (4 olheiros, 5 jogadores por tarefa, +1 jovem na peneira).
+ */
+export const DEFAULT_DEPT_LEVEL = 10;
 export const MAX_FACILITY_LEVEL = 20;
 
 /** Custo de subir um nível (cresce exponencialmente com o nível atual; estádio é mais caro). */
 export function upgradeCost(kind: FacilityKind, level: number, economy: number): number {
-  const base = kind === 'stadium' ? 1_600_000 : kind === 'training' ? 1_100_000 : 900_000;
+  const base = kind === 'stadium' ? 1_600_000 : kind === 'training' ? 1_100_000 : kind === 'scouting' || kind === 'recruitment' ? 600_000 : 900_000;
   return Math.round((economy * base * Math.pow(1.12, level)) / 1000) * 1000;
 }
 /** Duração da obra em dias (níveis altos levam mais tempo). */

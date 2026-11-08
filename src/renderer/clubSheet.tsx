@@ -6,6 +6,7 @@ import { COACH_ATTR_CAP } from '../game/coach-engine/coach.ts';
 import { errMsg, fmtDate, fmtNum, METHODOLOGY, unwrap } from './util.ts';
 import { Stars } from './stars.tsx';
 import { ClubCrest, Flag } from './flags.tsx';
+import { nationName } from '../shared/nations.ts';
 import { PosPill } from './playerUi.tsx';
 import { useImages } from './images.ts';
 
@@ -112,7 +113,7 @@ export function CoachSheet({ profileId, careerId, coachId, onClose }: { profileI
       <header className="modal-head">
         <CoachPhoto id={coachId} name={k?.name ?? 'Técnico'} size={56} src={img.url('coaches', coachId)} />
         <div className="cs-title"><h2>{k?.name ?? 'Carregando…'}</h2>
-          {k && <span className="muted small"><Flag code={k.nationality} size={12} title={k.nationality} /> {k.age} anos · {k.retired ? 'aposentado' : k.clubName ?? 'sem clube'}</span>}</div>
+          {k && <span className="muted small"><Flag code={k.nationality} size={12} title={nationName(k.nationality)} /> {k.age} anos · {k.retired ? 'aposentado' : k.clubName ?? 'sem clube'}</span>}</div>
         <button className="secondary icon" aria-label="Fechar" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </header>
       <div className="modal-body">

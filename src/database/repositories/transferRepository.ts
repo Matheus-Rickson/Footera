@@ -7,6 +7,7 @@ import {
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
 import type { Player } from '../../shared/types.ts';
+import { nationName } from '../../shared/nations.ts';
 import type {
   FeeResultDto, IncomingOfferDto, MarketFilter, MarketPageDto, MarketPlayerDto, MyPlayerDto, NegotiationDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
 } from '../../shared/api.ts';
@@ -98,8 +99,8 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   const where = ['p.retired = 0', 'p.youth_club_id IS NULL', f.freeOnly ? 'p.club_id IS NULL' : f.clubOnly ? 'p.club_id IS NOT NULL AND p.club_id <> ?' : '(p.club_id IS NULL OR p.club_id <> ?)'];
   const args: unknown[] = f.freeOnly ? [] : [st.clubId];
   // países presentes no mercado (antes dos demais filtros, para o filtro de nacionalidade não sumir com as opções)
-  const nationalities = db.prepare(`SELECT p.nationality AS code, COALESCE(co.name, p.nationality) AS name, COUNT(*) AS n FROM players p LEFT JOIN countries co ON co.code = p.nationality
-    WHERE ${where.join(' AND ')} GROUP BY p.nationality ORDER BY n DESC, name`).all(...args).map((r) => ({ code: S(r.code), name: S(r.name), count: N(r.n) }));
+  const nationalities = db.prepare(`SELECT p.nationality AS code, co.name AS name, COUNT(*) AS n FROM players p LEFT JOIN countries co ON co.code = p.nationality
+    WHERE ${where.join(' AND ')} GROUP BY p.nationality ORDER BY n DESC, name`).all(...args).map((r) => ({ code: S(r.code), name: nationName(S(r.code), r.name == null ? null : S(r.name)), count: N(r.n) }));
   if (f.maxValue !== undefined) { where.push('p.market_value <= ?'); args.push(Math.max(0, Math.floor(f.maxValue))); }
   if (f.maxWage !== undefined) { where.push('p.salary <= ?'); args.push(Math.max(0, Math.floor(f.maxWage))); }
   if (f.name && f.name.trim()) { where.push("(p.first_name || ' ' || p.last_name) LIKE ?"); args.push(`%${f.name.trim().replace(/[%_]/g, '')}%`); }

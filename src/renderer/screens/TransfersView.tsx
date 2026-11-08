@@ -3,7 +3,8 @@ import { Binoculars } from 'lucide-react';
 import type { MarketPageDto, MarketPlayerDto, TransfersOverviewDto } from '../../shared/api.ts';
 import { EMPTY_FILTERS, MarketFilters, toMarketFilter, type Filters } from './MarketFilters.tsx';
 import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
-import { fmtRange, fmtRange20, FOOT_LABEL, initials, PlayerFlags, PosPill, tone } from '../playerUi.tsx';
+import { fmtRange, fmtRange20, FOOT_LABEL, PlayerFace, PlayerFlags, PosPill, tone } from '../playerUi.tsx';
+import { useImages } from '../images.ts';
 import { KnowledgeBar } from './ScoutingView.tsx';
 import { NegotiationModal } from './NegotiationModal.tsx';
 import type { SummaryKey } from '../../shared/attributeSummary.ts';
@@ -26,6 +27,7 @@ const KIND_LABEL = { purchase: 'Compra', sale: 'Venda', ai: 'Outros clubes' } as
 let lastFilters: Filters = EMPTY_FILTERS;
 
 export function TransfersView({ profileId, careerId, refreshKey, onChanged, preselect, onOpenPlayer, onPreselectUsed }: Props) {
+  const img = useImages();
   const [tab, setTab] = useState<Tab>('market');
   const [ov, setOv] = useState<TransfersOverviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
                   const blocked = !w.open && p.clubId !== null;
                   return (
                     <tr key={p.id}>
-                      <td><div className="tr-player"><span className="tr-avatar" aria-hidden="true">{initials(p.name)}</span><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button><PlayerFlags p={p} /></div></td>
+                      <td><div className="tr-player"><PlayerFace img={img} id={p.id} name={p.name} className="tr-avatar" /><button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button><PlayerFlags p={p} /></div></td>
                       <td>{p.clubName ?? <em className="muted">Sem clube</em>}</td>
                       <td className="nowrap">{p.nationalityName}</td>
                       <td><PosPill pos={p.position} /></td>

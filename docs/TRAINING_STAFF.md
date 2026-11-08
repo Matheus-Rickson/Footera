@@ -36,6 +36,18 @@ o melhor treino de cada jogador; profissionais contratáveis; obras com custo e 
   uma por vez. Custo `economia × base × 1,12^nível` (base: estádio 1,6 mi; centro 1,1 mi; base e médico 0,9 mi); prazo `90 + 8 × nível` dias (estádio 150 + 8 × nível).
 - Ao concluir: nível sobe (efeitos acima e na qualidade das safras), a manutenção mensal sobe; o estádio ganha 5% de lugares (mais bilheteria).
 
+### Departamento de scouting e rede de captação (07/11/2026; decisão do usuário: "os dois com nível")
+- Instalações novas, 1–20, só do clube do usuário (`facilities_json.scouting` / `.recruitment`; ausentes = 10). O nível 10 reproduz o jogo de antes.
+- **Scouting:** olheiros (= tarefas ativas ao mesmo tempo) `2 + nível/5` (10 → 4; 20 → 6); jogadores acompanhados por tarefa `3 + nível/5` (10 → 5; 20 → 7).
+  A contratação e a demissão de olheiros ficam em Infraestrutura → Departamento de scouting → "Gerenciar".
+- **Rede de captação:** jovens a mais na peneira do usuário `round(nível/10)` (10 → +1, como antes; 20 → +2; safra máxima 8) e chance de cada jovem vir
+  de outro país do universo = nível% (10 → 10%). A IA não usa (a calibração dela não muda).
+- **Custos:** obra base 600 mil × economia × 1,12^nível; manutenção `staffPerLevel/3 × nível` cada (× economia), descontada de uma base de 20 níveis
+  (no 10/10 a estrutura mensal é idêntica à de antes, então a margem financeira calibrada não muda). Migração 026 (CHECK das obras).
+- **Tela:** cards por instalação (5 barras = 20 níveis, manutenção por card, linhas com explicação, custo e prazo da expansão, "Expandir" com confirmação);
+  estádio com capacidade, manutenção, público médio e ocupação nos jogos em casa da temporada, torcedores e preço médio do ingresso (setores e ajuste de
+  preço ficaram para depois, decisão do usuário).
+
 ## Estabilidade (5 viradas, universo completo; usuário passivo, sem comissão)
 | Medida | Início | Depois de 5 viradas |
 |---|---|---|

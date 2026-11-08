@@ -76,5 +76,22 @@ test('Editor: importar CSV cria e altera (só as colunas preenchidas), ignora li
     const row = pExport.find((x) => x.record.id === p.id)!.record;
     assert.equal(row.firstName, 'Renomeado'); assert.equal(row.ability, to20(p.overall));
     assert.equal(editorExportCsv(dir, 'planilha', 'players', true).trim(), toCsv(csvHeader('players'), []).trim(), 'modelo = só o cabeçalho');
+    // exportação filtrada (os filtros da lista): país + liga → só os clubes dela e os jogadores desses clubes; posição; clube
+    const lg = w.leagues.find((l) => l.countryId === club.countryId && w.clubs.some((c) => c.leagueId === l.id))!;
+    const inLeague = new Set(w.clubs.filter((c) => c.leagueId === lg.id).map((c) => c.id));
+    const cRows = rowsToRecords('clubs', editorExportCsv(dir, 'planilha', 'clubs', false, { countryId: lg.countryId, leagueId: lg.id })).records;
+    assert.deepEqual(new Set(cRows.map((r) => r.record.id)), inLeague, 'só os clubes da liga');
+    const pRows = rowsToRecords('players', editorExportCsv(dir, 'planilha', 'players', false, { countryId: lg.countryId, leagueId: lg.id })).records;
+    assert.equal(pRows.length, w.players.filter((x) => x.clubId && inLeague.has(x.clubId)).length + (inLeague.has(club.id) ? 1 : 0), 'jogadores dos clubes da liga (+ o criado pelo pacote)');
+    assert.ok(pRows.every((r) => inLeague.has(String(r.record.club))), 'nenhum de fora da liga nem sem clube');
+    const gks = rowsToRecords('players', editorExportCsv(dir, 'planilha', 'players', false, { clubId: club.id, position: 'GK' })).records;
+    assert.ok(gks.length > 0 && gks.every((r) => r.record.club === club.id && r.record.position === 'GK'));
+    // jogador NOVO com a linha completa como a planilha exporta (sem a coluna "goalkeeping", que é calculada do grupo de goleiro)
+    const gk = pExport.find((x) => x.record.position === 'GK')!.record;
+    const novo = { ...gk, id: 'goleiro-novo-2000', firstName: 'Goleiro', lastName: 'Novo', birthDate: '2000-01-01' };
+    const imp = editorImportCsv(dir, 'planilha', 'players', toCsv(csvHeader('players'), [recordToRow('players', novo)]));
+    assert.deepEqual([imp.created, imp.errors], [1, []], imp.errors.join(' | '));
+    const d = editorGet(dir, 'planilha', 'players', 'goleiro-novo-2000');
+    assert.equal(d.derived.overall, gk.ability, 'mesma força do goleiro copiado');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

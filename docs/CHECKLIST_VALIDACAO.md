@@ -52,7 +52,7 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Campo animado: bola e jogadores se movem a cada minuto, "GOL!" aparece nos gols; o texto abaixo explica que é uma representação.
 - [ ] Estatísticas mudam durante o jogo (posse, xG, finalizações, no alvo, escanteios, faltas, cartões, passes, desarmes, defesas).
 - [ ] Ao final: craque do jogo, público e renda, e táticas dos dois times.
-- [ ] Partidas → relatório de um jogo **antigo** (antes desta versão): abre no fim, com aviso de que as notas e estatísticas ao vivo não existem para ele.
+- [ ] Calendário → relatório de um jogo **antigo** (antes desta versão): abre no fim, com aviso de que as notas e estatísticas ao vivo não existem para ele.
 - [ ] Relatório de jogo de outros clubes: aviso de relatório resumido.
 - [ ] A condição dos jogadores no Elenco, depois do jogo, bate com a mostrada no fim da partida.
 
@@ -110,7 +110,13 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Histórico da carreira, Sala de troféus e Notícias registram a temporada. **(já verificado)**
 
 ## 11. Olheiros e categorias de base
-- [ ] Contratar, designar (país ou lista de observação) e demitir olheiros; o conhecimento sobe e as faixas estreitam. **(já verificado)**
+- [ ] Contratar e demitir olheiros; o conhecimento sobe e as faixas estreitam. **(já verificado)**
+- [ ] Olheiros (reformulado): cartões no topo (olheiros, ativas, na fila, concluídas); sem contratação nesta tela (fica na Infraestrutura). "Nova tarefa" abre a janela com escopo, área, nome automático, critérios em grupos, duração e o resumo à esquerda (compatíveis em faixa, dias por relatório, início e término).
+- [ ] Filtros da tarefa: "+ Posição" abre a lista com caixas de seleção (Selecionar todas / Limpar / Cancelar / Aplicar); "+ Idade", "+ Força" etc. abrem o controle deslizante de duas pontas; atributos e estatísticas, o de uma ponta. Depois de aplicar, o filtro mostra o valor (ex.: "Posição ATA, CA") e reabre ao clicar; × remove.
+- [ ] Caixa de entrada: uma semana depois de criar a tarefa chega "N jogadores identificados na tarefa ..." do Departamento de scouting, com a tabela dos jogadores (nome abre a ficha) e "Abrir scouting".
+- [ ] Criar tarefa com olheiro livre: aparece "Ativa" com o olheiro e a barra de prazo; sem olheiro livre: "Na fila". Ao clicar na tarefa, a direita lista os jogadores encontrados (só estimativas) com Negociar/Observar.
+- [ ] Cancelar uma tarefa: vai para o Histórico com a lista; "Apagar" remove. Em "Seus olheiros", a coluna "Trabalhando em" leva à tarefa.
+- [ ] Save antigo com olheiro designado a um país: abre com uma tarefa contínua "Todas as posições · <país>" ativa.
 - [ ] Relatórios abrem a ficha; contratar a partir do relatório. **(já verificado)**
 - [ ] Base: promover e dispensar; peneira em 15/03; quem faz 19 anos e não foi promovido sai na virada. **(já verificado)**
 
@@ -119,6 +125,8 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Evolução mensal na coluna "Na temporada". **(já verificado)**
 - [ ] Departamento médico: lesionados, previsão de retorno, "Em risco"; efeito do nível em uma casa decimal. **(já verificado)**
 - [ ] Infraestrutura: obra com custo e prazo, barra de progresso, nível sobe ao concluir. **(já verificado)**
+- [ ] Infraestrutura (remodelada): estádio grande à esquerda (capacidade, manutenção, público médio, ocupação, torcedores, preço médio do ingresso); à direita, treinamento e base; embaixo, rede de captação, scouting e médico. Cada card: 5 barras com "Nível X de 20", manutenção, linhas com "?" explicativo, custo e prazo da expansão, "Expandir" pede confirmação.
+- [ ] Departamento de scouting → "Gerenciar": olheiros contratados e candidatos do mês (contratar/demitir); o limite segue o nível. Rede de captação: menor/maior entrada e chance no exterior.
 
 ## 13. Diretoria e empregos
 - [ ] Objetivo, meta, confiança e orçamentos; a confiança muda com os resultados. **(já verificado)**
@@ -354,6 +362,7 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Competições → "Copas nacionais" → Copa da Rússia: botões das fases (4ª a 6ª rodadas das Regiões, grupos da RPL, quartas, semifinais, finais dos caminhos, superfinal).
 - [ ] Grupos da RPL: um empate mostra o vencedor nos pênaltis e a tabela dá 2 pontos a ele e 1 ao outro.
 - [ ] Com um clube russo: jogos da copa às quartas-feiras no calendário, com o nome "Copa da Rússia".
+- [ ] Na 2ª temporada com um clube russo: "Supercopa da Rússia" em Competições, final em campo neutro no fim de julho, entre o campeão da liga e o vencedor da copa.
 
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
@@ -362,4 +371,7 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 ---
 
 **Fora do escopo desta versão** (planejado): exportar/importar saves e backups (Fase 10), outros países e competições continentais (Fase 9).
-O botão "Importar save" na tela inicial aparece desativado, com "em breve (Fase 10)".
+A tela inicial não mostra "Importar save" até a Fase 10.
+- [ ] Editor → Clubes ou Jogadores: escolher país e liga e clicar em "Exportar filtrados" gera a planilha só com os clubes da liga (ou os jogadores dos clubes dela); o aviso mostra quantas linhas; sem filtro, "Exportar" traz tudo.
+- [ ] Editor → Jogadores/Técnicos: ao clicar em Nacionalidade abre a lista com bandeira e nome de cada país (inclusive de fora do universo: Gana, Estados Unidos, Japão), com busca e setas/Enter; depois de salvar e criar uma carreira, a bandeira e o nome aparecem no Elenco, no Mercado e na ficha.
+- [ ] Tela inicial: duas colunas sem barra de rolagem (inclusive com a janela no tamanho mínimo); trocar/criar perfil, alternar tema, Continuar, Nova/Carregar carreira, Pacotes, Editor e Sair funcionam.

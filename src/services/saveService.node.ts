@@ -23,7 +23,7 @@ import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplet
 import { getNews, markRead, unreadCount } from '../database/repositories/newsRepository.ts';
 import { getSocialFeed } from '../database/repositories/socialRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
-import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, setShortlisted } from '../database/repositories/scoutRepository.ts';
+import { createScoutTask, fireScout, getPlayerProfile, getScoutedPlayers, getScoutingOverview, getScoutTaskPlayers, hireScout, previewScoutTask, removeScoutTask, setShortlisted } from '../database/repositories/scoutRepository.ts';
 import { ensureYouthAcademies, getYouthOverview, promoteYouth, releaseYouth } from '../database/repositories/youthRepository.ts';
 import { getMedicalOverview, getTrainingOverview, setDelegated, setFocus, setIntensity, setRoleFocus } from '../database/repositories/trainingRepository.ts';
 import { fireStaff, getStaffOverview, hireStaff } from '../database/repositories/staffRepository.ts';
@@ -40,10 +40,11 @@ import { ID_RE, listProfiles } from './profileService.node.ts';
 import { careerUniverse } from './packManager.node.ts';
 import { ImageError, inspectImage } from '../shared/photo.ts';
 import { ageOn } from '../shared/date.ts';
+import { nationName } from '../shared/nations.ts';
 import type { Coach, Methodology, World } from '../shared/types.ts';
 import type {
   AiCoachDetailDto, AiCoachDto, ClubInfoDto, CupBracketDto, StagedViewDto, BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
-  PlayerProfileDto, ScoutAssignment, ScoutingOverviewDto, YouthOverviewDto,
+  MarketPlayerDto, PlayerProfileDto, ScoutingOverviewDto, ScoutTaskInput, ScoutTaskPreviewDto, YouthOverviewDto,
   ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, SocialFeedDto, SocialFilter, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPageDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, LiveOptionsInput, LiveMatchDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, ContinueStepDto,
 } from '../shared/api.ts';
@@ -183,7 +184,7 @@ export async function openCareer(base: string, profileId: string, careerId: stri
         id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, age: ageOn(p.birthDate, summary.gameDate),
         overall: p.overall, potentialEstimated: Math.max(p.overall, p.potentialEstimated), condition: p.condition, morale: p.morale,
         salary: p.salary, contractEnd: p.contractEnd,
-        secondaryPositions: p.secondaryPositions, nationality: p.nationality, nationalityName: countries.get(p.nationality) ?? p.nationality, heightCm: p.heightCm,
+        secondaryPositions: p.secondaryPositions, nationality: p.nationality, nationalityName: nationName(p.nationality, countries.get(p.nationality)), heightCm: p.heightCm,
         status: statusOf.get(p.id) ?? { injuredUntil: null, suspension: 0 }, stats: statsOf.get(p.id) ?? noStats,
       }));
 
@@ -209,7 +210,7 @@ export async function openCareer(base: string, profileId: string, careerId: stri
         age: ageOn(coach.birthDate, summary.gameDate), nationality: coach.nationality,
         methodology: coach.methodology as Methodology, reputation: coach.reputation,
       },
-      photoDataUrl, warnings, unreadInbox: unreadCount(db), nationalityName: natRow ? String(natRow.name) : coach.nationality,
+      photoDataUrl, warnings, unreadInbox: unreadCount(db), nationalityName: nationName(coach.nationality, natRow ? String(natRow.name) : null),
       nextFixture: getNextFixture(db), pendingMatches: countPending(db), leaguePosition,
       seasonStatus: (() => {
         const complete = isSeasonComplete(db);
@@ -320,7 +321,11 @@ export const trophyRoom = (b: string, p: string, c: string): Promise<TrophyRoomD
 export const getScouting = (b: string, p: string, c: string): Promise<ScoutingOverviewDto> => withClubCareer(b, p, c, (db) => getScoutingOverview(db));
 export const hireScoutFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { hireScout(db, id); return true as const; });
 export const fireScoutFor = (b: string, p: string, c: string, id: string): Promise<number> => withClubCareer(b, p, c, (db) => fireScout(db, id));
-export const assignScoutFor = (b: string, p: string, c: string, id: string, a: ScoutAssignment): Promise<true> => withClubCareer(b, p, c, (db) => { assignScout(db, id, a); return true as const; });
+export const createScoutTaskFor = (b: string, p: string, c: string, input: ScoutTaskInput): Promise<string> => withClubCareer(b, p, c, (db) => createScoutTask(db, input));
+export const previewScoutTaskFor = (b: string, p: string, c: string, input: ScoutTaskInput): Promise<ScoutTaskPreviewDto> => withClubCareer(b, p, c, (db) => previewScoutTask(db, input));
+export const removeScoutTaskFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { removeScoutTask(db, id); return true as const; });
+export const scoutedPlayersFor = (b: string, p: string, c: string, ids: string[]): Promise<MarketPlayerDto[]> => withClubCareer(b, p, c, (db) => getScoutedPlayers(db, ids));
+export const scoutTaskPlayersFor = (b: string, p: string, c: string, id: string): Promise<MarketPlayerDto[]> => withClubCareer(b, p, c, (db) => getScoutTaskPlayers(db, id));
 export const shortlistFor = (b: string, p: string, c: string, id: string, on: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setShortlisted(db, id, on); return true as const; });
 export const getYouth = (b: string, p: string, c: string): Promise<YouthOverviewDto> => withClubCareer(b, p, c, (db) => getYouthOverview(db));
 export const promoteYouthFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { promoteYouth(db, id); return true as const; });

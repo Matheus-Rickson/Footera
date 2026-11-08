@@ -39,9 +39,9 @@ function legacyKind(kind: NewsKind, title: string): NewsKind {
 }
 
 /** Registra uma mensagem na caixa de entrada do treinador. NÃO abre transação. */
-export function addNews(db: SqlDb, date: string, kind: NewsKind, title: string, body = '', opts: { sender?: string; action?: InboxAction | null; actionLabel?: string } = {}): void {
-  db.prepare('INSERT INTO news (date, kind, title, body, sender, action, action_label) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(date, kind, title, body, opts.sender ?? null, opts.action === undefined ? null : opts.action ?? 'none', opts.actionLabel ?? null);
+export function addNews(db: SqlDb, date: string, kind: NewsKind, title: string, body = '', opts: { sender?: string; action?: InboxAction | null; actionLabel?: string; players?: string[] } = {}): void {
+  db.prepare('INSERT INTO news (date, kind, title, body, sender, action, action_label, players_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(date, kind, title, body, opts.sender ?? null, opts.action === undefined ? null : opts.action ?? 'none', opts.actionLabel ?? null, opts.players?.length ? JSON.stringify(opts.players) : null);
 }
 
 export function getNews(db: SqlDb, limit = 200): NewsDto[] {
@@ -51,7 +51,7 @@ export function getNews(db: SqlDb, limit = 200): NewsDto[] {
     return {
       id: Number(r.id), date: String(r.date), kind, title: String(r.title), body: String(r.body),
       sender: r.sender == null ? d.sender : String(r.sender), action, actionLabel: action ? (r.action_label == null ? (r.action == null ? d.label : null) ?? 'Abrir' : String(r.action_label)) : null,
-      read: Number(r.read) === 1,
+      read: Number(r.read) === 1, playerIds: r.players_json == null ? null : (JSON.parse(String(r.players_json)) as string[]),
     };
   });
 }

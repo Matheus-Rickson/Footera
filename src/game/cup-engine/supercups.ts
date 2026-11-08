@@ -2,7 +2,8 @@
  * Supercopas nacionais (Fase 9). Regras do levantamento docs/supercopas-regulamentos.pdf (06/11/2026), aprovadas pelo usuário com as
  * propostas do documento: começam na 2ª temporada da carreira (usam campeões da temporada anterior no save, nada inventado); só troféu,
  * sem prêmio em dinheiro; abrem a temporada (fim de julho nos países de julho; fim de janeiro nos de ano civil), exceto Espanha e Itália
- * (início de janeiro). Áustria (extinta) e México (Apertura/Clausura que a base não tem): sem supercopa. Rússia: entra com a copa russa.
+ * (início de janeiro). Áustria (extinta) e México (Apertura/Clausura que a base não tem): sem supercopa.
+ * Rússia: campeão da Premier Liga × vencedor da Copa da Rússia (motor de formatos, docs/COPA_RUSSIA.md).
  *
  * Classificados: campeão da liga (1ª divisão) e campeão da copa da temporada anterior do país. Se o mesmo clube ganhar os dois
  * (`double`): vice da liga ('league2'), vice da copa ('cup2') ou sem jogo ('none', Croácia). Espanha: quatro clubes (campeão e vice da
@@ -50,6 +51,10 @@ export const SUPERCUP_RULES: SupercupRule[] = [
     teams: 2, double: 'cup2', host: 'neutral', extraTime: true, dates: JULY },
   { id: 'ned', countryCode: 'NED', name: 'Johan Cruijff Schaal', regulation: 'KNVB — edições 2017–2026', source: { structure: 'SEC', tiebreak: 'ADAPT', host: 'SEC' },
     teams: 2, double: 'league2', host: 'league', extraTime: false, dates: JULY },
+  // 2025: CSKA (copa) 1×0 Krasnodar (liga), 12/07 em Kazan; dobradinha de 2020 (Zenit): vice da liga (Lokomotiv). Prorrogação: as
+  // edições recentes foram do empate direto aos pênaltis (2024: Zenit 1×1 Spartak, 4×2 nos pênaltis) — regulamento da RFS não obtido
+  { id: 'rus', countryCode: 'RUS', name: 'Supercopa da Rússia', regulation: 'RFS/RPL — edições 2020–2025 (regulamento não obtido)', source: { structure: 'SEC', tiebreak: 'ADAPT', host: 'SEC' },
+    teams: 2, double: 'league2', host: 'neutral', extraTime: false, dates: JULY },
   { id: 'arg', countryCode: 'ARG', name: 'Supercopa Argentina', regulation: 'AFA — adaptado (sem Trofeo de Campeones)', source: { structure: 'ADAPT', tiebreak: 'SEC', host: 'SEC' },
     teams: 2, double: 'league2', host: 'neutral', extraTime: false, dates: JULY, datesCalendarYear: CIVIL },
   { id: 'bel', countryCode: 'BEL', name: 'Supercup', regulation: 'Pro League — edições recentes', source: { structure: 'SEC', tiebreak: 'SEC', host: 'SEC' },

@@ -67,7 +67,7 @@ export const CSV_COLUMNS: Record<CsvKind, Col[]> = {
     { key: 'firstName', label: 'Nome', aliases: ['primeiro nome'], help: 'obrigatório para jogador novo' },
     { key: 'lastName', label: 'Sobrenome', help: 'obrigatório para jogador novo' },
     { key: 'birthDate', label: 'Nascimento', aliases: ['data de nascimento'], help: 'dd/mm/aaaa ou aaaa-mm-dd' },
-    { key: 'nationality', label: 'Nacionalidade', help: 'código de 3 letras (BRA, ARG, ENG…)' },
+    { key: 'nationality', label: 'Nacionalidade', help: 'código de 3 letras padrão FIFA (BRA, ARG, ENG, USA, NGA…); vale qualquer nação, mesmo fora do universo' },
     { key: 'club', label: 'Clube', help: 'id do clube (veja no editor); "livre" = sem clube' },
     { key: 'position', label: 'Posição', aliases: ['posicao principal'], help: 'GOL, ZAG, LE, LD, AE, AD, VOL, MC, ME, MD, MEI, PE, PD, SA, CA' },
     { key: 'secondaryPositions', label: 'Secundárias', aliases: ['posicoes secundarias'], help: 'até 3, separadas por / (ex.: MEI/PE)' },

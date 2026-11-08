@@ -1,36 +1,21 @@
 /**
- * Bandeiras dos países da base (SVG simplificado, sem arquivos externos). Código de país de 3 letras → desenho em 30×20.
- * País sem desenho: retângulo neutro com o código.
+ * Bandeira de um país/nacionalidade pelo código de 3 letras (FIFA). Os desenhos vêm de `flag-icons` (MIT), empacotados
+ * com o app (nada é baixado). Código fora da lista (`shared/nations.ts`): retângulo neutro com o código, nunca uma bandeira inventada.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { nationOf } from '../shared/nations.ts';
 
-const H = (colors: string[]) => colors.map((c, i) => <rect key={i} x={0} y={(20 / colors.length) * i} width={30} height={20 / colors.length} fill={c} />);
-const V = (colors: string[]) => colors.map((c, i) => <rect key={i} x={(30 / colors.length) * i} y={0} width={30 / colors.length} height={20} fill={c} />);
-
-const FLAGS: Record<string, () => ReactNode> = {
-  BRA: () => <><rect width={30} height={20} fill="#009c3b" /><polygon points="15,2.5 27.5,10 15,17.5 2.5,10" fill="#ffdf00" /><circle cx={15} cy={10} r={4.2} fill="#002776" /><path d="M10.9 9.2 Q15 8 19.1 10.4" stroke="#fff" strokeWidth={0.7} fill="none" /></>,
-  ENG: () => <><rect width={30} height={20} fill="#fff" /><rect x={12.5} width={5} height={20} fill="#ce1124" /><rect y={7.5} width={30} height={5} fill="#ce1124" /></>,
-  ESP: () => <>{H(['#aa151b', '#f1bf00', '#f1bf00', '#aa151b'])}<rect x={7} y={7} width={3.5} height={6} rx={0.8} fill="#aa151b" opacity={0.85} /></>,
-  GER: () => <>{H(['#000', '#dd0000', '#ffce00'])}</>,
-  ITA: () => <>{V(['#009246', '#fff', '#ce2b37'])}</>,
-  FRA: () => <>{V(['#0055a4', '#fff', '#ef4135'])}</>,
-  POR: () => <><rect width={12} height={20} fill="#006600" /><rect x={12} width={18} height={20} fill="#ff0000" /><circle cx={12} cy={10} r={3.6} fill="#ffcc00" /><circle cx={12} cy={10} r={2.2} fill="#fff" stroke="#ff0000" strokeWidth={0.6} /></>,
-  NED: () => <>{H(['#ae1c28', '#fff', '#21468b'])}</>,
-  ARG: () => <>{H(['#74acdf', '#fff', '#74acdf'])}<circle cx={15} cy={10} r={2} fill="#f6b40e" /></>,
-  BEL: () => <>{V(['#000', '#fdda24', '#ef3340'])}</>,
-  JPN: () => <><rect width={30} height={20} fill="#fff" /><circle cx={15} cy={10} r={6} fill="#bc002d" /></>,
-  AUT: () => <>{H(['#ed2939', '#fff', '#ed2939'])}</>,
-  MEX: () => <>{V(['#006847', '#fff', '#ce1126'])}<circle cx={15} cy={10} r={2.2} fill="#8c6a3f" /></>,
-  IRL: () => <>{V(['#169b62', '#fff', '#ff883e'])}</>,
-  CRO: () => <>{H(['#ff0000', '#fff', '#171796'])}<g transform="translate(12.3 5.2)">{[0, 1, 2, 3].flatMap((r) => [0, 1, 2].map((c) => <rect key={`${r}${c}`} x={c * 1.8} y={r * 1.8} width={1.8} height={1.8} fill={(r + c) % 2 ? '#fff' : '#ff0000'} />))}<rect width={5.4} height={7.2} fill="none" stroke="#171796" strokeWidth={0.4} /></g></>,
-  RUS: () => <>{H(['#fff', '#0039a6', '#d52b1e'])}</>,
+const FLAG_URLS = import.meta.glob('../../node_modules/flag-icons/flags/4x3/*.svg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const flagUrl = (code: string): string | null => {
+  const iso = nationOf(code)?.iso;
+  return iso ? FLAG_URLS[`../../node_modules/flag-icons/flags/4x3/${iso}.svg`] ?? null : null;
 };
 
 export function Flag({ code, size = 28, title }: { code: string; size?: number; title?: string }) {
-  const draw = FLAGS[code];
+  const url = flagUrl(code);
   return (
     <svg className="nc-flag" width={size * 1.5} height={size} viewBox="0 0 30 20" role="img" aria-label={title ?? code}>
-      {draw ? draw() : <><rect width={30} height={20} fill="#555" /><text x={15} y={13} fontSize={7} textAnchor="middle" fill="#fff">{code}</text></>}
+      {url ? <image href={url} width={30} height={20} preserveAspectRatio="xMidYMid slice" /> : <><rect width={30} height={20} fill="#555" /><text x={15} y={13} fontSize={7} textAnchor="middle" fill="#fff">{code}</text></>}
       <rect width={30} height={20} fill="none" stroke="rgba(0,0,0,.25)" strokeWidth={0.6} />
     </svg>
   );

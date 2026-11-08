@@ -8,7 +8,8 @@ import { buildPlayer } from '../../game/world/generator.ts';
 import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
 import { seasonYearOf } from '../../game/career-engine/contracts.ts';
 import { contractEndIn } from '../../game/career-engine/calendar.ts';
-import { INTAKE_DAY, intakeSize, YOUTH_CAP, YOUTH_MAX_AGE, youthSalary } from '../../game/scouting-engine/scouting.ts';
+import { foreignChance, INTAKE_DAY, intakeSize, YOUTH_CAP, YOUTH_MAX_AGE, youthSalary } from '../../game/scouting-engine/scouting.ts';
+import { DEFAULT_DEPT_LEVEL } from '../../game/training-engine/training.ts';
 import { groupOf, SQUAD_MAX, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { Player, Position } from '../../shared/types.ts';
 import type { YouthOverviewDto } from '../../shared/api.ts';
@@ -51,9 +52,10 @@ export function playerFactory(db: SqlDb, tag: string, date: string) {
   const insert = playerInserter(db);
   let counter = 0;
   const newId = (prefix: string) => `${prefix}_${tag}_${(++counter).toString(36).padStart(4, '0')}`;
-  return (rng: Rng, clubId: string, pos: Position, age: number, youth: boolean): Player => {
+  /** `nationality`: país do jovem (rede de captação no exterior); ausente = o país do clube. */
+  return (rng: Rng, clubId: string, pos: Position, age: number, youth: boolean, nationality?: string): Player => {
     const info = db.prepare('SELECT cl.reputation, cl.facilities_json, co.code, co.economy FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!;
-    const tpl = COUNTRY_TEMPLATES.find((t) => t.code === S(info.code)) ?? COUNTRY_TEMPLATES[0]!;
+    const tpl = COUNTRY_TEMPLATES.find((t) => t.code === (nationality ?? S(info.code))) ?? COUNTRY_TEMPLATES[0]!;
     // o formado típico chega ao auge ~5 pontos abaixo do nível médio do clube; só os talentos raros (potencial extra do gerador) viram titulares.
     // Com 0,5 + 0,5 a seleção (só os melhores sobem) inflava força e salários (~+2,5 de força e +20% de folha em 5 temporadas).
     const youthRep = 0.45 * N(info.reputation) + 0.45 * (JSON.parse(S(info.facilities_json)) as { youth: number }).youth * 5;
@@ -97,11 +99,15 @@ export function youthIntake(db: SqlDb, date: string): number {
   const mine: Player[] = [];
   for (const r of db.prepare(`SELECT id, facilities_json FROM clubs WHERE id IN ${FULL_CLUBS} ORDER BY rowid`).all()) {
     const clubId = S(r.id), user = clubId === st.clubId, c = rng.fork(clubId);
-    const level = (JSON.parse(S(r.facilities_json)) as { youth: number }).youth;
+    const fac = JSON.parse(S(r.facilities_json)) as { youth: number; recruitment?: number };
+    const level = fac.youth, recruit = fac.recruitment ?? DEFAULT_DEPT_LEVEL;
     const room = (user ? YOUTH_CAP.user : YOUTH_CAP.ai) - youthOf(db, clubId).length;
-    const n = Math.max(0, Math.min(intakeSize(level, user, c.next()), room));
+    const n = Math.max(0, Math.min(intakeSize(level, user, c.next(), recruit), room));
+    // rede de captação (só o usuário): cada jovem tem chance de vir de outro país do universo
+    const abroad = user ? db.prepare('SELECT code FROM countries WHERE id <> (SELECT country_id FROM clubs WHERE id = ?) ORDER BY rowid').all(clubId).map((x) => S(x.code)).filter((code) => COUNTRY_TEMPLATES.some((t) => t.code === code)) : [];
     for (let i = 0; i < n; i++) {
-      const p = make(c, clubId, c.pick(groupPositions(db)[c.pick(ANY_GROUP)]), c.int(15, 16), true);
+      const nat = user && abroad.length && c.next() < foreignChance(recruit) ? c.pick(abroad) : undefined;
+      const p = make(c, clubId, c.pick(groupPositions(db)[c.pick(ANY_GROUP)]), c.int(15, 16), true, nat);
       total++;
       if (user) mine.push(p);
     }

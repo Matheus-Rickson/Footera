@@ -14,7 +14,7 @@ import { ageOn } from '../shared/date.ts';
 import { ID_PATTERN, uniqueIds } from '../shared/slug.ts';
 import { to20 } from '../shared/scale.ts';
 import type { CsvImportReportDto, EditorEntityDto, EditorKind, EditorListDto, EditorListQuery, EditorOptionsDto, EditorStatus, EditorSummaryDto } from '../shared/api.ts';
-import type { World } from '../shared/types.ts';
+import type { Club, Player, Position, World } from '../shared/types.ts';
 import { ValidationError } from './careerService.ts';
 import { packsDir, setLoadOrder } from './packManager.node.ts';
 import { readPackDir, writePackDir } from './packService.node.ts';
@@ -120,7 +120,7 @@ export function editorList(dataDir: string, packId: string, q: EditorListQuery):
       .sort((a, b) => (league.get(a.leagueId)?.tier ?? 9) - (league.get(b.leagueId)?.tier ?? 9) || b.reputation - a.reputation)
       .map((c) => { const o = avg.get(c.id) ?? []; return { id: c.id, title: c.name, subtitle: `${league.get(c.leagueId)?.name ?? ''} · ${country.get(c.countryId)?.name ?? ''}`, status: st(c.id), extra: o.length ? String(to20(o.reduce((x, y) => x + y, 0) / o.length)) : null }; });
   }
-  if (q.kind === 'players') rows = w.players.filter((p) => (!q.clubId || p.clubId === q.clubId) && (!q.countryId || (p.clubId ? club.get(p.clubId)?.countryId === q.countryId : false)) && (!q.position || p.position === q.position))
+  if (q.kind === 'players') rows = w.players.filter(playerFilter(club, q))
     .sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id))
     .map((p) => ({ id: p.id, title: `${p.firstName} ${p.lastName}`, subtitle: `${p.position} · ${p.clubId ? club.get(p.clubId)?.name ?? '' : 'Sem clube'} · ${ageOn(p.birthDate, w.startDate)} anos`, status: st(p.id), extra: String(to20(p.overall)) }));
   if (q.kind === 'coaches') rows = (w.coaches ?? []).filter((k) => (!q.clubId || k.clubId === q.clubId) && (!q.countryId || (k.clubId ? club.get(k.clubId)?.countryId === q.countryId : country.get(q.countryId)?.code === k.nationality)))
@@ -340,11 +340,31 @@ export function editorImportCsv(dataDir: string, packId: string, kind: CsvKind, 
   return { created, updated, unchanged, errors: [], warnings };
 }
 
-/** CSV para baixar: só o cabeçalho (modelo) ou todos os registros do universo "base + pacote" (para editar e reimportar). */
-export function editorExportCsv(dataDir: string, packId: string, kind: CsvKind, template: boolean): string {
-  if (template) return toCsv(csvHeader(kind), []);
+/** Filtro da lista e da planilha (país, liga, clube, posição). Jogador sem clube só entra quando nenhum filtro de país/liga/clube é usado. */
+export interface CsvFilter { countryId?: string; leagueId?: string; clubId?: string; position?: Position }
+function playerFilter(club: Map<string, Club>, f: CsvFilter) {
+  return (p: Player) => {
+    const c = p.clubId ? club.get(p.clubId) : undefined;
+    if ((f.clubId || f.countryId || f.leagueId) && !c) return false;
+    return (!f.clubId || c!.id === f.clubId) && (!f.countryId || c!.countryId === f.countryId) && (!f.leagueId || c!.leagueId === f.leagueId) && (!f.position || p.position === f.position);
+  };
+}
+
+/**
+ * CSV para baixar: só o cabeçalho (modelo) ou os registros do universo "base + pacote" (para editar e reimportar). Com `filter`, só os que
+ * os filtros da lista mostram (clubes: país e liga; jogadores: país, liga e clube do clube atual, e posição). Devolve o texto e as linhas.
+ */
+export function editorExportCsv(dataDir: string, packId: string, kind: CsvKind, template: boolean, filter: CsvFilter = {}): string {
+  return editorExportCsvRows(dataDir, packId, kind, template, filter).text;
+}
+export function editorExportCsvRows(dataDir: string, packId: string, kind: CsvKind, template: boolean, filter: CsvFilter = {}): { text: string; rows: number } {
+  if (template) return { text: toCsv(csvHeader(kind), []), rows: 0 };
   const w = universeOf(loadPack(dataDir, packId));
+  const club = new Map(w.clubs.map((c) => [c.id, c]));
   const overall = new Map(w.players.map((p) => [p.id, to20(p.overall)] as const));
-  const rows = (w[kind] as Array<{ id: string }>).map((x) => recordToRow(kind, { ...formRecord(w, kind, x.id)!, ...(kind === 'players' ? { ability: overall.get(x.id) } : {}) }));
-  return toCsv(csvHeader(kind), rows);
+  const items: Array<{ id: string }> = kind === 'players'
+    ? w.players.filter(playerFilter(club, filter))
+    : w.clubs.filter((c) => (!filter.countryId || c.countryId === filter.countryId) && (!filter.leagueId || c.leagueId === filter.leagueId) && (!filter.clubId || c.id === filter.clubId));
+  const rows = items.map((x) => recordToRow(kind, { ...formRecord(w, kind, x.id)!, ...(kind === 'players' ? { ability: overall.get(x.id) } : {}) }));
+  return { text: toCsv(csvHeader(kind), rows), rows: rows.length };
 }

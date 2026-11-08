@@ -215,6 +215,7 @@ export function rebuildSerieD(db: SqlDb, countryId: string, dLeague: string, ran
 export function createEstaduais(db: SqlDb, countryId: string, season: number): number {
   const co = db.prepare('SELECT code, states_json FROM countries WHERE id = ?').get(countryId);
   if (!co || co.states_json == null || S(co.code) !== 'BRA') return 0;
+  fitStateDivisions(db, countryId, season);
   let created = 0;
   for (const e of ESTADUAIS) {
     const compId = `est_${e.id}_${season}`;
@@ -228,6 +229,29 @@ export function createEstaduais(db: SqlDb, countryId: string, season: number): n
     created++;
   }
   return created;
+}
+
+/**
+ * Encaixa cada divisão estadual no tamanho do formato da temporada (pacote que levou um clube para outro estado ou divisão): de cima
+ * para baixo, o excesso (os mais fracos: série nacional, depois reputação) desce uma divisão — ou vai para a reserva do estado, se não
+ * houver divisão abaixo —, e a falta é completada com os melhores da divisão de baixo (ou da reserva). Na base, as divisões já têm o
+ * tamanho certo e nada muda. NÃO abre transação.
+ */
+export function fitStateDivisions(db: SqlDb, countryId: string, season: number): void {
+  const setDiv = db.prepare('UPDATE clubs SET state_division = ? WHERE id = ?');
+  const ranked = (uf: string, division: number | null) => db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND c.state = ?
+      AND ${division === null ? 'c.state_division IS NULL' : 'c.state_division = ?'} ORDER BY (l.active = 0), l.tier, c.reputation DESC, c.id`)
+    .all(...(division === null ? [countryId, uf] : [countryId, uf, division])).map((r) => S(r.id));
+  for (const uf of [...new Set(ESTADUAIS.map((e) => e.uf))]) {
+    const divs = ESTADUAIS.filter((e) => e.uf === uf).sort((a, b) => a.division - b.division);
+    for (const e of divs) {
+      const size = e.format(season).size;
+      const below = divs.some((x) => x.division === e.division + 1) ? e.division + 1 : null;
+      const members = ranked(uf, e.division);
+      if (members.length > size) for (const id of members.slice(size)) setDiv.run(below, id);
+      else if (members.length < size) for (const id of ranked(uf, below).slice(0, size - members.length)) setDiv.run(e.division, id);
+    }
+  }
 }
 
 /**

@@ -15,6 +15,37 @@ Decisões do usuário (02/11/2026): olheiros **contratáveis**, elenco **sub-20 
   `shared/scale.ts`, `round(v/5)`), como os atributos; o motor continua calculando em 0–100.
 - Processado por `moveClock` todo dia (depois do mercado, antes do fechamento mensal) e no dia da virada.
 
+## Tarefas de busca (reformulação de 07/11/2026; substitui a designação "um país")
+Decisões do usuário: critérios checados nos **valores reais**, escopos **país / liga / mundo**, **olheiros contratados** continuam (cada tarefa ativa
+ocupa um olheiro). Código: `game/scouting-engine/tasks.ts` (puro) e `scoutRepository.ts`; migração 025 (`scout_tasks`, `scout_task_players`).
+- **Tarefa:** escopo + área (país: clubes do país e livres dessa nacionalidade; liga: clubes da liga; mundo: todos, livres inclusive), critérios
+  opcionais e duração (1, 2, 3, 6, 9 ou 12 meses, ou contínua). Nome automático ("ATA · Brasil · Força 13+ · Idade ≤27 · +2 filtros"), editável.
+- **Critérios** (todos precisam bater): posição principal, "joga também de" (principal ou secundária), força e potencial (1–20; potencial = o oculto,
+  real), idade, situação (sem clube / contrato terminando em até 6 meses / com contrato), valor (mi €), salário (mil €/mês), reputação (estrelas),
+  condição, moral, pé, mínimos de atributos de linha e de goleiro (1–20) e de estatísticas da temporada atual do país (jogos, minutos, gols,
+  assistências, nota média).
+- **Regra 7:** os critérios usam os valores reais (é o trabalho do olheiro), mas a tela só mostra estimativas. A prévia dá os compatíveis em **faixa**
+  (1–5, 6–10, 11–20, 21–35, 36–50, 51–100, 101–200, 201–500, 501–1.000, 1.001–2.000, mais de 2.000), nunca o número exato.
+- **Fila:** até 12 tarefas abertas. Os olheiros livres (os melhores primeiro) assumem as tarefas da fila por ordem de criação; o prazo conta do início.
+  Olheiro demitido ou com contrato vencido: a tarefa volta para a fila.
+- **Trabalho diário:** cada tarefa acompanha até 5 jogadores compatíveis por vez, com o ganho cheio do olheiro (no mundo × 0,75), começando pelos já
+  iniciados; novos alvos sorteados entre os 80 mais valiosos compatíveis; quem já tem 100% entra na lista sem custo (até 300 por tarefa).
+  Prazo vencido → concluída (notícia). Com prazo e sem mais compatíveis a observar → conclui antes. Contínua esgotada: procura de novo 7 dias depois
+  da última busca vazia (`searched_on`) e, enquanto isso, o olheiro ajuda a lista de observação.
+- **E-mails (Caixa de entrada, decisão do usuário: resumo semanal):** 7 dias depois do início da tarefa ou do último resumo, se houver novidade, o
+  departamento manda "N jogadores identificados na tarefa ..." (ou "N relatórios concluídos") com a tabela dos jogadores (clube, nacionalidade, posição,
+  idade, força e potencial estimados, valor, conhecimento; até 30) e "Abrir scouting". O aviso de conclusão traz a lista (os 30 mais conhecidos).
+  A tabela mostra as estimativas do dia em que o usuário abre (`news.players_json` guarda só os ids; migração 026).
+- **Janela da tarefa:** cada filtro abre uma caixa de escolha — posições em lista com "Selecionar todas"/"Limpar"; faixas (força, potencial, idade,
+  valor, salário, reputação, condição, moral) num controle deslizante de duas pontas; atributos e estatísticas num de uma ponta (mínimo); situação e pé
+  em opções. Cancelar/Aplicar; o filtro ativo mostra o valor e reabre ao clicar.
+- **Lista de observação:** observada pelos olheiros sem tarefa (ou sem trabalho no dia), como antes (`3 × ganho` dividido pela lista).
+- **Cancelar:** ativa/fila → cancelada (a lista fica no histórico); concluída/cancelada → apagada.
+- **Migração:** olheiro designado a um país vira tarefa contínua, ativa, sem critérios, no mesmo país (mesmo comportamento de antes).
+- **Desempenho:** a busca lê os jogadores em blocos de 500, do mais valioso ao menos, e para ao achar o necessário (80 novos; prévia: 2.001).
+  Universo completo (~25 mil jogadores): 4–17 ms por busca no dia a dia; prévia sem critérios no mundo ~115 ms; critério raro sem pré-filtro
+  (atributo) no mundo pode ler tudo (~300 ms), no máximo uma vez a cada 7 dias numa tarefa contínua esgotada.
+
 ## Categorias de base
 - Jogador da base: `club_id` nulo e `youth_club_id` = clube. Não aparece no elenco principal, nas escalações, no mercado nem nas propostas; não conta no limite de 30.
   Salário próprio (`economia × (500 + 20 × força)`), pago na categoria `youth`.

@@ -120,3 +120,9 @@ vão para o grupo "sem divisão" do estado e sobem, no lugar deles, os clubes se
   Paraibano, Sergipano, Amazonense e Roraimense 2026.
 - Imprensa: Goal, Band, Itatiaia, Lance, NSC Total, TNH1, O Imparcial, O Liberal, Correio Braziliense, Metrópoles, Tribuna Online,
   Agência Brasil, Correio do Estado, A Crítica (MS), NC News; regulamento da FAF (Alagoano 2026).
+
+## Pacotes que mudam o estado ou a divisão de clubes (08/11/2026)
+Antes de criar os estaduais da temporada (na criação da carreira e na virada), cada divisão estadual é encaixada no tamanho do formato
+(`fitStateDivisions`): de cima para baixo, o excesso — os mais fracos, por série nacional e depois reputação — desce uma divisão (ou vai para a
+reserva do estado, se não houver divisão abaixo) e a falta é completada com os melhores da divisão de baixo (ou da reserva). Assim nenhum
+estadual deixa de ser disputado porque um pacote levou um clube para outro estado.

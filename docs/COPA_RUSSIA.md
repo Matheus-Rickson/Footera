@@ -33,6 +33,12 @@ O regulamento da RFS não foi obtido; a estrutura vem da Wikipédia (en e ru, 20
 - Premiação: campeão economia × 2,4 mi (o mesmo das outras copas nacionais), vice metade (ADAPT). Troféu na Sala de troféus.
 - Telas: Competições → "Copas nacionais"; calendário com o nome da copa.
 
+## Supercopa da Rússia (`SUPERCUP_RULES`, id `rus`)
+- Campeão da Premier Liga × vencedor da Copa da Rússia da temporada anterior (SEC). 2025: CSKA (copa) 1×0 Krasnodar (liga), 12/07, Kazan.
+- Campo neutro (SEC: Kazan em 2025); dobradinha → vice da liga (SEC: 2020, Zenit × Lokomotiv). Empate direto aos pênaltis (ADAPT: as
+  edições recentes não tiveram prorrogação, mas o regulamento não foi obtido). Data: 26/07, antes da 1ª rodada (como as outras de julho).
+- Começa na 2ª temporada (usa os campeões do save); só troféu, como as demais supercopas. O vencedor e o vice da copa vêm do desfecho da
+  superfinal (`formatOutcomesOf`) em `previousChampions`.
+
 ## Não feito
-- Supercopa da Rússia (campeão × vencedor da copa): o motor de supercopas usa as copas do motor de copas; fica para depois.
 - A Copa da Rússia não aparece no editor de copas (`cups.json`): é fixa para a Rússia.

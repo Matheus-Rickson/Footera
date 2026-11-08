@@ -9,7 +9,7 @@ import { withTransaction, type SqlDb } from '../database/types.ts';
 import { estimateAttributes, estimateRange, scoutVerdict } from '../game/transfer-engine/transfer.ts';
 import { dailyGain, MAX_SCOUTS, scoutCandidates } from '../game/scouting-engine/scouting.ts';
 import { COUNTRY_TEMPLATES } from '../game/world/names.ts';
-import { assignScout, fireScout, getPlayerProfile, getScoutingOverview, hireScout, ScoutError, setShortlisted } from '../database/repositories/scoutRepository.ts';
+import { createScoutTask, fireScout, getPlayerProfile, getScoutingOverview, hireScout, ScoutError, setShortlisted } from '../database/repositories/scoutRepository.ts';
 import { getYouthOverview, promoteYouth, releaseYouth, youthIntake, YouthError } from '../database/repositories/youthRepository.ts';
 import { makeOffer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
 import { getContracts, startNextSeason } from '../database/repositories/seasonRepository.ts';
@@ -86,10 +86,12 @@ test('Olheiros: designado ao próprio país só observa jogadores de lá (nunca 
   const ov = getScoutingOverview(db);
   const best = [...ov.candidates].sort((a, b) => b.ability - a.ability);
   hireScout(db, best[0]!.id); hireScout(db, best[1]!.id);
-  const [countryScout, listScout] = getScoutingOverview(db).scouts;
-  assignScout(db, countryScout!.id, { kind: 'country', countryCode: 'BRA' }); // o país do clube do usuário: precisa ignorar o próprio elenco
-  assignScout(db, listScout!.id, { kind: 'shortlist' });
-  assert.throws(() => assignScout(db, countryScout!.id, { kind: 'country', countryCode: 'XXX' }), ScoutError);
+  const [countryScout, listScout] = [...getScoutingOverview(db).scouts].sort((a, b) => b.ability - a.ability || a.id.localeCompare(b.id));
+  // tarefa no país do clube do usuário (precisa ignorar o próprio elenco), sem critérios, contínua: assume o melhor olheiro; o outro fica livre (lista)
+  createScoutTask(db, { scope: 'country', area: 'BRA', criteria: {}, months: null });
+  assert.equal(getScoutingOverview(db).scouts.find((s) => s.id === countryScout!.id)!.taskId !== null, true, 'melhor olheiro assume a tarefa');
+  assert.equal(getScoutingOverview(db).scouts.find((s) => s.id === listScout!.id)!.taskId, null);
+  assert.throws(() => createScoutTask(db, { scope: 'country', area: 'XXX', criteria: {}, months: null }), ScoutError);
   const target = searchMarket(db, { name: '' }).find((p) => p.nationality === 'ENG' && p.clubId !== null)!;
   assert.equal(target.knowledge, 0);
   setShortlisted(db, target.id, true);

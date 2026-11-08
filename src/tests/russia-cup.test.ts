@@ -8,6 +8,9 @@ import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { formatOutcomesOf, formatStateOf } from '../database/repositories/formatRepository.ts';
 import { copaDaRussia, copaDaRussiaDates } from '../game/format-engine/formats.ts';
 import { stageEntrants, stageTables, tieOutcome } from '../game/format-engine/engine.ts';
+import { startNextSeason } from '../database/repositories/seasonRepository.ts';
+import { cupStateOf, previousChampions } from '../database/repositories/cupRepository.ts';
+import { supercupEntrants, supercupRuleFor } from '../game/cup-engine/supercups.ts';
 import type { SqlDb } from '../database/types.ts';
 import type { Coach } from '../shared/types.ts';
 
@@ -97,4 +100,19 @@ test('Copa da Rússia na carreira (base fixa): temporada inteira, pênaltis nos 
     if (prev) assert.ok((Date.parse(String(x.d)) - Date.parse(prev)) / 86_400_000 >= 3, `${c}: ${prev} e ${x.d}`);
     lastDay.set(c, String(x.d));
   }
+
+  // Supercopa da Rússia na temporada seguinte: campeão da Premier Liga × vencedor da Copa da Rússia, campo neutro, antes da liga
+  startNextSeason(db); // grava a classificação final (season_results) e abre 2027/28
+  const league1 = String(db.prepare("SELECT s.club_id FROM season_results s JOIN competitions c ON c.id = s.competition_id WHERE c.league_id = 'rus-1' AND c.season = 2026 ORDER BY s.position LIMIT 1").get()!.club_id);
+  const prev = previousChampions(db, 'rus', 2027);
+  assert.deepEqual([prev.league[0], prev.cupWinner, prev.cupRunnerUp], [league1, out.champion, out.ranking[1]]);
+  const supId = 'sup_rus_2027';
+  const st = cupStateOf(db, supId);
+  assert.deepEqual(st.clubs.map((c) => c.id), supercupEntrants(supercupRuleFor('RUS')!, prev));
+  assert.ok(st.clubs.some((c) => c.id === league1), 'campeão da liga na supercopa');
+  const sg = db.prepare('SELECT match_date, neutral FROM fixtures WHERE competition_id = ?').all(supId);
+  const firstLeague = String(db.prepare("SELECT MIN(f.match_date) AS d FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE c.league_id = 'rus-1' AND c.season = 2027").get()!.d);
+  assert.deepEqual([sg.length, Number(sg[0]!.neutral)], [1, 1]);
+  assert.ok(String(sg[0]!.match_date) < firstLeague, 'abre a temporada');
+  assert.equal(n(db, "SELECT COUNT(*) AS n FROM competitions WHERE id = 'rcup_2027'"), 1, 'nova Copa da Rússia');
 });

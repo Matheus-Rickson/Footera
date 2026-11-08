@@ -120,3 +120,23 @@ test('Base real: a escolha do clube lista os sem divisão do Brasil e uma carrei
   const r = estadualResultOf(db, pick.id, 2026)!;
   assert.ok(r && r.position >= 1 && r.position <= size);
 });
+
+test('Pacote que leva um clube para outro estado: as divisões estaduais se encaixam no formato e nenhum estadual some', async () => {
+  const w0 = baseUniverse().world;
+  // como um pacote "Flamengo": um clube da elite do Paraná na Série A passa para a elite do Rio (RJ fica com 13, PR com 1 a menos)
+  const moved = w0.clubs.find((c) => c.state === 'PR' && c.stateDivision === 1 && c.leagueId === 'bra-1')!;
+  const w = { ...w0, seed: 'estado-trocado', clubs: w0.clubs.map((c) => (c.id === moved.id ? { ...c, state: 'RJ' } : c)) };
+  const db = await openDatabase(':memory:');
+  createCareer(db, w, coach, moved.id, new Date(), [], ['bra-1']);
+  const comps = listCompetitions(db).competitions;
+  assert.equal(comps.filter((c) => c.scope === 'estadual').length, 29, 'todos os estaduais criados');
+  const seeds = (id: string) => (JSON.parse(String(db.prepare('SELECT format_json FROM competitions WHERE id = ?').get(id)!.format_json)) as { seeds: string[] }).seeds;
+  assert.ok(seeds('est_rj-a1_2026').includes(moved.id), 'o clube joga o Carioca');
+  assert.equal(seeds('est_rj-a1_2026').length, 12);
+  // o mais fraco da elite do Rio desceu para a A2; o mais fraco da A2 foi para a reserva; o Paraná foi completado pela reserva
+  const div = (id: string) => db.prepare('SELECT state_division AS d FROM clubs WHERE id = ?').get(id)!.d;
+  assert.equal(Number(db.prepare("SELECT COUNT(*) AS n FROM clubs WHERE state = 'RJ' AND state_division = 2").get()!.n), 12);
+  assert.ok(seeds('est_rj-a2_2026').every((id) => Number(div(id)) === 2));
+  assert.equal(seeds('est_pr_2026').length, Number(db.prepare("SELECT COUNT(*) AS n FROM clubs WHERE state = 'PR' AND state_division = 1").get()!.n));
+  assert.ok(Number(db.prepare('SELECT COUNT(*) AS n FROM fixtures WHERE competition_id = ? AND (home_club_id = ? OR away_club_id = ?)').get('est_rj-a1_2026', moved.id, moved.id)!.n) > 0);
+});

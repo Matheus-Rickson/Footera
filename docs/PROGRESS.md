@@ -1119,7 +1119,58 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     `states.test.ts`; o teste das copas passou a conferir, por clube, que não há outro jogo a menos de 3 dias. Mutação 7/7 (três
     sobreviventes na primeira rodada — pares da Copa do Nordeste, campeões na 3ª fase, vagas pela classificação — passaram a ser detectadas).
   - Verificado pelo usuário: Séries C e D por fases em Competições; calendário com o nome da competição (estadual/regional/copa estadual) no lugar de "Liga". Data do topo redesenhada (ícone, data em destaque, temporada à parte). Grupos novos de copas em Competições ainda não verificados.
-- **Copa da Rússia (07/11/2026; sem commit):** ver `docs/COPA_RUSSIA.md` (estrutura SEC pela Wikipédia en/ru e imprensa; regulamento
+- **Editor: planilha só do que está filtrado (08/11/2026; sem commit):** pedido do usuário — o "Exportar" de Clubes e Jogadores usa os filtros
+  da lista (país, liga; em Jogadores também clube e posição) e vira "Exportar filtrados"; jogador sem clube só sai sem filtro de país/liga/clube.
+  Jogadores ganharam o filtro de liga. Nome sugerido do arquivo com o filtro (ex.: `jogadores-bra-bra-1.csv`); o aviso mostra quantas linhas.
+  Teste em `csv.test.ts` (mutação confirmada). Tela não verificada no Electron.
+- **Nacionalidades além do universo (08/11/2026; sem commit):** pedido do usuário — jogador e técnico podem ter qualquer uma das 211 nações
+  de `shared/nations.ts` (código FIFA de 3 letras, nome em português, ISO para a bandeira), sem que o país exista no universo (sem liga, clube
+  nem simulação). O editor lista universo + nações em ordem alfabética, com a bandeira ao lado; o nome do universo tem prioridade; a planilha
+  aceita qualquer código. Bandeiras agora vêm de `flag-icons` (MIT, empacotado com o app pelo Vite, nada é baixado) em vez dos desenhos à mão;
+  código desconhecido continua como selo neutro. Nome da nacionalidade com a lista nas fichas, mercado (filtro), olheiros e Visão geral.
+  `nations.test.ts` (3 testes; mutações confirmadas: prioridade do nome e bandeira ausente). Editor verificado pelo usuário (lista completa).
+  Depois, a pedido: o campo virou um seletor próprio (`renderer/nationPicker.tsx`) com bandeira e nome em cada opção, busca por nome/código
+  e teclado (o <select> nativo não mostra imagens); a bandeira solta embaixo do campo saiu. Não verificado no Electron.
+- **Tela inicial nova (08/11/2026; sem commit):** pedido do usuário — duas colunas na janela inteira e sem barra de rolagem: painel da marca
+  (logo, slogan, campo em perspectiva, versão) e, à direita, saudação com o perfil, troca/criação de perfil e tema em botões compactos, cartão
+  "Continuar carreira" (escudo, clube, técnico, temporada, data do jogo e do save), quatro blocos (Nova carreira, Carregar carreira, Pacotes,
+  Editor), pasta de dados e Sair. O botão desativado "Importar save — em breve" saiu (era decorativo; volta na Fase 10). Conferida por captura
+  do Electron com `window.api` falso (1280×800 escuro e 1024×640 claro, altura do conteúdo = altura da janela); com o app de verdade, verificada pelo usuário (sem rolagem).
+  Ajustes a pedido: slogan em português ("Construa seu clube. Crie seu legado."; a linha "Gerenciador de futebol" foi removida a pedido) e a imagem trocada — o campo
+  de linhas deu lugar a uma ilustração SVG de estádio à noite (refletores, torcida, gramado listrado em perspectiva), com o slogan embaixo.
+  Depois, a pedido ("mais minimalista"): o estádio saiu; ficou fundo grafite liso com só o círculo central (cortado na borda) e a linha do
+  meio em traço verde fino, com brilho suave; slogan centralizado à esquerda. 
+  Por fim, o usuário enviou a imagem do painel: quadro-negro com uma jogada desenhada a giz (`src/renderer/assets/home-tactics.png`, 1024×1536,
+  fornecida pelo usuário), em `object-fit: cover`, com 55% de opacidade e degradê escuro por cima para o slogan ficar legível. Conferida por
+  captura (1600×900 escuro e 1024×640 claro, sem rolagem); não verificada no app.
+- **Correção — estadual sumia com pacote que muda o estado de um clube (08/11/2026; sem commit):** um estadual sem exatamente o número de
+  clubes do formato não era criado, sem aviso (ex.: pacote que levou um clube do PR para a elite do RJ → Carioca com 13 → sem Carioca). Agora
+  `fitStateDivisions` (`formatRepository.ts`) encaixa as divisões antes de criar os estaduais: o excesso (mais fracos por série nacional e
+  reputação) desce uma divisão ou vai para a reserva; a falta é completada com os melhores de baixo. Base inalterada. Teste em `states.test.ts`
+  (mutação confirmada). Carreiras já criadas não mudam (os estaduais são criados na criação e na virada). Verificado pelo usuário (carreira nova com o Flamengo no Carioca, 08/11/2026).
+- **Fotos nas miniaturas e bandeiras (08/11/2026; sem commit):** a foto do jogador (pacote de dados) só aparecia na ficha; agora `PlayerFace`
+  (`playerUi.tsx`) mostra a foto, ou as iniciais quando não houver, no elenco, em Táticas (lista e campinho), em Transferências, na negociação e no
+  campinho do relatório da partida. A bandeira do elenco usava um desenho próprio só com BRA/ENG; passou a usar `flags.tsx` (+ URU, CHI, COL, ECU, PAR,
+  PER, VEN). Elenco e Táticas verificados pelo usuário (08/11/2026); Transferências, negociação e relatório não.
+- **Correção — CSV de jogadores novos (08/11/2026; sem commit):** jogador criado pela planilha com os 6 atributos de goleiro (a planilha não tem a
+  coluna "goalkeeping", que é calculada deles) era recusado com "faltam atributos: goalkeeping"; agora o valor é calculado do grupo. A mensagem, quando
+  falta o grupo, cita os atributos de goleiro em português. Teste em `csv.test.ts` (mutação confirmada).
+- **Scouting: filtros em caixas, e-mails, departamento na Infraestrutura (08/11/2026; sem commit):** decisões do usuário — departamento de
+  scouting e rede de captação com nível (1–20, 5 barras; nível 10 = regras de antes, manutenção igual no 10/10), estádio só com os dados que existem,
+  resumo semanal por tarefa na Caixa de entrada. Migração 026 (obras com os tipos novos, `news.players_json`). Olheiros saíram da tela de Olheiros e
+  ficam em Infraestrutura → Departamento de scouting → "Gerenciar" (`ScoutStaffModal.tsx`). Infraestrutura remodelada em cards. Janela da tarefa com
+  caixas de escolha (lista de posições, controle deslizante). Testes: `scouting-department.test.ts` (4); mutação 10/10. Telas não verificadas no Electron.
+- **Olheiros reformulados — tarefas de busca (07/11/2026; sem commit):** ver `docs/SCOUTING_YOUTH.md` ("Tarefas de busca"). Decisões do usuário:
+  critérios nos valores reais, escopos país/liga/mundo, olheiros contratados. Migração 025; `tasks.ts` (puro) + `scoutRepository.ts`; tela de Olheiros
+  refeita (cartões, tarefas abertas/histórico, encontrados) e janela "Nova tarefa de busca" (`ScoutTaskModal.tsx`); `assignScout` removido (IPC
+  `scouting:task-*`). Testes: `scout-tasks.test.ts` (4) + o teste antigo do olheiro de país adaptado; mutação 14/15 (1 equivalente: limite de 5
+  acompanhados, que a inclusão de novos já respeita). Telas não verificadas no Electron.
+- **Menu sem "Partidas" (07/11/2026; sem commit):** a tela saiu a pedido do usuário; relatórios dos jogos pelo Calendário e pela ficha
+  do clube; rodadas de qualquer competição em Competições. Tela não verificada no Electron.
+- **Supercopa da Rússia (07/11/2026; sem commit):** regra `rus` em `SUPERCUP_RULES` (campeão da liga × vencedor da Copa da Rússia, campo
+  neutro, dobradinha → vice da liga, pênaltis direto — ADAPT); `previousChampions` lê o desfecho da `rcup_`. Teste na carreira russa (2ª
+  temporada); mutação 4/4; suíte 286/286; typecheck ok. Tela não verificada no Electron.
+- **Copa da Rússia (07/11/2026; commit `6e13e0f`):** ver `docs/COPA_RUSSIA.md` (estrutura SEC pela Wikipédia en/ru e imprensa; regulamento
   da RFS não obtido). Motor de formatos: fase de liga com pênaltis depois do empate (`drawPens`, 3/2/1/0) e mando do azarão
   (`host: 'underdog'`, pior semente = divisão inferior). Caminho da RPL (grupos, quartas, semifinal e final em ida e volta), caminho das
   Regiões com a Pervaya Liga (preliminar, 5ª e 6ª rodadas, quartas e semifinal em duas etapas com os perdedores da RPL, final em jogo

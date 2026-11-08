@@ -4,7 +4,7 @@ import { UserError } from '../../shared/errors.ts';
 import { addYears } from '../../shared/date.ts';
 import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
 import {
-  qualityFactor, recoveryFactor, STAFF_CONTRACT_YEARS, STAFF_ROLES, STAFF_SEVERANCE_MONTHS, staffCandidates, UNSTAFFED_QUALITY, type StaffRole,
+  qualityFactor, recoveryFactor, STAFF_CONTRACT_YEARS, STAFF_ROLES, STAFF_SEVERANCE_MONTHS, staffCandidates, UNSTAFFED_QUALITY, DEFAULT_DEPT_LEVEL, type FacilityKind, type StaffRole,
 } from '../../game/training-engine/training.ts';
 import type { StaffOverviewDto } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
@@ -20,8 +20,11 @@ const fmt = fmtMoney; // dinheiro nas mensagens (moeda única: euro)
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
 const monthsLeft = (date: string, end: string) => Math.max(0, (Number(end.slice(0, 4)) - Number(date.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(date.slice(5, 7)));
 const economyOf = (db: SqlDb, clubId: string) => N(db.prepare('SELECT co.economy FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!.economy);
-export const facilitiesOf = (db: SqlDb, clubId: string) =>
-  JSON.parse(S(db.prepare('SELECT facilities_json FROM clubs WHERE id = ?').get(clubId)!.facilities_json)) as { training: number; youth: number; medical: number; stadium: number };
+/** Níveis das instalações do clube; scouting e rede de captação ausentes = DEFAULT_DEPT_LEVEL (10). */
+export const facilitiesOf = (db: SqlDb, clubId: string): Record<FacilityKind, number> => {
+  const f = JSON.parse(S(db.prepare('SELECT facilities_json FROM clubs WHERE id = ?').get(clubId)!.facilities_json)) as Partial<Record<FacilityKind, number>>;
+  return { training: f.training ?? 1, youth: f.youth ?? 1, medical: f.medical ?? 1, stadium: f.stadium ?? 1, scouting: f.scouting ?? DEFAULT_DEPT_LEVEL, recruitment: f.recruitment ?? DEFAULT_DEPT_LEVEL };
+};
 
 export const ROLE_LABEL: Record<StaffRole, string> = { assistant: 'Auxiliar técnico', fitness: 'Preparador físico', goalkeeping: 'Treinador de goleiros', doctor: 'Médico' };
 /** O que cada função da comissão faz no jogo (texto das mensagens). */

@@ -4,7 +4,7 @@ import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSum
 import type { TeamStats } from '../../game/match-engine/types.ts';
 import { BUILDUP_LABEL, errMsg, fmtDate, fmtMoney, MENTALITY_LABEL, shortName, unwrap } from '../util.ts';
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
-import { initials, PosPill, to20 } from '../playerUi.tsx';
+import { PlayerFace, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
 import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
 import { ClubCrest } from '../flags.tsx';
@@ -40,6 +40,7 @@ function Marks({ p }: { p: LivePlayer }) {
 
 /** Escalação no campo (mandante ataca para a direita; visitante, espelhado). */
 function TeamPitch({ players, side }: { players: LivePlayer[]; side: 0 | 1 }) {
+  const img = useImages();
   return (
     <div className="mc-field">
       <div className="mc-field-lines" aria-hidden="true"><i /><b /><s /><u /></div>
@@ -47,7 +48,7 @@ function TeamPitch({ players, side }: { players: LivePlayer[]; side: 0 | 1 }) {
         const left = side === 0 ? 5 + p.y * 0.88 : 95 - p.y * 0.88, top = 9 + p.x * 0.82;
         return (
           <div key={p.id} className="mc-chip" style={{ left: `${left}%`, top: `${top}%` }} title={p.name}>
-            <span className={`mc-face ${side === 0 ? 'mc-dot-home' : 'mc-dot-away'}`}>{initials(p.name)}</span>
+            <PlayerFace img={img} id={p.id} name={p.name} className={`mc-face ${side === 0 ? 'mc-dot-home' : 'mc-dot-away'}`} />
             {p.rating !== null && <span className={`mc-rate ${ratingTone(p.rating)}`}>{p.rating.toFixed(1)}</span>}
             <span className="mc-chip-name">{shortName(p.name)}</span>
             <Marks p={p} />

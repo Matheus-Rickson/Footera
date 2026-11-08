@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
-  Activity, ArrowLeftRight, Award, Binoculars, Building2, CalendarDays, CalendarRange, Dumbbell, FastForward, FileSignature, HeartPulse, History, Landmark, LayoutDashboard,
+  ArrowLeftRight, Award, Binoculars, Building2, CalendarDays, CalendarRange, Dumbbell, FastForward, FileSignature, HeartPulse, History, Landmark, LayoutDashboard,
   LogOut, Mail, Moon, Newspaper, Play, PlayCircle, Sprout, Sun, Swords, Trophy, UserCog, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 import { useTheme } from '../theme.ts';
@@ -11,7 +11,6 @@ import { ContinueBox, type ContinueOutcome } from './ContinueBox.tsx';
 import { MatchReport } from './MatchReport.tsx';
 import { ClubPage } from './ClubPage.tsx';
 import { OverviewView } from './OverviewView.tsx';
-import { MatchesView } from './MatchesView.tsx';
 import { TacticsView } from './TacticsView.tsx';
 import { FinanceView } from './FinanceView.tsx';
 import { TransfersView } from './TransfersView.tsx';
@@ -34,20 +33,20 @@ import { BoardView } from './BoardView.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
 
-type View = 'overview' | 'inbox' | 'squad' | 'tactics' | 'calendar' | 'matches' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure' | 'board';
+type View = 'overview' | 'inbox' | 'squad' | 'tactics' | 'calendar' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure' | 'board';
 const TITLES: Record<View, string> = {
-  overview: 'Visão geral', inbox: 'Caixa de entrada', squad: 'Elenco', tactics: 'Táticas', calendar: 'Calendário', matches: 'Partidas', competitions: 'Competições', finance: 'Finanças', transfers: 'Transferências',
+  overview: 'Visão geral', inbox: 'Caixa de entrada', squad: 'Elenco', tactics: 'Táticas', calendar: 'Calendário', competitions: 'Competições', finance: 'Finanças', transfers: 'Transferências',
   season: 'Temporada', contracts: 'Contratos', news: 'Notícias', history: 'Histórico da carreira', trophies: 'Sala de troféus', scouting: 'Olheiros', youth: 'Categorias de base', staff: 'Comissão técnica', training: 'Treinamento', medical: 'Departamento médico', infrastructure: 'Infraestrutura', board: 'Diretoria',
 };
 /** Sem clube (demitido) só fazem sentido as telas que não dependem de um elenco. */
-const UNEMPLOYED_VIEWS: View[] = ['overview', 'inbox', 'season', 'competitions', 'matches', 'board', 'trophies', 'news', 'history'];
+const UNEMPLOYED_VIEWS: View[] = ['overview', 'inbox', 'season', 'competitions', 'board', 'trophies', 'news', 'history'];
 const NAV: Array<{ group: string; items: Array<{ id: View; label: string; icon: LucideIcon }> }> = [
   { group: 'Clube', items: [
     { id: 'overview', label: 'Visão geral', icon: LayoutDashboard }, { id: 'inbox', label: 'Caixa de entrada', icon: Mail }, { id: 'season', label: 'Temporada', icon: CalendarRange }, { id: 'squad', label: 'Elenco', icon: Users },
     { id: 'contracts', label: 'Contratos', icon: FileSignature }, { id: 'tactics', label: 'Táticas', icon: Swords },
   ] },
   { group: 'Competição', items: [
-    { id: 'calendar', label: 'Calendário', icon: CalendarDays }, { id: 'matches', label: 'Partidas', icon: Activity }, { id: 'competitions', label: 'Competições', icon: Trophy },
+    { id: 'calendar', label: 'Calendário', icon: CalendarDays }, { id: 'competitions', label: 'Competições', icon: Trophy },
   ] },
   { group: 'Mercado', items: [{ id: 'transfers', label: 'Transferências', icon: ArrowLeftRight }, { id: 'scouting', label: 'Olheiros', icon: Binoculars }] },
   { group: 'Desenvolvimento', items: [
@@ -185,13 +184,12 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && !clubPage && view === 'staff' && <StaffView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && !clubPage && view === 'training' && <TrainingView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
         {!match && !player && !clubPage && view === 'medical' && <MedicalView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} />}
-        {!match && !player && !clubPage && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
+        {!match && !player && !clubPage && view === 'infrastructure' && <InfrastructureView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} onOpenScouting={() => go('scouting')} />}
         {!match && !player && !clubPage && view === 'board' && <BoardView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
-        {!match && !player && !clubPage && view === 'inbox' && <InboxView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} coachFirstName={coach.firstName} clubName={club?.name ?? null} onGo={(v) => go(v)} onChanged={() => void onRefresh()} />}
+        {!match && !player && !clubPage && view === 'inbox' && <InboxView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} coachFirstName={coach.firstName} clubName={club?.name ?? null} onGo={(v) => go(v)} onChanged={() => void onRefresh()} onOpenPlayer={setPlayer} />}
         {!match && !player && !clubPage && view === 'news' && <SocialView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} />}
         {!match && !player && !clubPage && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && !clubPage && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
-        {!match && !player && !clubPage && view === 'matches' && <MatchesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpen={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
         {!match && !player && !clubPage && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} club={club} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
         {!match && !player && !clubPage && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} onOpenClub={setClubPage} />}
 

@@ -5,6 +5,7 @@ import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
 import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
 import type { TalkTone } from '../game/match-engine/teamTalk.ts';
+import type { ScoutCriteria, ScoutScope } from '../game/scouting-engine/tasks.ts';
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -343,6 +344,7 @@ export type InboxAction = 'overview' | 'squad' | 'tactics' | 'contracts' | 'seas
 export interface NewsDto {
   id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer' | 'staff' | 'medical' | 'market' | 'board' | 'squad';
   title: string; body: string; sender: string; action: InboxAction | null; actionLabel: string | null; read: boolean;
+  /** jogadores citados (resumo das tarefas de busca): a tela mostra as estimativas atuais em tabela */ playerIds: string[] | null;
 }
 /** Rede social do futebol (aba Notícias). */
 export interface SocialAccountDto { id: string; kind: 'outlet' | 'journalist' | 'league' | 'club' | 'fan'; name: string; handle: string; verified: boolean; clubId: string | null; leagueId: string | null; bio: string; hue: number }
@@ -394,12 +396,30 @@ export interface TrophyDto { season: number; competitionName: string; country: s
 export interface TrophyRoomDto { mine: TrophyDto[]; champions: TrophyDto[] }
 
 // ---------------------------------------------------------------- olheiros e categorias de base (Fase 8B)
-export type ScoutAssignment = { kind: 'shortlist' } | { kind: 'country'; countryCode: string };
-export interface ScoutDto { id: string; name: string; nationality: string; ability: number; salary: number; contractEnd: string; assignment: ScoutAssignment }
+export type { ScoutCriteria, ScoutScope } from '../game/scouting-engine/tasks.ts';
+/** Olheiro do clube; `taskId` = tarefa ativa que ele cumpre (null = livre: observa a lista de observação). */
+export interface ScoutDto { id: string; name: string; nationality: string; ability: number; salary: number; contractEnd: string; taskId: string | null; taskName: string | null }
 export interface ScoutCandidateDto { id: string; name: string; nationality: string; ability: number; salary: number }
+/** Tarefa de busca (critérios checados nos valores reais; a lista de encontrados mostra só estimativas). */
+export interface ScoutTaskDto {
+  id: string; name: string; scope: ScoutScope; area: string; areaName: string;
+  criteria: ScoutCriteria; months: number | null;
+  status: 'queued' | 'active' | 'done' | 'cancelled'; scoutId: string | null; scoutName: string | null;
+  createdOn: string; startedOn: string | null; endsOn: string | null; finishedOn: string | null;
+  /** jogadores encontrados / com relatório completo (100%) */ found: number; complete: number;
+}
+export interface ScoutTaskInput { scope: ScoutScope; area: string; name?: string; criteria: ScoutCriteria; months: number | null }
+/** Prévia da tarefa: compatíveis em faixa (high null = "mais de 2.000"), dias por relatório (pelos olheiros), início (null = fila) e término. */
+export interface ScoutTaskPreviewDto {
+  name: string; compatible: { low: number; high: number | null }; reportDays: { min: number; max: number } | null;
+  startDate: string | null; endDate: string | null; queued: boolean; problems: string[];
+}
 export interface ScoutingOverviewDto {
-  scouts: ScoutDto[]; candidates: ScoutCandidateDto[]; maxScouts: number; monthlyCost: number; countries: Array<{ code: string; name: string }>;
-  shortlist: MarketPlayerDto[]; reports: MarketPlayerDto[];
+  /** maxScouts e tracked (jogadores por tarefa) vêm do nível do departamento de scouting (deptLevel) */
+  scouts: ScoutDto[]; candidates: ScoutCandidateDto[]; maxScouts: number; deptLevel: number; tracked: number; monthlyCost: number;
+  countries: Array<{ code: string; name: string }>; leagues: Array<{ id: string; name: string; countryCode: string; countryName: string }>;
+  tasks: ScoutTaskDto[]; maxOpenTasks: number; shortlist: MarketPlayerDto[]; reports: MarketPlayerDto[];
+  /** data do jogo e país do clube (padrão da nova tarefa) */ today: string; homeCountryCode: string;
 }
 /** Ficha de um jogador. De outros clubes: só estimativas (faixas); do próprio clube: valores reais (faixas com low = high). */
 export interface PlayerProfileDto {
@@ -450,11 +470,16 @@ export interface MedicalOverviewDto {
   injured: Array<{ id: string; name: string; position: Position; until: string; daysLeft: number; note: string }>;
   atRisk: Array<{ id: string; name: string; position: Position; condition: number; dailyRisk: number }>;
 }
-export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium';
+export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium' | 'scouting' | 'recruitment';
+/** Linha de um card da Infraestrutura (valor já formatado; tone colore). */
+export interface FacilityStat { label: string; value: string; help: string; tone?: 'great' | 'good' | 'avg' | 'poor' }
 export interface InfrastructureOverviewDto {
   balance: number; capacity: number;
+  /** estádio: público médio e ocupação nos jogos em casa da temporada (null = nenhum jogo ainda); preço médio do ingresso calculado */
+  stadium: { name: string; capacity: number; monthly: number; avgAttendance: number | null; occupancy: number | null; homeGames: number; fans: number; ticketPrice: number };
   project: { kind: FacilityKind; label: string; toLevel: number; cost: number; start: string; end: string; progress: number } | null;
-  facilities: Array<{ kind: FacilityKind; label: string; level: number; maxed: boolean; effect: string; nextEffect: string | null; cost: number | null; days: number | null; extraMonthly: number | null; extraSeats: number | null }>;
+  facilities: Array<{ kind: FacilityKind; label: string; level: number; maxLevel: number; maxed: boolean; monthly: number; stats: FacilityStat[]; effect: string; nextEffect: string | null;
+    cost: number | null; days: number | null; extraMonthly: number | null; extraSeats: number | null }>;
 }
 
 // ---------------------------------------------------------------- diretoria e empregos (Fase 8D)
@@ -538,7 +563,8 @@ export interface GameApi {
   /** importa jogadores/clubes de uma planilha CSV escolhida pelo usuário (null = cancelou) */
   editorImportCsv(packId: string, kind: 'players' | 'clubs'): Promise<IpcResult<CsvImportReportDto | null>>;
   /** salva o modelo (só cabeçalho) ou a exportação completa em CSV (null = cancelou; senão o caminho) */
-  editorExportCsv(packId: string, kind: 'players' | 'clubs', template: boolean): Promise<IpcResult<string | null>>;
+  /** `filter`: só o que os filtros da lista mostram (país, liga, clube, posição); devolve o arquivo e quantas linhas foram gravadas */
+  editorExportCsv(packId: string, kind: 'players' | 'clubs', template: boolean, filter?: { countryId?: string; leagueId?: string; clubId?: string; position?: Position }): Promise<IpcResult<{ path: string; rows: number } | null>>;
   editorSetImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups', id: string): Promise<IpcResult<{ version: number; keys: string[] } | null>>;
   editorRemoveImage(packId: string, kind: 'players' | 'clubs' | 'stadiums' | 'leagues' | 'coaches' | 'cups', id: string): Promise<IpcResult<{ version: number; keys: string[] }>>;
   /** imagens deste pacote (mesmo inativo), para o editor */
@@ -598,7 +624,13 @@ export interface GameApi {
   getScouting(profileId: string, careerId: string): Promise<IpcResult<ScoutingOverviewDto>>;
   hireScout(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
   fireScout(profileId: string, careerId: string, scoutId: string): Promise<IpcResult<number>>;
-  assignScout(profileId: string, careerId: string, scoutId: string, assignment: ScoutAssignment): Promise<IpcResult<true>>;
+  createScoutTask(profileId: string, careerId: string, input: ScoutTaskInput): Promise<IpcResult<string>>;
+  previewScoutTask(profileId: string, careerId: string, input: ScoutTaskInput): Promise<IpcResult<ScoutTaskPreviewDto>>;
+  /** ativa/fila → cancelada (a lista fica no histórico); concluída/cancelada → apagada */
+  removeScoutTask(profileId: string, careerId: string, taskId: string): Promise<IpcResult<true>>;
+  getScoutTaskPlayers(profileId: string, careerId: string, taskId: string): Promise<IpcResult<MarketPlayerDto[]>>;
+  /** jogadores como o usuário os enxerga (estimativas), na ordem pedida; ignora aposentados e jogadores da base */
+  getScoutedPlayers(profileId: string, careerId: string, playerIds: string[]): Promise<IpcResult<MarketPlayerDto[]>>;
   setShortlisted(profileId: string, careerId: string, playerId: string, on: boolean): Promise<IpcResult<true>>;
   getYouth(profileId: string, careerId: string): Promise<IpcResult<YouthOverviewDto>>;
   promoteYouth(profileId: string, careerId: string, playerId: string): Promise<IpcResult<true>>;

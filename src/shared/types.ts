@@ -88,7 +88,8 @@ export interface Club {
   reputation: number; // 1..100
   balance: number;
   fans: number;
-  facilities: { training: number; youth: number; medical: number; stadium: number }; // 1..20
+  /** 1..20; scouting e recruitment (rede de captação) só no clube do usuário, gravados ao subir (ausentes = 10) */
+  facilities: { training: number; youth: number; medical: number; stadium: number; scouting?: number; recruitment?: number };
 }
 
 /** Calendário de uma liga. Se ausente, usa-se o padrão (início em 1º/ago, sábados, a cada 7 dias). */

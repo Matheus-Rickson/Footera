@@ -9,7 +9,7 @@ export interface ClubEcon {
   reputation: number;
   fans: number;
   capacity: number;
-  facilities: { training: number; youth: number; medical: number; stadium: number };
+  facilities: { training: number; youth: number; medical: number; stadium: number; scouting?: number; recruitment?: number };
 }
 
 export type IncomeCategory = 'gate' | 'tv' | 'sponsorship' | 'merchandising' | 'transfer_in' | 'prize';
@@ -45,7 +45,17 @@ export const staffMonthly = (c: ClubEcon): number =>
  * administração do futebol e a manutenção do centro de treinamento e do departamento médico (metade do peso que esses níveis têm em `staffMonthly`).
  */
 export const staffUserMonthly = (c: ClubEcon): number =>
-  Math.round(c.econ * (F.staffBase + F.staffPerLevel * c.facilities.youth + (F.staffPerLevel / 2) * (c.facilities.training + c.facilities.medical)));
+  Math.round(c.econ * (F.staffBase + F.staffPerLevel * c.facilities.youth + (F.staffPerLevel / 2) * (c.facilities.training + c.facilities.medical)
+    + (F.staffPerLevel / 3) * ((c.facilities.scouting ?? 10) + (c.facilities.recruitment ?? 10) - 20)));
+/**
+ * Parte da manutenção mensal de cada instalação do usuário (cards da Infraestrutura). Base: nível × 3.000 (× economia); treino e médico
+ * metade; scouting e rede de captação um terço (no nível 10 o total é o mesmo de antes deles existirem); estádio = manutenção do estádio.
+ */
+export function facilityMonthly(c: ClubEcon, kind: 'training' | 'youth' | 'medical' | 'stadium' | 'scouting' | 'recruitment'): number {
+  if (kind === 'stadium') return maintenanceMonthly(c);
+  const w = kind === 'youth' ? 1 : kind === 'training' || kind === 'medical' ? 1 / 2 : 1 / 3;
+  return Math.round(c.econ * F.staffPerLevel * w * (c.facilities[kind] ?? 10));
+}
 export const maintenanceMonthly = (c: ClubEcon): number =>
   Math.round(c.econ * (c.capacity * F.maintPerSeat + c.facilities.stadium * F.maintPerLevel + F.maintBase));
 export const operationsMonthly = (c: ClubEcon): number => Math.round(c.econ * F.opsBase * rep65(c.reputation, F.opsExp));

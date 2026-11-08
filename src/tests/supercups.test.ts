@@ -41,9 +41,9 @@ test('Supercopas: classificados, dobradinha (vice da liga, vice da copa ou sem j
     assert.equal(f.stages.at(-1)!.host, r.host === 'neutral' ? 'neutral' : 'higher');
   }
   assert.deepEqual(SUPERCUP_RULES.filter((r) => r.extraTime).map((r) => r.countryCode).sort(), ['CRO', 'POR'], 'prorrogação só em Portugal e na Croácia');
-  // base: todos os países com supercopa, menos Áustria, México e Rússia
+  // base: todos os países com supercopa, menos Áustria e México
   const codes = baseUniverse().world.countries.map((c) => c.code);
-  assert.deepEqual(codes.filter((c) => !supercupRuleFor(c)).sort(), ['AUT', 'MEX', 'RUS']);
+  assert.deepEqual(codes.filter((c) => !supercupRuleFor(c)).sort(), ['AUT', 'MEX']);
 });
 
 function playSeason(db: SqlDb) {

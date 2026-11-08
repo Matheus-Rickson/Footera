@@ -22,8 +22,8 @@ import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.
 import { supercupEntrants, supercupFormat, type SupercupInputs } from '../../game/cup-engine/supercups.ts';
 import { addDays } from '../../shared/date.ts';
 import { estadualPool } from '../../game/career-engine/brazilCalendar.ts';
-import { copaDoBrasilOrder, regionalPool } from './formatRepository.ts';
-import { ESTADUAIS } from '../../game/format-engine/formats.ts';
+import { copaDoBrasilOrder, formatOutcomesOf, regionalPool } from './formatRepository.ts';
+import { COPA_RUSSIA_ID, ESTADUAIS } from '../../game/format-engine/formats.ts';
 import { formatRounds } from '../../game/format-engine/engine.ts';
 
 const S = (v: unknown) => String(v);
@@ -124,7 +124,10 @@ export function previousChampions(db: SqlDb, countryId: string, season: number):
   const top = db.prepare(`SELECT c.id FROM competitions c JOIN leagues l ON l.id = c.league_id WHERE c.country_id = ? AND c.season = ? AND c.kind = 'league' ORDER BY l.tier LIMIT 1`).get(countryId, ps);
   const league = top ? db.prepare('SELECT club_id FROM season_results WHERE competition_id = ? ORDER BY position').all(S(top.id)).map((r) => S(r.club_id)) : [];
   const cup = db.prepare("SELECT id, format_json FROM competitions WHERE id = ? AND status = 'finished'").get(`cup_${countryId}_${ps}`);
-  if (!cup) return { ...none, league };
+  if (!cup) { // Rússia: a copa é do motor de formatos (Copa da Rússia: campeão e vice = vencedor e perdedor da superfinal)
+    const out = formatOutcomesOf(db, `${COPA_RUSSIA_ID}_${ps}`);
+    return out?.complete && out.champion ? { league, cupWinner: out.champion, cupRunnerUp: out.ranking[1] ?? null } : { ...none, league };
+  }
   const last = (JSON.parse(S(cup.format_json)) as CupState).format.stages.length - 1;
   const fin = db.prepare('SELECT club_a, club_b, winner FROM cup_ties WHERE competition_id = ? AND stage = ? AND club_b IS NOT NULL').get(S(cup.id), last);
   if (!fin || fin.winner == null) return { ...none, league };
