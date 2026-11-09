@@ -109,10 +109,10 @@ test('Proposta: erros de regra (janela, valores, jogador próprio, elenco cheio,
   db.exec("UPDATE career SET game_date = '2026-10-10'");
   assert.throws(() => makeOffer(db, { playerId: t.id, fee: 1000, wage: 1000, years: 3 }), /janela de transferências está fechada.*01\/01\/2027/);
   db.exec("UPDATE career SET game_date = '2026-07-10'");
-  const others = db.prepare("SELECT id FROM players WHERE club_id <> ? LIMIT 6").all(clubId).map((r) => String(r.id)).filter((id) => id !== t.id);
-  for (const id of others.slice(0, 5)) db.prepare('UPDATE players SET club_id = ? WHERE id = ?').run(clubId, id);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', clubId), 30);
-  assert.throws(() => makeOffer(db, { playerId: t.id, fee: 1000, wage: 1000, years: 3 }), /máximo de 30/);
+  const others = db.prepare("SELECT id FROM players WHERE club_id <> ? LIMIT 11").all(clubId).map((r) => String(r.id)).filter((id) => id !== t.id);
+  for (const id of others.slice(0, 10)) db.prepare('UPDATE players SET club_id = ? WHERE id = ?').run(clubId, id);
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', clubId), 35);
+  assert.throws(() => makeOffer(db, { playerId: t.id, fee: 1000, wage: 1000, years: 3 }), /máximo de 35/);
 });
 
 test('Negociação completa: clube e jogador respondem (recusa → contraproposta → aceite) e a contabilidade fecha', async () => {

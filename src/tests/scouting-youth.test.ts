@@ -162,7 +162,7 @@ test('Peneira: a safra chega em 15/mar uma única vez (mesmo saltando dias), aos
   void clubId;
 });
 
-test('Base: promover cria contrato profissional e respeita o limite de 30; dispensar torna o jovem livre com pretensão pelo valor', async () => {
+test('Base: promover cria contrato profissional e respeita o limite de 35; dispensar torna o jovem livre com pretensão pelo valor', async () => {
   const { db, clubId } = await setup('sy-promote');
   const [a, b] = getYouthOverview(db).players;
   promoteYouth(db, a!.id);
@@ -170,11 +170,11 @@ test('Base: promover cria contrato profissional e respeita o limite de 30; dispe
   assert.deepEqual([String(row.club_id), row.youth_club_id, String(row.contract_end)], [clubId, null, '2029-06-30']);
   assert.ok(getContracts(db).some((c) => c.id === a!.id));
   assert.throws(() => promoteYouth(db, a!.id), YouthError, 'não está mais na base');
-  const filler = db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL AND youth_club_id <> ? LIMIT 10').all(clubId).map((r) => String(r.id));
+  const filler = db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL AND youth_club_id <> ? LIMIT 15').all(clubId).map((r) => String(r.id));
   const size = n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', clubId);
-  for (const id of filler.slice(0, 30 - size)) db.prepare('UPDATE players SET club_id = ?, youth_club_id = NULL WHERE id = ?').run(clubId, id);
-  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', clubId), 30);
-  assert.throws(() => promoteYouth(db, b!.id), /máximo de 30/);
+  for (const id of filler.slice(0, 35 - size)) db.prepare('UPDATE players SET club_id = ?, youth_club_id = NULL WHERE id = ?').run(clubId, id);
+  assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE club_id = ?', clubId), 35);
+  assert.throws(() => promoteYouth(db, b!.id), /máximo de 35/);
   releaseYouth(db, b!.id);
   const freed = searchMarket(db, { freeOnly: true, name: b!.name }).find((p) => p.id === b!.id)!;
   assert.ok(freed && freed.clubId === null);

@@ -2,8 +2,8 @@
   "format": 1,
   "id": "footera-base",
   "name": "FOOTERA — base fictícia",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "FOOTERA",
-  "description": "Universo fictício padrão: 16 países; Brasil com estados, estaduais e Série D de 96 clubes. Dados fictícios.",
+  "description": "Universo fictício padrão: 24 países (16 completos ou por divisão + 8 da CONMEBOL simplificados); Brasil com estados, estaduais e Série D de 96 clubes. Dados fictícios.",
   "base": "none"
 }

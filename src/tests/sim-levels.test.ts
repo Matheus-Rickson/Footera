@@ -111,15 +111,23 @@ test('Carreira mista: o usuário contrata de clube simplificado; vagas e propost
   assert.deepEqual(scores(again.db), scores(first.db), 'mesma carreira, mesmos placares');
 });
 
-test('Base fixa (data/base): 16 países com as divisões pedidas, válida, igual a cada carga e independente da semente da carreira', async () => {
+test('Base fixa (data/base): 24 países com as divisões pedidas, válida, igual a cada carga e independente da semente da carreira', async () => {
   const { baseUniverse } = await import('../services/universeService.node.ts');
   const { BASE_ID, BASE_VERSION } = await import('../game/data-pack/base.ts');
   const { world, applied } = baseUniverse();
   assert.deepEqual(applied, [`${BASE_ID}@${BASE_VERSION}`]);
   const tiers = (code: string) => world.leagues.filter((l) => l.active !== false && l.countryId === world.countries.find((c) => c.code === code)!.id).length;
-  assert.deepEqual(world.countries.map((c) => c.code).sort(), ['ARG', 'AUT', 'BEL', 'BRA', 'CRO', 'ENG', 'ESP', 'FRA', 'GER', 'IRL', 'ITA', 'JPN', 'MEX', 'NED', 'POR', 'RUS']);
+  assert.deepEqual(world.countries.map((c) => c.code).sort(), ['ARG', 'AUT', 'BEL', 'BOL', 'BRA', 'CHI', 'COL', 'CRO', 'ECU', 'ENG', 'ESP', 'FRA', 'GER', 'IRL', 'ITA', 'JPN', 'MEX', 'NED', 'PAR', 'PER', 'POR', 'RUS', 'URU', 'VEN']);
   assert.equal(tiers('BRA'), 4); assert.equal(tiers('ENG'), 4); assert.equal(tiers('ESP'), 3); assert.equal(tiers('GER'), 3);
   for (const c of ['ITA', 'FRA', 'POR', 'NED', 'ARG', 'BEL', 'JPN', 'AUT', 'MEX', 'IRL', 'CRO', 'RUS']) assert.equal(tiers(c), 2, c);
+  // base 1.2.0: os 8 países da CONMEBOL simplificados — só a 1ª divisão, com o tamanho real de 2026, ano civil, 4 vagas na Libertadores
+  const size: Record<string, number> = { URU: 16, COL: 20, ECU: 16, PAR: 12, CHI: 16, PER: 18, BOL: 16, VEN: 14 };
+  for (const [code, n] of Object.entries(size)) {
+    const ctry = world.countries.find((c) => c.code === code)!;
+    const lgs = world.leagues.filter((l) => l.countryId === ctry.id);
+    assert.deepEqual([lgs.length, lgs[0]!.tier, world.clubs.filter((c) => c.leagueId === lgs[0]!.id).length, ctry.seasonStart], [1, 1, n, '01-01'], code);
+    assert.deepEqual([lgs[0]!.rules.promotionSlots, lgs[0]!.rules.relegationSlots, lgs[0]!.rules.continentalSlots], [0, 0, 4], code);
+  }
   for (const c of world.clubs) assert.ok(world.players.filter((p) => p.clubId === c.id).length >= 22, c.id);
   // base 1.1.0: Brasil com os 27 estados, Série D de 96 clubes e "Sem divisão" (inativa) com os clubes que disputam só o estadual
   const bra = world.countries.find((c) => c.code === 'BRA')!;

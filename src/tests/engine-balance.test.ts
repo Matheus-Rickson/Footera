@@ -52,7 +52,9 @@ test('Jogo muito desigual: sem goleadas absurdas e o mais fraco ainda marca às 
 
 test('Mentalidade: defensiva e ofensiva não ganham nem perdem pontos de graça; mudam o estilo (gols)', () => {
   const ref = w.clubs.filter((c) => (byClub.get(c.id)?.length ?? 0) >= 20).sort((a, b) => strength(b.id) - strength(a.id));
-  const id = ref[Math.floor(ref.length / 3)]!.id;
+  // clube fixo (o mediano da Série A da base): não muda quando a base ganha países ou clubes
+  const serieA = ref.filter((c) => c.leagueId === 'bra-1');
+  const id = serieA[Math.floor(serieA.length / 2)]!.id;
   const f = FORMATIONS.find((x) => x.id === '4-2-3-1')!;
   const run = (m: TeamTactics['mentality']) => {
     let p = 0, goals = 0, ga = 0;
@@ -68,8 +70,9 @@ test('Mentalidade: defensiva e ofensiva não ganham nem perdem pontos de graça;
   // antes: defensiva −0,19 ponto/jogo contra o neutro (a pior escolha até para segurar resultado); ofensiva +0,14
   assert.ok(d.ppg > b.ppg - 0.13, `defensiva ${d.ppg.toFixed(3)} × equilibrada ${b.ppg.toFixed(3)}`);
   assert.ok(a.ppg < b.ppg + 0.13, `ofensiva ${a.ppg.toFixed(3)} × equilibrada ${b.ppg.toFixed(3)}`);
-  // a defensiva tem que defender de verdade: antes sofria só ~9% menos gols que a equilibrada (agora ~16%)
-  assert.ok(d.ga < b.ga * 0.88, `gols sofridos: defensiva ${d.ga.toFixed(2)} × equilibrada ${b.ga.toFixed(2)}`);
+  // a defensiva tem que defender de verdade e a ofensiva tem que cobrar atrás (neste clube: antes 0,82 e 1,08 dos gols sofridos da equilibrada; agora 0,74 e 1,18)
+  assert.ok(d.ga < b.ga * 0.78, `gols sofridos: defensiva ${d.ga.toFixed(2)} × equilibrada ${b.ga.toFixed(2)}`);
+  assert.ok(a.ga > b.ga * 1.13, `gols sofridos: ofensiva ${a.ga.toFixed(2)} × equilibrada ${b.ga.toFixed(2)}`);
   assert.ok(d.goals < b.goals && b.goals < a.goals, `gols: defensiva ${d.goals.toFixed(2)}, equilibrada ${b.goals.toFixed(2)}, ofensiva ${a.goals.toFixed(2)}`);
 });
 

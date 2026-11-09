@@ -15,6 +15,8 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** rescisão aguardando confirmação (mostra o custo antes) */
+  const [ending, setEnding] = useState<ContractRowDto | null>(null);
 
   const load = useCallback(async () => { setRows(await unwrap(window.api.getContracts(profileId, careerId))); }, [profileId, careerId]);
   useEffect(() => { load().catch((e) => setError(errMsg(e))); }, [load, refreshKey]);
@@ -33,6 +35,15 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
 
+  async function terminate() {
+    if (!ending) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await unwrap(window.api.terminateContract(profileId, careerId, ending.id));
+      setNotice(r.message); setEnding(null); setSel(null); await load(); await onChanged();
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+  }
+
   if (!rows) return error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando contratos…</p>;
   const expiring = rows.filter((r) => r.expiresThisSeason).length;
 
@@ -41,7 +52,8 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
       <section className="card">
         <p>{rows.length} jogadores · <strong className={expiring ? 'neg' : 'pos'}>{expiring} contrato(s) vencem na próxima virada (1º/jul)</strong></p>
         <p className="muted small">Contratos não são renovados automaticamente: quem não renovar sai de graça na virada de temporada. A renovação só é possível com até 24 meses restantes;
-          o novo contrato conta a partir do fim do atual e sempre termina em 30/jun. Veteranos aceitam menos temporadas.</p>
+          o novo contrato conta a partir do fim do atual e sempre termina em 30/jun. Veteranos aceitam menos temporadas.
+          Rescindir libera o jogador na hora, pagando os salários que faltam até o fim do contrato.</p>
         {notice && <p className="ok" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </section>
@@ -66,13 +78,28 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
         </section>
       )}
 
+      {ending && (
+        <section className="card offer">
+          <h2>Rescindir o contrato de {ending.name}?</h2>
+          <p>O clube paga os salários que faltam até {fmtDate(ending.contractEnd)}: <strong className="neg">{fmtMoney(ending.terminationCost)}</strong>
+            {' '}({Math.max(1, ending.monthsLeft)} {Math.max(1, ending.monthsLeft) === 1 ? 'mês' : 'meses'} de {fmtMoney(ending.salary)}). Ele sai livre e pode assinar com qualquer clube.</p>
+          <div className="row">
+            <button disabled={busy} onClick={() => void terminate()}>Confirmar rescisão</button>
+            <button className="secondary" disabled={busy} onClick={() => setEnding(null)}>Cancelar</button>
+          </div>
+        </section>
+      )}
+
       <section className="card scroll tall">
         <table>
           <thead><tr><th>Pos.</th><th>Jogador</th><th>Idade</th><th>Força</th><th className="right">Salário</th><th>Contrato até</th><th>Meses</th><th /></tr></thead>
           <tbody>{rows.map((c) => (
             <tr key={c.id} className={c.expiresThisSeason ? 'expiring' : sel?.id === c.id ? 'mine' : ''}>
-              <td><PosPill pos={c.position} /></td><td>{c.name}</td><td>{c.age}</td><td>{to20(c.overall)}</td><td className="right">{fmtMoney(c.salary)}</td><td>{fmtDate(c.contractEnd)}</td><td>{c.monthsLeft}</td>
-              <td><button className="secondary" disabled={!c.canRenew || busy} title={c.canRenew ? '' : 'Só com até 24 meses restantes de contrato'} onClick={() => choose(c)}>Renovar</button></td>
+              <td><PosPill pos={c.position} /></td><td>{c.name}{c.retiring && <span className="muted small" title="Anunciou que esta é a última temporada da carreira"> · aposenta-se ao fim da temporada</span>}</td><td>{c.age}</td><td>{to20(c.overall)}</td><td className="right">{fmtMoney(c.salary)}</td><td>{fmtDate(c.contractEnd)}</td><td>{c.monthsLeft}</td>
+              <td><div className="row">
+                <button className="secondary" disabled={!c.canRenew || busy} title={c.retiring ? 'Vai se aposentar ao fim da temporada: sem renovação' : c.canRenew ? '' : 'Só com até 24 meses restantes de contrato'} onClick={() => { setEnding(null); choose(c); }}>Renovar</button>
+                <button className="secondary" disabled={busy} title={`Rescindir: custa ${fmtMoney(c.terminationCost)} (salários até o fim do contrato)`} onClick={() => { setSel(null); setEnding(c); setNotice(null); setError(null); }}>Rescindir</button>
+              </div></td>
             </tr>))}</tbody>
         </table>
       </section>

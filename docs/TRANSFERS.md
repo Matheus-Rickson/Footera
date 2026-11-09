@@ -8,10 +8,15 @@
      O clube também recusa se a saída deixar o elenco abaixo de 20 jogadores ou sem 2 goleiros/6 defensores/4 meias/3 atacantes.
   2. **Jogador:** salário ≥ 97% do exigido → aceita; ≥ 80% → contraproposta; menos → recusa. Exigido = max(valor×1,2%, salário atual×1,05) ajustado por prestígio do novo clube
      (−8% se for ≥10 pontos maior, +20% se for ≥10 menor) e ambição.
-- **Limites do comprador:** caixa ≥ taxa; elenco < 30. Venda pelo usuário: elenco ficar ≥ 18 com 2 goleiros e profundidade.
+- **Limites do comprador:** caixa ≥ taxa; elenco < 35 (`SQUAD_MAX`; era 30 até 09/11/2026 — vale também para promover jovens da base). Venda pelo usuário: elenco ficar ≥ 18 com 2 goleiros e profundidade.
 - **Mercado mostra só estimativas** de força e potencial com margem de erro (faixa de ±6/±8 que sempre contém o valor real e é fixa por jogador/semente; atualizar a tela não revela nada).
 - **Propostas recebidas:** jogadores listados como transferíveis sempre atraem propostas (5%/dia); os 12 mais valiosos, esporadicamente (0,4%/dia). No máximo 5 pendentes, 1 nova por dia, validade de 7 dias.
   Só clubes do mesmo país, de reputação ≥ (a sua − 30) e com caixa para a taxa podem comprar.
+- **Contraproposta (09/11/2026):** numa proposta recebida, o usuário pode pedir uma taxa maior (até 2 vezes por proposta, só com a janela
+  aberta). O comprador tem um teto = maior entre a proposta e o valor de mercado × 1,10–1,35 (sorteio fixo por proposta e rodada), nunca
+  acima do caixa (`buyerReply`). Pedido até o teto: aceita e a venda sai na hora pelo valor pedido. Até 30% acima do teto, com rodada
+  sobrando: sobe a proposta para um valor intermediário (entre a atual e o pedido, sem passar do teto) e a validade ganha pelo menos 3 dias.
+  Acima disso, ou sem rodadas: desiste (a proposta é encerrada). Migração 027 (`transfer_offers.counter_rounds`).
 - **Mercado da IA:** cada clube tem 1,2%/dia (na janela) de vender um jogador reserva (posições 12–21 do elenco) para um clube do mesmo país com caixa ≥ 1,5× a taxa; tudo determinístico por semente e data.
 
 ## Contabilidade
@@ -26,7 +31,7 @@ pular até a próxima rodada dá o mesmo resultado que avançar dia a dia (testa
   sem carência — com 70% de chance na virada e 6% por dia nas janelas (não é certeza: um ou outro 14+ fica disponível, pedido do usuário).
   Medido no universo real (2 temporadas): antes ~30 livres entre 14 e 16; depois, 1–2 livres com 14+ logo após cada virada (alguns
   ainda no fim da janela), os demais até 13; média ~8.
-- Sem rescisões, empréstimos, cláusulas (multa, bônus), agentes, limite de estrangeiros nem regras de inscrição.
+- Rescisão de contrato: ver `docs/CAREER_CYCLE.md` (Contratos). Sem empréstimos, cláusulas (multa, bônus), agentes, limite de estrangeiros nem regras de inscrição.
 - Sem rede de olheiros (Fase 8): as estimativas não melhoram com investimento.
 - As taxas de jogadores muito caros superam o caixa de quase todos os clubes (o caixa inicial equivale a ~4 meses de receita). Isso é realista, mas limita compras e vendas de craques.
 - O jogador não considera tempo de jogo prometido, moral nem projeto esportivo; a recusa é só por salário.

@@ -11,7 +11,7 @@ import { userSeason } from '../database/repositories/countrySeasonRepository.ts'
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import type { ContinueStepDto } from '../shared/api.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
-import { startNextSeason } from '../database/repositories/seasonRepository.ts';
+import { planRetirementsAtCreation, startNextSeason } from '../database/repositories/seasonRepository.ts';
 import { ageOn, isValidIso } from '../shared/date.ts';
 import type { Coach, World } from '../shared/types.ts';
 import { setFullLeagues } from '../database/repositories/simLevelRepository.ts';
@@ -63,6 +63,8 @@ export function createCareer(db: SqlDb, universe: World, coach: Coach, clubId: s
   ensureYouthAcademies(db);
   ensureBoard(db);
   ensureAiCoaches(db, world.coaches);
+  // aposentadorias anunciadas para o fim da temporada (com simulação prévia, as do país do clube são sorteadas na virada que abre a carreira)
+  planRetirementsAtCreation(db, world.startDate, preCareer ? userSeason(db).turnover : null);
   if (preCareer) fastForwardToCareerStart(db, now);
 }
 

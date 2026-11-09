@@ -196,7 +196,7 @@ export function generateWorld(opts: WorldOptions): World {
           rounds: 2, pointsWin: 3, pointsDraw: 1,
           tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
           promotionSlots: lt.promotion, relegationSlots: lt.relegation, continentalSlots: lt.continental,
-          maxForeignPlayers: lt.foreignLimit, squadMin: 18, squadMax: 30,
+          maxForeignPlayers: lt.foreignLimit, squadMin: 18, squadMax: 35,
         },
       };
       leagues.push(league);

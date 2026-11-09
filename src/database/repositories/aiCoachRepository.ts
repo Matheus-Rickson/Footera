@@ -6,7 +6,7 @@ import { computeStandings, type MatchResult } from '../../game/competition-engin
 import { expectedPosition } from '../../game/board-engine/board.ts';
 import { AI_COACH_RETIRE_AGE, aiCoachSeasonDelta, generateAiCoach, pickReplacement } from '../../game/coach-engine/coach.ts';
 import { defaultCoaches } from '../../game/coach-engine/worldCoaches.ts';
-import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
+import { templateFor } from '../../game/world/names.ts';
 import type { CoachAttributes } from '../../shared/coachAttributes.ts';
 import type { LeagueRules } from '../../shared/types.ts';
 import type { AiCoachDetailDto, AiCoachDto, ClubInfoDto } from '../../shared/api.ts';
@@ -21,7 +21,7 @@ import { getCareerState } from './careerRepository.ts';
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
-const templateOf = (code: string) => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
+const templateOf = (code: string) => templateFor(code);
 
 function insertWorldCoach(db: SqlDb, k: WorldCoach, clubId: string | null, date: string): void {
   insertCoach(db, k.id, k.nationality, k, clubId, date);

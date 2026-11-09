@@ -13,6 +13,13 @@ Holanda, Argentina, Bélgica, Japão, Áustria, México, Irlanda, Croácia e Rú
 - **Semente:** a carreira não escolhe mais semente. Cada carreira ganha uma semente interna só para o acaso (resultados, lesões, peneiras);
   o universo é sempre a base. Por isso um patch feito para a base vale em qualquer carreira.
 - Nomes de cidades e clubes são fictícios; as listas de nomes evitam combinações de jogadores famosos reais.
+- **Base 1.2.0 (países da CONMEBOL, decisão do usuário em 08/11/2026; `scripts/base-conmebol.ts`, uma vez só; `docs/CONTINENTAIS.md`):**
+  Uruguai, Colômbia, Equador, Paraguai, Chile, Peru, Bolívia e Venezuela como países **simplificados**: só a 1ª divisão, com o tamanho real
+  de 2026 (16, 20, 16, 12, 16, 18, 16 e 14 clubes), sem acesso nem rebaixamento, `continentalSlots` 4 (vagas na Libertadores), temporada em
+  ano civil. +128 clubes fictícios com estádio e 25 jogadores cada (modelos em `game/world/conmebolTemplates.ts`, fora de
+  `COUNTRY_TEMPLATES` para não mudar o gerador de testes nem as listas de candidatos; `templateFor(code)` acha qualquer modelo). Os registros
+  da base 1.1.0 ficam iguais em conteúdo (o gravador só reordena campos de clubes com estado). Pacotes feitos para a 1.1.0 continuam valendo.
+  Nas carreiras, essas ligas rodam no resultado rápido (rodada semanal: terminam entre junho e outubro — ADAPT).
 - **Base 1.1.0 (estaduais, decisão do usuário em 07/11/2026; `scripts/base-estaduais.ts`, uma vez só):** Brasil com os 27 estados
   (`countries.json` → `states`), divisão **"Sem divisão"** (`bra-sd`, `active: false`: sem jogos próprios) e a **Série D com 96 clubes**
   (REC 2026). +299 clubes fictícios (76 da Série D e 223 sem divisão, com estádio e 25 jogadores cada; força média 36,9 na D e 34,2 sem

@@ -6,12 +6,12 @@ import { createRng, type Rng } from '../../game/rng.ts';
 import { ageOn } from '../../shared/date.ts';
 import { prizeMoney, retirementChance, reviseEstimate } from '../../game/career-engine/development.ts';
 import {
-  AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, expiresAt, maxContractYears, renewalDecision, renewalDemand, turnoverDate,
+  AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, expiresAt, maxContractYears, renewalDecision, renewalDemand, terminationCost, turnoverDate,
 } from '../../game/career-engine/contracts.ts';
-import { groupOf, SQUAD_MAX, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
+import { groupOf, SQUAD_MAX, SQUAD_MIN, squadStaysValid, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { LeagueRules, Player, Position } from '../../shared/types.ts';
 import type {
-  ContractRowDto, HistoryRowDto, NewSeasonReportDto, RenewInput, RenewResultDto, SeasonStatusDto, TrophyDto, TrophyRoomDto,
+  ContractRowDto, HistoryRowDto, NewSeasonReportDto, RenewInput, RenewResultDto, SeasonStatusDto, TerminateResultDto, TrophyDto, TrophyRoomDto,
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { createSeason, getCompetitionTable, listCompetitions } from './competitionRepository.ts';
@@ -48,8 +48,10 @@ const squadOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FR
 
 /** Meses restantes de contrato a partir dos quais a renovação é permitida. */
 export const RENEW_WINDOW_MONTHS = 24;
-/** A IA mantém no máximo este número de jogadores depois da virada (abre espaço para o mercado). */
-const AI_SQUAD_CAP = 28;
+/** A IA mantém no máximo este número de jogadores depois da virada (= limite de elenco, `SQUAD_MAX`). */
+const AI_SQUAD_CAP = SQUAD_MAX;
+/** Até quantos jogadores a IA completa o elenco promovendo jovens da base (deixa espaço para o mercado e não incha a folha). */
+const AI_YOUTH_TARGET = 26;
 
 // ---------------------------------------------------------------- consultas
 /** Partidas ainda a disputar na temporada corrente dos países que viram junto com o do treinador. */
@@ -60,20 +62,21 @@ function matchesLeftForUser(db: SqlDb): number {
 }
 export function isSeasonComplete(db: SqlDb): boolean { return matchesLeftForUser(db) === 0; }
 
-function contractRow(p: Player, date: string, turnover: string, start: SeasonStart): ContractRowDto {
+function contractRow(p: Player, date: string, turnover: string, start: SeasonStart, retiring: boolean): ContractRowDto {
   const age = ageOn(p.birthDate, date);
   const left = monthsLeft(date, p.contractEnd);
   return {
     id: p.id, name: nameOf(p), position: p.position, age, overall: p.overall, salary: p.salary, contractEnd: p.contractEnd,
-    monthsLeft: left, expiresThisSeason: expiresAt(p.contractEnd, turnover), canRenew: left <= RENEW_WINDOW_MONTHS, maxYears: maxContractYears(age), renewBaseYear: contractBaseYear(p.contractEnd),
-    renewEnds: [1, 2, 3, 4, 5].map((y) => renewedEnd(p.contractEnd, y, start)),
+    monthsLeft: left, expiresThisSeason: expiresAt(p.contractEnd, turnover), canRenew: left <= RENEW_WINDOW_MONTHS && !retiring, maxYears: maxContractYears(age), renewBaseYear: contractBaseYear(p.contractEnd),
+    renewEnds: [1, 2, 3, 4, 5].map((y) => renewedEnd(p.contractEnd, y, start)), retiring, terminationCost: terminationCost(p.salary, left),
   };
 }
 
 export function getContracts(db: SqlDb): ContractRowDto[] {
   const st = getCareerState(db);
   const us = userSeason(db);
-  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, us.turnover, us.start))
+  const retiring = new Set(db.prepare('SELECT id FROM players WHERE club_id = ? AND retire_planned = 1').all(st.clubId).map((r) => S(r.id)));
+  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, us.turnover, us.start, retiring.has(p.id)))
     .sort((a, b) => a.contractEnd.localeCompare(b.contractEnd) || b.overall - a.overall);
 }
 
@@ -113,6 +116,7 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
   const row = db.prepare('SELECT * FROM players WHERE id = ? AND club_id = ?').get(input.playerId, st.clubId);
   if (!row) throw new SeasonError('Só é possível renovar contratos de jogadores do seu clube.');
   const p = rowToPlayer(row);
+  if (N(row.retire_planned) === 1) throw new SeasonError(`${nameOf(p)} anunciou que vai se aposentar ao fim da temporada: não há renovação.`);
   if (monthsLeft(st.gameDate, p.contractEnd) > RENEW_WINDOW_MONTHS) throw new SeasonError(`O contrato de ${nameOf(p)} ainda é longo: a renovação só é possível com até ${RENEW_WINDOW_MONTHS} meses restantes.`);
   const age = ageOn(p.birthDate, st.gameDate);
   const demand = Math.round(renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }) * negotiationMultiplier(coachOf(db).attributes));
@@ -128,6 +132,84 @@ export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
     addNews(db, st.gameDate, 'contract', `Renovação: ${nameOf(p)} assina até ${br(end)}`, `${nameOf(p)} (${age} anos) renovou o contrato por ${input.years} temporada(s), até ${br(end)}.\n\nSalário: de ${fmt(p.salary)} para ${fmt(input.wage)} por mês (${input.wage >= p.salary ? '+' : '−'}${fmt(Math.abs(input.wage - p.salary))}). A nova folha já vale a partir deste mês.`);
   });
   return { outcome: 'accepted', contractEnd: end, message: `${nameOf(p)} renovou até ${br(end)} com salário de ${fmt(input.wage)} por mês.` };
+}
+
+// ---------------------------------------------------------------- rescisão (só o usuário)
+/**
+ * Rescinde o contrato de um jogador do clube do usuário: o clube paga os salários que faltam até o fim do contrato (`terminationCost`,
+ * pelo `makePoster`) e o jogador sai livre (`releasePlayer`). Vale fora da janela. O elenco precisa continuar jogável (mínimo de 18,
+ * 2 goleiros e profundidade por setor) e o caixa precisa cobrir o valor.
+ */
+export function terminateContract(db: SqlDb, playerId: string): TerminateResultDto {
+  return withTransaction(db, () => {
+    const st = getCareerState(db);
+    if (!st.clubId) throw new SeasonError('Você está sem clube.');
+    const row = db.prepare('SELECT * FROM players WHERE id = ? AND club_id = ?').get(playerId, st.clubId);
+    if (!row) throw new SeasonError('Só é possível rescindir contratos de jogadores do seu clube.');
+    const p = rowToPlayer(row);
+    if (!squadStaysValid(squadOf(db, st.clubId), p.id, SQUAD_MIN)) throw new SeasonError(`O elenco ficaria incompleto sem ${nameOf(p)} (mínimo de ${SQUAD_MIN} jogadores, 2 goleiros e profundidade em cada setor).`);
+    const left = monthsLeft(st.gameDate, p.contractEnd);
+    const cost = terminationCost(p.salary, left);
+    const balance = N(db.prepare('SELECT balance FROM clubs WHERE id = ?').get(st.clubId)!.balance);
+    if (cost > balance) throw new SeasonError(`Caixa insuficiente: a rescisão de ${nameOf(p)} custa ${fmt(cost)} e o caixa tem ${fmt(balance)}.`);
+    makePoster(db, st.clubId)(st.clubId, st.gameDate, 'wages', -cost, `Rescisão de contrato: ${nameOf(p)}`);
+    releasePlayer(db, p.id, st.gameDate, false);
+    addNews(db, st.gameDate, 'contract', `Rescisão: ${nameOf(p)} deixa o clube`, `O contrato de ${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, st.gameDate)} anos) foi rescindido. O clube pagou ${fmt(cost)}, os salários que faltavam até ${br(p.contractEnd)} (${Math.max(1, left)} ${Math.max(1, left) === 1 ? 'mês' : 'meses'} de ${fmt(p.salary)}).
+
+Ele está livre no mercado. O elenco principal agora tem ${squadSize(db, st.clubId)} jogadores.
+
+Se ele era titular, revise a escalação em Táticas.`, { action: 'tactics', actionLabel: 'Revisar a escalação' });
+    return { cost, message: `Contrato de ${nameOf(p)} rescindido por ${fmt(cost)}. Ele está livre no mercado.` };
+  });
+}
+
+// ---------------------------------------------------------------- aposentadoria anunciada
+/** Marca de que o país já sorteia as aposentadorias no início da temporada (saves anteriores à migração 027 não têm). */
+const PLAN_KEY = (countryId: string) => `retire_plan:${countryId}`;
+
+/**
+ * Sorteia, entre os jogadores com clube dos países, quem encerra a carreira ao FIM da temporada que começa. A chance é a da idade que o
+ * jogador terá no fim dela (idade de hoje + 1), para a aposentadoria acontecer na mesma idade de quando era sorteada na própria virada.
+ * Jogadores livres não entram: sem contrato, decidem na virada. NÃO abre transação.
+ */
+export function planRetirements(db: SqlDb, date: string, countryIds: readonly string[], rng: Rng): number {
+  if (!countryIds.length) return 0;
+  const ph = countryIds.map(() => '?').join(',');
+  const mark = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+  for (const c of countryIds) mark.run(PLAN_KEY(c), date);
+  const up = db.prepare('UPDATE players SET retire_planned = 1 WHERE id = ?');
+  let n = 0;
+  for (const r of db.prepare(`SELECT id, birth_date, overall FROM players WHERE retired = 0 AND retire_planned = 0 AND club_id IN (SELECT id FROM clubs WHERE country_id IN (${ph})) ORDER BY id`).all(...countryIds)) {
+    if (!rng.chance(retirementChance(ageOn(S(r.birth_date), date) + 1, N(r.overall), false))) continue;
+    up.run(S(r.id)); n++;
+  }
+  return n;
+}
+
+/**
+ * Criação da carreira: todos os países passam a sortear no início da temporada. Os países que viram justamente no início da carreira
+ * (`turnoverToSkip`: com simulação prévia, a virada do país do clube) ficam sem sorteio aqui: ele acontece nessa virada, que é o início
+ * da primeira temporada (assim ninguém se aposenta no primeiro dia de trabalho). O treinador é avisado pelo seu elenco.
+ */
+export function planRetirementsAtCreation(db: SqlDb, date: string, turnoverToSkip: string | null): void {
+  const all = db.prepare('SELECT country_id, turnover FROM country_seasons ORDER BY country_id').all().map((r) => ({ id: S(r.country_id), turnover: S(r.turnover) }));
+  const mark = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
+  for (const c of all) mark.run(PLAN_KEY(c.id), date);
+  planRetirements(db, date, all.filter((c) => c.turnover !== turnoverToSkip).map((c) => c.id), createRng(`retire-plan:${seedOf(db)}:${date}`));
+  const st = getCareerState(db);
+  if (!turnoverToSkip && st.clubId) announceRetirements(db, date, st.clubId);
+}
+
+/** E-mail ao treinador com os jogadores do elenco que anunciaram a aposentadoria para o fim da temporada (nada se não houver). */
+export function announceRetirements(db: SqlDb, date: string, clubId: string): void {
+  const ps = db.prepare('SELECT * FROM players WHERE club_id = ? AND retire_planned = 1 AND retired = 0 ORDER BY overall DESC, id').all(clubId).map(rowToPlayer);
+  if (!ps.length) return;
+  const end = br(addDays(userSeason(db).turnover, -1));
+  const list = ps.map((p) => `• ${nameOf(p)} (${posLabel(p.position)}, ${ageOn(p.birthDate, date)} anos)`).join('\n');
+  const one = ps.length === 1;
+  addNews(db, date, 'retirement', one ? `${nameOf(ps[0]!)} vai se aposentar ao fim da temporada` : `${ps.length} jogadores vão se aposentar ao fim da temporada`,
+    `${one ? 'Este jogador anunciou' : 'Estes jogadores anunciaram'} que esta é a última temporada da carreira:\n\n${list}\n\n${one ? 'Ele cumpre' : 'Eles cumprem'} a temporada normalmente e ${one ? 'deixa' : 'deixam'} o elenco no fim dela (${end}). Não há renovação possível: planeje a reposição no mercado ou na base.`,
+    { action: 'squad', actionLabel: 'Ver o elenco' });
 }
 
 // ---------------------------------------------------------------- virada de temporada
@@ -287,20 +369,27 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
         `A temporada ${label} terminou: ${prev.position}º lugar na ${prev.competitionName}.${o === 'promoted' ? ' O clube conquistou o ACESSO à divisão superior!' : o === 'relegated' ? ' O clube foi REBAIXADO.' : ''}\n\nA premiação pela campanha foi de ${fmt(prev.prize)}, já creditada no caixa. A avaliação da diretoria chega em seguida.`);
     }
 
-    // 3. aposentadorias (inclui jogadores livres)
+    // 3. aposentadorias: quem anunciou no início da temporada (retire_planned) encerra a carreira agora; livres decidem na hora (sem
+    //    contrato, não há temporada a cumprir). País ainda sem sorteio feito (save anterior à migração 027): regra antiga, uma última vez.
     const inScope = (r: Record<string, unknown>) => {
       const club = r.club_id ?? r.youth_club_id;
       return club != null ? clubIds.has(S(club)) : freeInBatch(S(r.nationality));
     };
+    const planned = new Set(countryIds.filter((c) => db.prepare('SELECT 1 AS x FROM meta WHERE key = ?').get(PLAN_KEY(c))));
+    const countryOfClub = new Map(db.prepare(`SELECT id, country_id FROM clubs WHERE country_id IN (${ph})`).all(...countryIds).map((r) => [S(r.id), S(r.country_id)]));
     for (const r of db.prepare('SELECT * FROM players WHERE retired = 0 ORDER BY id').all()) {
       if (!inScope(r)) continue;
       const p = rowToPlayer(r);
-      if (!rng.chance(retirementChance(ageOn(p.birthDate, date), p.overall, p.clubId === null && r.youth_club_id == null))) continue;
+      const club = r.club_id ?? r.youth_club_id;
+      const free = club == null;
+      const retires = N(r.retire_planned) === 1
+        || ((free || !planned.has(countryOfClub.get(S(club)) ?? '')) && rng.chance(retirementChance(ageOn(p.birthDate, date), p.overall, free)));
+      if (!retires) continue;
       releasePlayer(db, p.id, date, true);
       report.retiredTotal++;
       if (p.clubId === st.clubId) report.retiredUser.push(nameOf(p));
     }
-    if (report.retiredUser.length) addNews(db, date, 'retirement', `Aposentadoria: ${report.retiredUser.join(', ')}`, `${report.retiredUser.join(', ')} ${report.retiredUser.length > 1 ? 'encerraram' : 'encerrou'} a carreira e ${report.retiredUser.length > 1 ? 'deixaram' : 'deixou'} o elenco.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Confira se algum setor ficou desfalcado e reforce no mercado ou na base.`);
+    if (report.retiredUser.length) addNews(db, date, 'retirement', `Aposentadoria: ${report.retiredUser.join(', ')}`, `${report.retiredUser.join(', ')} ${report.retiredUser.length > 1 ? 'encerraram' : 'encerrou'} a carreira ao fim da temporada, como ${report.retiredUser.length > 1 ? 'tinham anunciado' : 'tinha anunciado'}, e ${report.retiredUser.length > 1 ? 'deixaram' : 'deixou'} o elenco.\n\nO elenco principal agora tem ${squadSize(db, st.clubId)} jogadores. Confira se algum setor ficou desfalcado e reforce no mercado ou na base.`);
 
     // 4. contratos que vencem: a IA renova a maioria; o usuário perde quem não renovou
     const expiring = db.prepare('SELECT * FROM players WHERE club_id IS NOT NULL AND contract_end <= ? ORDER BY id').all(date).map(rowToPlayer).filter((p) => clubIds.has(p.clubId!));
@@ -337,7 +426,7 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
     // 6. categorias de base: a IA promove os jovens prontos; quem chega aos 19 sem ser promovido deixa a base
     const generate = playerFactory(db, `s${date}:${countryIds.join(',')}`, date);
     const clubs = db.prepare('SELECT id FROM clubs ORDER BY rowid').all().map((r) => S(r.id)).filter((id) => clubIds.has(id));
-    report.youthReleased = youthTurnover(db, date, st.clubId, AI_SQUAD_CAP - 2, clubIds); // promove até 26: deixa espaço para o mercado
+    report.youthReleased = youthTurnover(db, date, st.clubId, AI_YOUTH_TARGET, clubIds); // promove até 26: deixa espaço para o mercado
     if (report.youthReleased.length && !opts.quiet) addNews(db, date, 'youth', `Base: ${report.youthReleased.join(', ')} deixa(m) o clube`, 'Completaram 19 anos sem ser promovidos ao elenco principal e ficaram livres.');
 
     // 7. elencos da IA: enxuga os inchados (veteranos mais fracos primeiro) e completa os desfalcados (livres; se faltar, jovens)
@@ -395,6 +484,10 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
     db.prepare('UPDATE career SET updated_at = ? WHERE id = 1').run(opts.now.toISOString());
     for (const cid of countryIds) estadualTurnover(db, cid, cur.get(cid)!.season); // acesso e rebaixamento estaduais, antes dos estaduais do ano seguinte
     createSeason(db, undefined, countryIds);
+    // 10. quem vai se aposentar ao fim da temporada que começa (o treinador é avisado pelos jogadores do clube dele)
+    planRetirements(db, date, countryIds, rng.fork('retire-plan'));
+    const nowClub = getCareerState(db).clubId;
+    if (nowClub && clubIds.has(nowClub)) announceRetirements(db, date, nowClub);
     if (opts.user) startBoardSeason(db); // objetivos e orçamentos da temporada nova
     if (!opts.user) return report;
     const coachClub = getCareerState(db).clubId; // vazio se o treinador foi demitido na avaliação

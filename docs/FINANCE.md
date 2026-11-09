@@ -49,3 +49,17 @@ Prêmios das copas (cotas por fase, vitórias, semifinalista, vice e campeão) e
 prêmios das copas ≈ 1,0% da receita dos clubes e bilheteria dos jogos de copa ≈ 1,6%; somados, ≈ 2,6% das despesas — a margem anual sobe
 cerca de 2,6 pontos em média (mediana +2% → ≈ +4,6%, dentro da faixa aceita de −4% a +8%), concentrados em quem avança mais. A calibração
 mensal (sem prêmios) não mudou.
+
+## Divisões de baixo e folhas fora da realidade (09/11/2026)
+Pedido do usuário: clubes começavam a temporada com caixa negativo. Medido na base fixa (16 países) com `annualEstimate`, a margem anual
+mediana era −40% na 3ª divisão, −150% na 4ª e −330% na "Sem divisão": as receitas (TV, patrocínio, bilheteria) caem com a reputação, mas os
+pisos de custo não (salário mínimo de 1.500, estrutura e manutenção do estádio). No universo do usuário (base + pacotes) havia ainda folhas
+reais muito acima da receita (Flamengo do pacote de licenças: folha 4,3× a receita; Bayern, Bromley, Remo, Preston acima de 1×).
+- **Cota de participação** (`F.participation`, × economia, por mês, junto com a TV): 3ª divisão 80 mil, 4ª 105 mil, 5ª ("Sem divisão") 120 mil;
+  1ª e 2ª inalteradas (calibração antiga e testes preservados). Valores = o que faltava ao clube mediano de cada divisão para a margem ficar
+  perto de +2%. Base fixa depois: 3ª +1 a +8%, 4ª −4 a +13%, 5ª +1% (teste em `club-management.test.ts`, faixa −8% a +12%).
+- **Teto da folha na montagem do universo** (`WAGE_CAP`, `wageCapFactor`, `compile.ts`): se a folha de um clube com salários informados por um
+  pacote do usuário passa de 80% da receita anual estimada, todos os salários do elenco são reduzidos na mesma proporção até 65% (aviso
+  "salários reduzidos" no universo). A base fixa e os mundos gerados não passam pelo teto (a ida e volta base → pacote → universo continua idêntica).
+- **Resultado** (universo real do usuário, carreira no Brasil, 18 divisões completas, uma temporada): clubes no vermelho no fim da temporada
+  **45 → 0** (antes: 36 na Série D, 4 na League One, 4 na League Two, 1 na Série A).

@@ -13,7 +13,7 @@ import { contractBaseYear, contractEndFor, seasonYearOf } from './contracts.ts';
 export type SeasonStart = '07-01' | '01-01';
 export const SEASON_STARTS: readonly SeasonStart[] = ['07-01', '01-01'];
 /** Países da base no ano civil (decisão do usuário, 06/11/2026). O Japão mudou para ago–mai em 2026/27 (J.League) e fica em julho. */
-export const CALENDAR_YEAR_CODES: readonly string[] = ['BRA', 'ARG', 'IRL'];
+export const CALENDAR_YEAR_CODES: readonly string[] = ['BRA', 'ARG', 'IRL', 'URU', 'COL', 'ECU', 'PAR', 'CHI', 'PER', 'BOL', 'VEN'];
 export const defaultSeasonStart = (code: string): SeasonStart => (CALENDAR_YEAR_CODES.includes(code) ? '01-01' : '07-01');
 
 /** Início e virada (dia seguinte ao fim) da temporada `season`. */

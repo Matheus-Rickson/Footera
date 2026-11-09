@@ -15,11 +15,11 @@ import {
 } from '../database/repositories/competitionRepository.ts';
 import { getMatchReport, previewUserMatch, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { ensureFinance, getFinanceOverview } from '../database/repositories/financeRepository.ts';
-import { getNegotiation, getTransfersOverview, makeOffer, proposeFee, respondOffer, searchMarketPage, setListed } from '../database/repositories/transferRepository.ts';
+import { counterOffer, getNegotiation, getTransfersOverview, makeOffer, proposeFee, respondOffer, searchMarketPage, setListed } from '../database/repositories/transferRepository.ts';
 import {
   activateScheme, autoLineup, deleteScheme, duplicateScheme, ensureSchemes, getTacticsOverview, saveScheme,
 } from '../database/repositories/tacticsRepository.ts';
-import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renewContract, startNextSeason } from '../database/repositories/seasonRepository.ts';
+import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renewContract, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
 import { getNews, markRead, unreadCount } from '../database/repositories/newsRepository.ts';
 import { getSocialFeed } from '../database/repositories/socialRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
@@ -45,7 +45,7 @@ import type { Coach, Methodology, World } from '../shared/types.ts';
 import type {
   AiCoachDetailDto, AiCoachDto, ClubInfoDto, CupBracketDto, StagedViewDto, BoardOverviewDto, FacilityKind, Intensity, InfrastructureOverviewDto, MedicalOverviewDto, StaffOverviewDto, TrainingFocus, TrainingOverviewDto,
   MarketPlayerDto, PlayerProfileDto, ScoutingOverviewDto, ScoutTaskInput, ScoutTaskPreviewDto, YouthOverviewDto,
-  ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, SocialFeedDto, SocialFilter, RenewResultDto, SeasonStatusDto, TrophyRoomDto,
+  ContractRowDto, HistoryRowDto, NewSeasonReportDto, NewsDto, RenewInput, SocialFeedDto, SocialFilter, RenewResultDto, SeasonStatusDto, TrophyRoomDto, CounterOfferResultDto, TerminateResultDto,
   AdvanceMode, AdvanceResultDto, CalendarDto, FinanceOverviewDto, FixtureDto, MarketFilter, MarketPageDto, OfferInput, OfferResultDto, NegotiationDto, FeeResultDto, LiveOptionsInput, LiveMatchDto, TransfersOverviewDto, MatchReportDto, SchemeDto, SchemeInput, SimulationSummaryDto, TacticsOverviewDto, CareerListDto, CareerOverviewDto, CareerSummaryDto, CoachInput, CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, ContinueStepDto,
 } from '../shared/api.ts';
 
@@ -306,12 +306,14 @@ export const sendTransferOffer = (b: string, p: string, c: string, o: OfferInput
 export const getTransferNegotiation = (b: string, p: string, c: string, playerId: string): Promise<NegotiationDto> => withClubCareer(b, p, c, (db) => getNegotiation(db, playerId));
 export const proposeTransferFee = (b: string, p: string, c: string, playerId: string, fee: number): Promise<FeeResultDto> => withClubCareer(b, p, c, (db) => proposeFee(db, playerId, fee));
 export const answerTransferOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { respondOffer(db, id, accept); return true as const; });
+export const answerWithCounterOffer = (b: string, p: string, c: string, id: number, fee: number): Promise<CounterOfferResultDto> => withClubCareer(b, p, c, (db) => counterOffer(db, id, fee));
 export const listPlayerForSale = (b: string, p: string, c: string, playerId: string, listed: boolean): Promise<true> => withClubCareer(b, p, c, (db) => { setListed(db, playerId, listed); return true as const; });
 
 export const getSeason = (b: string, p: string, c: string): Promise<SeasonStatusDto> => withPreparedCareer(b, p, c, (db) => getSeasonStatus(db));
 export const beginNextSeason = (b: string, p: string, c: string): Promise<NewSeasonReportDto> => withPreparedCareer(b, p, c, (db) => startNextSeason(db));
 export const listContracts = (b: string, p: string, c: string): Promise<ContractRowDto[]> => withClubCareer(b, p, c, (db) => getContracts(db));
 export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withClubCareer(b, p, c, (db) => renewContract(db, input));
+export const rescindContract = (b: string, p: string, c: string, playerId: string): Promise<TerminateResultDto> => withClubCareer(b, p, c, (db) => terminateContract(db, playerId));
 export const markInboxRead = (b: string, p: string, c: string, id: number | null): Promise<true> => withPreparedCareer(b, p, c, (db) => { markRead(db, id); return true as const; });
 export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));
 export const socialFeed = (b: string, p: string, c: string, filter: SocialFilter): Promise<SocialFeedDto> => withPreparedCareer(b, p, c, (db) => getSocialFeed(db, filter));

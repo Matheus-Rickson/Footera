@@ -14,5 +14,13 @@
   {"id":"mex","code":"MEX","name":"México","economy":0.7},
   {"id":"irl","code":"IRL","name":"Irlanda","economy":0.4},
   {"id":"cro","code":"CRO","name":"Croácia","economy":0.4},
-  {"id":"rus","code":"RUS","name":"Rússia","economy":0.8}
+  {"id":"rus","code":"RUS","name":"Rússia","economy":0.8},
+  {"id":"uru","code":"URU","name":"Uruguai","economy":0.35,"seasonStart":"01-01"},
+  {"id":"col","code":"COL","name":"Colômbia","economy":0.35,"seasonStart":"01-01"},
+  {"id":"ecu","code":"ECU","name":"Equador","economy":0.35,"seasonStart":"01-01"},
+  {"id":"par","code":"PAR","name":"Paraguai","economy":0.3,"seasonStart":"01-01"},
+  {"id":"chi","code":"CHI","name":"Chile","economy":0.4,"seasonStart":"01-01"},
+  {"id":"per","code":"PER","name":"Peru","economy":0.3,"seasonStart":"01-01"},
+  {"id":"bol","code":"BOL","name":"Bolívia","economy":0.2,"seasonStart":"01-01"},
+  {"id":"ven","code":"VEN","name":"Venezuela","economy":0.2,"seasonStart":"01-01"}
 ]

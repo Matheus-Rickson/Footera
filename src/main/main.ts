@@ -8,7 +8,7 @@ import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
   advanceCareer, continueCareerDay, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
-  simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
+  simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
@@ -233,6 +233,7 @@ function registerHandlers(): void {
   handle('transfers:negotiation', ref.extend({ playerId: z.string().min(1).max(60) }), (i) => getTransferNegotiation(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('transfers:fee', ref.extend({ playerId: z.string().min(1).max(60), fee: z.number().int().min(0).max(1e10) }), (i) => proposeTransferFee(dataDir(), i.profileId, i.careerId, i.playerId, i.fee));
   handle('transfers:respond', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerTransferOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
+  handle('transfers:counter', ref.extend({ offerId: z.number().int().positive(), fee: z.number().int().min(1).max(1e10) }), (i) => answerWithCounterOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.fee));
   handle('transfers:list', ref.extend({ playerId: z.string().min(1).max(60), listed: z.boolean() }), (i) => listPlayerForSale(dataDir(), i.profileId, i.careerId, i.playerId, i.listed));
   handle('finance:get', ref, (i) => getFinance(dataDir(), i.profileId, i.careerId));
   handle('tactics:get', ref, (i) => getTactics(dataDir(), i.profileId, i.careerId));
@@ -250,6 +251,7 @@ function registerHandlers(): void {
   handle('contracts:renew', ref.extend({ input: z.object({
     playerId: z.string().min(1).max(60), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
   }) }), (i) => offerRenewal(dataDir(), i.profileId, i.careerId, i.input as RenewInput));
+  handle('contracts:terminate', ref.extend({ playerId: z.string().min(1).max(60) }), (i) => rescindContract(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('news:list', ref, (i) => listNews(dataDir(), i.profileId, i.careerId));
   handle('news:read', ref.extend({ id: z.number().int().positive().nullable() }), (i) => markInboxRead(dataDir(), i.profileId, i.careerId, i.id));
   handle('news:social', ref.extend({ filter: z.enum(['all', 'mine', 'match', 'transfer', 'injury', 'coach', 'league']) }), (i) => socialFeed(dataDir(), i.profileId, i.careerId, i.filter));

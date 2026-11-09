@@ -47,3 +47,9 @@ export function renewalDecision(wage: number, years: number, demand: number, age
 
 /** Chance de um clube da IA renovar um contrato que vence: alta para os 14 mais fortes do elenco, menor para o resto. */
 export const AI_RENEW_CHANCE = { core: 0.9, other: 0.55 } as const;
+
+/**
+ * Rescisão de contrato pelo clube: paga os salários que faltam até o fim do contrato (no mínimo um mês). O jogador sai livre, com a
+ * pretensão salarial pelo valor de mercado atual.
+ */
+export const terminationCost = (salary: number, monthsLeft: number): number => Math.max(0, salary) * Math.max(1, monthsLeft);

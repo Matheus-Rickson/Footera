@@ -43,6 +43,8 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLTableRowElement>(null);
   const [negotiating, setNegotiating] = useState<string | null>(null);
+  /** contraproposta em edição numa proposta recebida (id da proposta e taxa pedida) */
+  const [counter, setCounter] = useState<{ id: number; fee: number } | null>(null);
 
   const load = useCallback(async () => { setOv(await unwrap(window.api.getTransfers(profileId, careerId))); }, [profileId, careerId]);
   useEffect(() => { load().catch((e) => setError(errMsg(e))); }, [load, refreshKey]);
@@ -87,6 +89,12 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
   const respond = (id: number, accept: boolean) => run(async () => {
     await unwrap(window.api.respondOffer(profileId, careerId, id, accept));
     setNotice(accept ? 'Venda concluída.' : 'Proposta recusada.');
+    await onChanged(); await load();
+  });
+  const sendCounter = () => run(async () => {
+    if (!counter) return;
+    const r = await unwrap(window.api.counterOffer(profileId, careerId, counter.id, Math.round(counter.fee)));
+    setNotice(r.message); setCounter(null);
     await onChanged(); await load();
   });
   const toggleShortlist = (p: MarketPlayerDto) => run(async () => {
@@ -177,8 +185,22 @@ export function TransfersView({ profileId, careerId, refreshKey, onChanged, pres
             <table><thead><tr><th>Jogador</th><th>Pos.</th><th>Idade</th><th>Comprador</th><th className="right">Taxa oferecida</th><th className="right">Valor de mercado</th><th>Vence em</th><th /></tr></thead>
               <tbody>{ov.incoming.map((o) => (
                 <tr key={o.id}><td><button className="link" onClick={() => onOpenPlayer(o.playerId)}>{o.playerName}</button></td><td><PosPill pos={o.position} /></td><td>{o.age}</td><td>{o.buyerClubName}</td><td className="right pos">{fmtMoney(o.fee)}</td><td className="right">{fmtMoney(o.marketValue)}</td><td>{fmtDate(o.expires)}</td>
-                  <td className="row"><button disabled={busy} onClick={() => void respond(o.id, true)}>Aceitar</button><button className="secondary" disabled={busy} onClick={() => void respond(o.id, false)}>Recusar</button></td></tr>))}</tbody></table>
+                  <td>{counter?.id === o.id ? (
+                    <div className="row">
+                      <label className="small">Pedir (€)<input type="number" min={o.fee + 1000} step={1000} value={counter.fee} onChange={(e) => setCounter({ id: o.id, fee: Number(e.target.value) })} /></label>
+                      <button disabled={busy || !(counter.fee > o.fee)} onClick={() => void sendCounter()}>Enviar</button>
+                      <button className="secondary" disabled={busy} onClick={() => setCounter(null)}>Cancelar</button>
+                    </div>
+                  ) : (
+                    <div className="row">
+                      <button disabled={busy} onClick={() => void respond(o.id, true)}>Aceitar</button>
+                      <button className="secondary" disabled={busy || o.countersLeft === 0 || !w.open} title={o.countersLeft === 0 ? 'O comprador não aceita mais contrapropostas' : !w.open ? 'Janela fechada' : `Pedir uma taxa maior (${o.countersLeft} contraproposta(s) restante(s))`}
+                        onClick={() => setCounter({ id: o.id, fee: Math.round((Math.max(o.fee, o.marketValue) * 1.2) / 1000) * 1000 })}>Contrapropor</button>
+                      <button className="secondary" disabled={busy} onClick={() => void respond(o.id, false)}>Recusar</button>
+                    </div>
+                  )}</td></tr>))}</tbody></table>
           )}
+          {ov.incoming.length > 0 && <p className="muted small">Contraproposta: peça uma taxa maior. O comprador aceita (a venda sai na hora), sobe a oferta para um valor intermediário ou desiste se achar caro demais. Até 2 contrapropostas por proposta.</p>}
         </section>
       )}
 

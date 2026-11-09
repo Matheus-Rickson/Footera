@@ -226,7 +226,9 @@ export interface NegotiationDto {
   /** 0..100; null = jogador livre (não há clube vendedor) */ clubWillingness: number | null;
   /** 0..100 */ playerInterest: number;
 }
-export interface IncomingOfferDto { id: number; date: string; expires: string; playerId: string; playerName: string; position: Position; age: number; marketValue: number; buyerClubName: string; fee: number }
+export interface IncomingOfferDto { id: number; date: string; expires: string; playerId: string; playerName: string; position: Position; age: number; marketValue: number; buyerClubName: string; fee: number;
+  /** contrapropostas já feitas nesta proposta e quantas ainda cabem */ counterRounds: number; countersLeft: number }
+export interface CounterOfferResultDto { outcome: 'accepted' | 'counter' | 'withdrawn'; message: string; fee?: number }
 export interface TransferLogDto { id: number; date: string; playerName: string; fromClub: string | null; toClub: string; fee: number; kind: 'purchase' | 'sale' | 'ai' }
 export interface MyPlayerDto { id: string; name: string; position: Position; age: number; marketValue: number; salary: number; contractEnd: string; listed: boolean }
 export interface TransfersOverviewDto {
@@ -366,7 +368,10 @@ export interface ContractRowDto {
   id: string; name: string; position: Position; age: number; overall: number; salary: number; contractEnd: string;
   monthsLeft: number; /** vence na próxima virada (1º/jul) */ expiresThisSeason: boolean; canRenew: boolean; maxYears: number;
   /** renovar por N temporadas = contrato até 30/06 de (renewBaseYear + N) */ renewBaseYear: number; /** fim do contrato renovando por 1 a 5 temporadas (calendário do país) */ renewEnds: string[];
+  /** anunciou que se aposenta ao fim da temporada (sem renovação) */ retiring: boolean;
+  /** custo de rescindir agora: os salários que faltam até o fim do contrato */ terminationCost: number;
 }
+export interface TerminateResultDto { message: string; cost: number }
 export interface RenewInput { playerId: string; wage: number; years: number }
 export interface RenewResultDto { outcome: 'accepted' | 'counter' | 'rejected'; message: string; counterWage?: number; contractEnd?: string }
 export interface SeasonStatusDto {
@@ -597,6 +602,7 @@ export interface GameApi {
   getNegotiation(profileId: string, careerId: string, playerId: string): Promise<IpcResult<NegotiationDto>>;
   proposeFee(profileId: string, careerId: string, playerId: string, fee: number): Promise<IpcResult<FeeResultDto>>;
   respondOffer(profileId: string, careerId: string, offerId: number, accept: boolean): Promise<IpcResult<true>>;
+  counterOffer(profileId: string, careerId: string, offerId: number, fee: number): Promise<IpcResult<CounterOfferResultDto>>;
   setListed(profileId: string, careerId: string, playerId: string, listed: boolean): Promise<IpcResult<true>>;
   getFinance(profileId: string, careerId: string): Promise<IpcResult<FinanceOverviewDto>>;
   getTactics(profileId: string, careerId: string): Promise<IpcResult<TacticsOverviewDto>>;
@@ -614,6 +620,7 @@ export interface GameApi {
   startNextSeason(profileId: string, careerId: string): Promise<IpcResult<NewSeasonReportDto>>;
   getContracts(profileId: string, careerId: string): Promise<IpcResult<ContractRowDto[]>>;
   renewContract(profileId: string, careerId: string, input: RenewInput): Promise<IpcResult<RenewResultDto>>;
+  terminateContract(profileId: string, careerId: string, playerId: string): Promise<IpcResult<TerminateResultDto>>;
   getNews(profileId: string, careerId: string): Promise<IpcResult<NewsDto[]>>;
   /** marca uma mensagem da caixa de entrada como lida (null = todas) */
   markInboxRead(profileId: string, careerId: string, id: number | null): Promise<IpcResult<true>>;

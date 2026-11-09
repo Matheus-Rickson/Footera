@@ -25,6 +25,13 @@
    Gravados em `season_results` (posição, desfecho e prêmio = registro oficial do que foi aplicado; um teste garante que a posição bate com a tabela derivada) e `trophies`.
 4. **Aposentadorias:** probabilidade por idade (0 até 32; 12% aos 33 … 70% aos 36; 90% a partir de 37; 100% aos 40); −10 p.p. para força ≥ 75;
    jogadores **sem clube** têm +10 p.p. (até 23 anos), +30 p.p. (24–29) e +50 p.p. (30+), o que mantém o número de livres estável (~320 no universo completo).
+   **Aposentadoria anunciada (09/11/2026, migração 027):** jogador **com clube** não se aposenta mais de surpresa na virada. O sorteio é feito no
+   **início** da temporada (na virada anterior, ou na criação da carreira), com a idade que ele terá no fim dela (idade + 1, para a aposentadoria
+   acontecer na mesma idade de antes); quem foi sorteado fica com `retire_planned = 1`, cumpre a temporada, não pode renovar e se aposenta na virada
+   seguinte. O treinador recebe um e-mail ("X vai se aposentar ao fim da temporada") com os do seu elenco; contratar um jogador que já anunciou
+   também avisa. Livres continuam decidindo na própria virada (sem contrato, não há temporada a cumprir). Ninguém se aposenta no primeiro dia da
+   carreira: com simulação prévia, o país do clube sorteia na virada que abre a carreira. Saves anteriores à migração (sem a marca
+   `retire_plan:<país>` em `meta`) usam a regra antiga uma última vez e passam a sortear a partir daí.
 5. **Contratos que vencem** (`contract_end ≤ 1º/jul`): a IA renova 90% dos 14 mais fortes do elenco e 55% dos demais (1–3 temporadas, limitado pela idade);
    os outros ficam livres. **O usuário não renova automaticamente:** quem não foi renovado sai de graça.
 6. **Desenvolvimento** — desde a Fase 8C é **mensal** (dia 1º, pelo treino; ver `docs/TRAINING_STAFF.md`); a virada só registra o saldo da temporada. Regras de crescimento (`developPlayer`): até 27 anos cresce em direção ao potencial oculto — `margem × taxa(idade) + 0,3`, com taxa de 30% (≤18)
@@ -32,7 +39,7 @@
    (atributos cortados até caber). 28–29: estável. A partir dos 30 declina (−0,3, −1, −1,5 … −3 aos 35, −3,5 e mais a partir de 36), com o físico caindo 1,5× mais rápido;
    profissionais declinam mais devagar. Valor de mercado recalculado. Snapshot em `player_development`.
 7. **Categorias de base** (desde a Fase 8B, ver `docs/SCOUTING_YOUTH.md`): a IA promove jovens prontos; quem tem 19 anos e não foi promovido sai da base. A safra chega na peneira de 15/mar, não mais na virada.
-8. **Elencos da IA:** acima de 28 libera os mais fracos (veteranos primeiro) sem abrir carência; abaixo da composição mínima (22 jogadores; 3 GK, 7 DEF, 6 MEI, 4 ATA)
+8. **Elencos da IA:** acima de 35 (`SQUAD_MAX`; era 28 até 09/11/2026) libera os mais fracos (veteranos primeiro) sem abrir carência; abaixo da composição mínima (22 jogadores; 3 GK, 7 DEF, 6 MEI, 4 ATA)
    contrata livres compatíveis com o próprio nível e, se faltar, promove jovens. Elenco do usuário abaixo do mínimo para jogar (18; 2/6/4/3) recebe jovens às pressas (avisado).
 9. Suspensões e cartões amarelos zeram (lesões continuam). `season + 1`, calendário novo (`createSeason`, que também cria as copas nacionais
    da temporada e sorteia a 1ª fase), mercado e cobrança do dia 1º/jul. A temporada só termina depois da final das copas (maio; no Japão, 1º/jan).
@@ -44,6 +51,11 @@
   ambição (+) e fidelidade (−). Máximo de temporadas por idade: 5 (≤29), 3 (30–31), 2 (32–33), 1 (34+). Decisão igual à das transferências (≥ 97% aceita; ≥ 80% contraproposta).
 - **Renovação pela IA:** salário = valor × 1,2% × fator de personalidade, **no máximo +10%** sobre o atual (veterano desvalorizado aceita redução).
   Com o piso de +8% do usuário aplicado também à IA, as folhas inflavam e a margem mediana caía de +1% para −9% em cinco temporadas.
+
+- **Rescisão pelo usuário (09/11/2026):** em Contratos → "Rescindir". O clube paga os salários que faltam até o fim do contrato (salário ×
+  meses restantes, no mínimo 1 mês; categoria `wages`, pelo `makePoster`) e o jogador sai livre na hora (`releasePlayer`), com a pretensão
+  salarial pelo valor atual. Vale fora da janela; recusada se o caixa não cobre o valor ou se o elenco ficaria abaixo do mínimo (18; 2 goleiros
+  e profundidade por setor).
 
 ## Jogadores livres
 - Aparecem no mercado com `clubId = null` (filtro "Só jogadores livres"); a contratação não tem taxa e pode ser feita **fora das janelas**. Só o salário é negociado.

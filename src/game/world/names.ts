@@ -1,3 +1,5 @@
+import { CONMEBOL_TEMPLATES } from './conmebolTemplates.ts';
+
 export interface CountryTemplate {
   code: string;
   name: string;
@@ -214,3 +216,8 @@ export const COUNTRY_TEMPLATES: CountryTemplate[] = [
 ];
 
 export const STADIUM_SUFFIX = ['Arena','Estádio Municipal','Park','Stadium','Parque','Estádio Central'];
+
+/** Modelo do país pelo código: os 16 de COUNTRY_TEMPLATES e os da CONMEBOL (base 1.2.0); código desconhecido → o primeiro (Brasil). */
+export function templateFor(code: string): CountryTemplate {
+  return COUNTRY_TEMPLATES.find((t) => t.code === code) ?? CONMEBOL_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
+}

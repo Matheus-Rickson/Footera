@@ -23,6 +23,13 @@ export const F = {
   /** reputação típica de cada divisão (âncora das fórmulas) */
   refRep: { 1: 65, 2: 44, 3: 30, 4: 20 } as Record<number, number>,
   tvBase: { 1: 0.70e6, 2: 0.27e6, 3: 0.1e6, 4: 0.04e6 } as Record<number, number>,
+  /**
+   * Cota de participação mensal (× economia) paga a todo clube da 3ª divisão para baixo, independente da reputação. Nessas divisões as
+   * receitas (que caem com a reputação) não cobriam os pisos de custo (salário mínimo de 1.500, estrutura e estádio): a 3ª perdia ~40% da
+   * receita por ano, a 4ª ~150% e a "Sem divisão" ~330%, e os clubes começavam as temporadas no vermelho. Valores = o que faltava ao clube
+   * mediano de cada divisão para a margem ficar perto de +2% (base fixa, 16 países; docs/FINANCE.md).
+   */
+  participation: { 3: 80_000, 4: 105_000, 5: 120_000 } as Record<number, number>,
   sponsorBase: 0.65e6, sponsorExp: 2.4,
   merchPerFan: 1.1,
   staffBase: 15_000, staffPerLevel: 3_000,
@@ -33,8 +40,10 @@ export const F = {
 
 const rep65 = (rep: number, exp: number) => Math.pow(Math.max(rep, 1) / 65, exp);
 
+/** Direitos de TV + cota de participação das divisões de baixo (3ª em diante; ver `F.participation`). */
 export const tvMonthly = (c: ClubEcon): number =>
-  Math.round(c.econ * (F.tvBase[c.tier] ?? F.tvBase[4]!) * Math.pow(c.reputation / (F.refRep[c.tier] ?? 20), 0.8));
+  Math.round(c.econ * ((F.tvBase[c.tier] ?? F.tvBase[4]!) * Math.pow(c.reputation / (F.refRep[c.tier] ?? 20), 0.8) + participationOf(c.tier)));
+export const participationOf = (tier: number): number => (tier >= 3 ? F.participation[Math.min(tier, 5)] ?? 0 : 0);
 export const merchMonthly = (c: ClubEcon): number => Math.round(c.fans * F.merchPerFan * c.econ);
 /** Total mensal de patrocínios (soma dos três contratos) esperado para o clube. */
 export const sponsorTotalMonthly = (c: ClubEcon): number => Math.round(c.econ * F.sponsorBase * rep65(c.reputation, F.sponsorExp));
@@ -79,6 +88,19 @@ export function attendance(c: ClubEcon, awayRep: number, weather: Weather, rng: 
 }
 
 export const gateRevenue = (att: number, c: ClubEcon): number => Math.round(att * ticketPrice(c));
+
+/**
+ * Folha fora da realidade do clube: acima de `over` da receita anual estimada, os salários do elenco são reduzidos proporcionalmente até
+ * `to` da receita. Acontece com salários reais de pacotes de dados (ex.: folha 4× a receita), que levavam o clube ao vermelho já na 1ª
+ * temporada. Aplicado só na montagem do universo (compile); a base gerada fica abaixo do limite.
+ */
+export const WAGE_CAP = { over: 0.8, to: 0.65 } as const;
+/** Fator (≤ 1) a aplicar nos salários para a folha caber na receita; 1 = sem ajuste. */
+export function wageCapFactor(c: ClubEcon, monthlyWages: number): number {
+  if (monthlyWages <= 0) return 1;
+  const income = annualEstimate(c, monthlyWages).income;
+  return 12 * monthlyWages > WAGE_CAP.over * income ? (WAGE_CAP.to * income) / (12 * monthlyWages) : 1;
+}
 
 /** Estimativa de resultado anual do clube (usa fluxo esperado de bilheteria: 19 jogos em casa). */
 export function annualEstimate(c: ClubEcon, monthlyWages: number): { income: number; expense: number; net: number } {

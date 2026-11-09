@@ -9,16 +9,17 @@ import { uniqueIds } from '../../shared/slug.ts';
 import type { Attributes, Club, Country, League, LeagueRules, Player, Position, Stadium, World, WorldCoach, WorldCup } from '../../shared/types.ts';
 import { CUP_STAGE_CODES, defaultCups, resolveCup, resolveSupercup } from '../cup-engine/catalog.ts';
 import { clubCoach, defaultCoaches, packCoachDefaults } from '../coach-engine/worldCoaches.ts';
-import { COUNTRY_TEMPLATES, type CountryTemplate } from '../world/names.ts';
+import { templateFor, type CountryTemplate } from '../world/names.ts';
 import { overallFor } from '../world/overall.ts';
 import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
 import { PackError, type CupRec, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
 import { defaultSeasonStart } from '../career-engine/calendar.ts';
+import { WAGE_CAP, wageCapFactor, type ClubEcon } from '../finance-engine/finance.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
   rounds: 2, pointsWin: 3, pointsDraw: 1, tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
-  promotionSlots: 0, relegationSlots: 0, continentalSlots: 0, maxForeignPlayers: null, squadMin: 18, squadMax: 30,
+  promotionSlots: 0, relegationSlots: 0, continentalSlots: 0, maxForeignPlayers: null, squadMin: 18, squadMax: 35,
 };
 /** Elenco mínimo depois da montagem: clubes com menos jogadores (ou menos de 2 goleiros) são completados com jogadores gerados. */
 const FILL_GOALKEEPERS = 2;
@@ -104,9 +105,13 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
   const origin = new Map<string, EntityOrigin>();
   for (const [kind, m] of [['país', countries], ['liga', leagues], ['estádio', stadiums], ['clube', clubs], ['jogador', players], ['técnico', coaches], ['copa', cups]] as const) for (const k of m.keys()) typeOf.set(k, kind);
   const economyOf = (code: string) => [...countries.values()].find((c) => c.code === code)?.economy ?? 1;
-  const tplOf = (code: string): CountryTemplate => COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
+  const tplOf = (code: string): CountryTemplate => templateFor(code);
 
+  /** jogadores com salário informado por um pacote do usuário (não a base): só os clubes deles passam pelo teto da folha */
+  const packSalary = new Set<string>();
+  let fromBase = false;
   packs.forEach((pack, idx) => {
+    fromBase = idx === 0 && fresh;
     const P = pack.manifest.id;
     const err = (file: string, record: string | undefined, message: string) => issues.push({ pack: P, file, record, message });
     if (pack.manifest.base === 'none' && idx > 0) err('manifest.json', undefined, 'base de dados completa ("base": "none") precisa ser o primeiro pacote da ordem de carga');
@@ -275,7 +280,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     for (const k of ['condition', 'fatigue', 'morale', 'form'] as const) if (rec.internal?.[k] !== undefined) pl[k] = rec.internal[k]!;
     if (rec.marketValue !== undefined) pl.marketValue = rec.marketValue;
     else if (created || rec.ability !== undefined || rec.attributes || rec.potential !== undefined || rec.birthDate) pl.marketValue = marketValue(pl.overall, age, pl.potentialHidden, economyOf(pl.nationality));
-    if (rec.contract?.salary !== undefined) pl.salary = rec.contract.salary;
+    if (rec.contract?.salary !== undefined) { pl.salary = rec.contract.salary; if (!fromBase) packSalary.add(pl.id); }
     else if (created) pl.salary = Math.max(Math.round((pl.marketValue * 0.012) / 100) * 100, 1500);
     if (rec.contract?.end !== undefined) pl.contractEnd = rec.contract.end;
     else if (created) pl.contractEnd = addYears(startDate, 1 + (Math.abs(hash(pl.id)) % 4));
@@ -354,6 +359,14 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       players.set(p.id, p); squad.push(p); added++;
     }
     if (added) warnings.push({ pack: 'universo', file: 'clubs.json', record: c.id, message: `elenco completado com ${added} jogador(es) gerado(s)` });
+    // folha fora da realidade do clube (salários reais informados por pacotes do usuário): reduzida para caber na receita (docs/FINANCE.md)
+    const league = leagues.get(c.leagueId)!;
+    const econ: ClubEcon = { econ: country.economy, tier: league.tier, reputation: c.reputation, fans: c.fans, capacity: stadiums.get(c.stadiumId)?.capacity ?? 10_000, facilities: c.facilities };
+    const wages = squad.reduce((s, p) => s + p.salary, 0), factor = squad.some((p) => packSalary.has(p.id)) ? wageCapFactor(econ, wages) : 1;
+    if (factor < 1) {
+      for (const p of squad) p.salary = Math.max(500, Math.round((p.salary * factor) / 100) * 100);
+      warnings.push({ pack: 'universo', file: 'players.json', record: c.id, message: `folha de ${Math.round(wages / 1000)} mil/mês acima de ${Math.round(WAGE_CAP.over * 100)}% da receita do clube: salários reduzidos ${Math.round((1 - factor) * 100)}%` });
+    }
     if (autoBalance.has(c.id)) c.balance = startingBalance(c.reputation, country.economy, squad);
     if (squad.length > rules.squadMax) issues.push({ pack: 'universo', file: 'players.json', record: c.id, message: `elenco com ${squad.length} jogadores (máximo ${rules.squadMax})` });
   }

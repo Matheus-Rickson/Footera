@@ -2,7 +2,7 @@ import type { SqlDb } from '../types.ts';
 import { createRng, type Rng } from '../../game/rng.ts';
 import { addDays } from '../../shared/date.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
-import { COUNTRY_TEMPLATES } from '../../game/world/names.ts';
+import { templateFor as countryTemplate } from '../../game/world/names.ts';
 import {
   clubMatchText, coachText, commentLikes, commentsFor, engagement, handleOf, hatTrickText, injuryText, JOURNALIST_ROLES, matchText, OUTLETS, previewText,
   roundText, sackingText, titleText, transferText, userPreviewText, type Mood, type PostKind,
@@ -41,7 +41,7 @@ const insertAccount = (db: SqlDb, a: { id: string; kind: string; name: string; h
 
 function templateFor(db: SqlDb, clubId: string | null) {
   const code = clubId ? S(db.prepare('SELECT co.code FROM clubs c JOIN countries co ON co.id = c.country_id WHERE c.id = ?').get(clubId)?.code ?? 'BRA') : 'BRA';
-  return COUNTRY_TEMPLATES.find((t) => t.code === code) ?? COUNTRY_TEMPLATES[0]!;
+  return countryTemplate(code);
 }
 
 /** Veículos e jornalistas (uma vez por carreira). NÃO abre transação. */

@@ -39,8 +39,9 @@ test('Pacotes: importar .zip (raiz ou pasta), ativar na ordem, universo da carre
     // pacote A renomeia um clube da base; B (dentro de pasta) cria a Argentina
     assert.equal(importPackZip(dir, packZip('renomeia', { clubs: [{ id: club.id, name: 'Clube Renomeado' }] }), false).status, 'imported');
     // (a base já tem a Argentina; o Chile é novo)
-    const chi = { countries: [{ id: 'chi', code: 'CHI', name: 'Chile' }], leagues: [{ id: 'chi-1', country: 'chi', name: 'Liga CL', tier: 1 }],
-      clubs: [{ id: 'club-a', name: 'Club A', country: 'chi', league: 'chi-1' }, { id: 'club-b', name: 'Club B', country: 'chi', league: 'chi-1' }] };
+    // país que não existe na base (o Chile entrou na base 1.2.0)
+    const chi = { countries: [{ id: 'isl', code: 'ISL', name: 'Islândia' }], leagues: [{ id: 'isl-1', country: 'isl', name: 'Liga IS', tier: 1 }],
+      clubs: [{ id: 'club-a', name: 'Club A', country: 'isl', league: 'isl-1' }, { id: 'club-b', name: 'Club B', country: 'isl', league: 'isl-1' }] };
     assert.equal(importPackZip(dir, packZip('chile', chi, 'meu-pacote/'), false).status, 'imported');
     let ov = listPacks(dir);
     assert.deepEqual(ov.packs.map((p) => [p.id, p.enabled, p.issues.length]), [['chile', false, 0], ['renomeia', false, 0]]);
@@ -50,7 +51,7 @@ test('Pacotes: importar .zip (raiz ou pasta), ativar na ordem, universo da carre
     assert.ok(ov.universe.ok && ov.universe.countries === baseUniverse().world.countries.length + 1);
     const u = careerUniverse(dir);
     assert.equal(u.world.clubs.find((c) => c.id === club.id)!.name, 'Clube Renomeado');
-    assert.ok(u.world.leagues.some((l) => l.id === 'chi-1'));
+    assert.ok(u.world.leagues.some((l) => l.id === 'isl-1'));
     assert.deepEqual(u.applied, [`footera-base@${BASE_VERSION}`, 'renomeia@1.0', 'chile@1.0']);
     // origem: a tela marca o que veio de pacote (criado × alterado), sem marcar o que é só da base
     const { listClubs } = await import('../services/worldService.ts');

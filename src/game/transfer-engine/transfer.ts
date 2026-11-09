@@ -4,7 +4,7 @@ import type { Attributes, Position } from '../../shared/types.ts';
 
 /** Janelas de transferência (MM-DD, fim exclusivo). Configuráveis por liga na Fase 9; por ora iguais para todos. */
 export const WINDOWS = [{ start: '07-01', end: '09-01' }, { start: '01-01', end: '02-01' }] as const;
-export const SQUAD_MAX = 30;
+export const SQUAD_MAX = 35;
 export const SQUAD_MIN = 18;
 export const OFFER_VALID_DAYS = 7;
 
@@ -70,6 +70,24 @@ export function clubDecision(fee: number, ask: number): ClubDecision {
   if (fee >= ask * 0.85) return { kind: 'counter', fee: ask };
   return { kind: 'reject' };
 }
+/** Contrapropostas que o usuário pode fazer numa proposta recebida; depois disso o comprador só aceita ou desiste. */
+export const MAX_COUNTER_ROUNDS = 2;
+export type BuyerReply = { kind: 'accept' } | { kind: 'counter'; fee: number } | { kind: 'withdraw' };
+/**
+ * Resposta do clube comprador (IA) a uma contraproposta do usuário. O teto que ele aceita pagar é o maior entre a proposta e o valor de
+ * mercado, × 1,10–1,35 (sorteio fixo por proposta e rodada), nunca acima do caixa. Pedido até o teto: aceita. Até 30% acima do teto e com
+ * rodadas sobrando: cobre com um valor intermediário (entre a proposta atual e o pedido, sem passar do teto). Acima disso: desiste.
+ */
+export function buyerReply(a: { offer: number; asked: number; marketValue: number; buyerBalance: number; rounds: number }, roll: number): BuyerReply {
+  const ceiling = Math.min(a.buyerBalance, Math.max(a.offer, a.marketValue) * (1.1 + 0.25 * Math.max(0, Math.min(1, roll))));
+  if (a.asked <= Math.max(a.offer, ceiling)) return { kind: 'accept' };
+  if (a.rounds < MAX_COUNTER_ROUNDS && a.asked <= ceiling * 1.3) {
+    const fee = Math.round(Math.min(ceiling, (a.offer + a.asked) / 2) / 1000) * 1000;
+    if (fee > a.offer) return { kind: 'counter', fee };
+  }
+  return { kind: 'withdraw' };
+}
+
 export type PlayerDecision = { kind: 'accept' } | { kind: 'counter'; wage: number } | { kind: 'reject' };
 export function playerDecision(wage: number, demand: number): PlayerDecision {
   if (wage >= demand * 0.97) return { kind: 'accept' };

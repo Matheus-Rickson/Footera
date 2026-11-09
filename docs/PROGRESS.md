@@ -1157,6 +1157,27 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - Pendente: pressão 5 ainda custa −0,16 ponto/jogo (e a metodologia agressiva fica 0,11 abaixo da defensiva); com o "tirar o pé", o xG
     fica acima dos gols na faixa de xG 3+ (3,6 × 3,1; no total são iguais). Partidas ao vivo e telas NÃO verificadas no Electron depois das mudanças.
   - Observação: o disco C: do usuário chegou a 0 bytes livres durante a bateria (os scripts passaram a simular na memória).
+- **Continentais — etapas 1 e 2 (08/11/2026; sem commit):** pedido do usuário — CONMEBOL, UEFA, CONCACAF e AFC com regulamento real;
+  países que faltam entram na base; Rússia fora (com opção futura no editor); CONMEBOL primeiro. Plano em `docs/CONTINENTAIS.md`.
+  - Etapa 1: regulamentos da Libertadores, Sul-Americana e Recopa 2026 lidos nos manuais oficiais da CONMEBOL (PDFs baixados pelo usuário
+    em `docs/`): vagas, fases, potes, cruzamentos, mando, desempates, ranking de clubes e calendário. Em aberto: premiação e desempate da Recopa.
+  - Etapa 2: base 1.2.0 com os 8 países da CONMEBOL simplificados (`scripts/base-conmebol.ts`); `templateFor`, ano civil para os 8 códigos.
+    Testes ajustados à base nova (lista de países, versão, pacote de exemplo que criava o "Chile", supercopas) e o teste de mentalidade
+    passou a usar um clube fixo e a medir também os gols sofridos da ofensiva (mutação confirmada). Suíte 302/302. Teste de fumaça: uma
+    temporada inteira com as 8 ligas no resultado rápido (1.960 jogos), sem erro.
+  - Não feito ainda: motor continental, competições no jogo, telas. Telas NÃO verificadas (a nova carreira passa a listar os 8 países).
+- **Gestão do clube: caixa, aposentadoria anunciada, elenco de 35, contraproposta e rescisão (09/11/2026; sem commit):** pedidos do usuário.
+  - **Caixa:** cota de participação da 3ª divisão para baixo (`F.participation`) e teto da folha para salários de pacotes do usuário (folha > 80% da
+    receita → 65%, na montagem do universo). Ver `docs/FINANCE.md`. Universo real (base + licenças + pacote 1), carreira no Flamengo, 18 divisões
+    completas: clubes no vermelho no fim da 1ª temporada **45 → 0**; em duas temporadas seguidas, 0 em todos os pontos medidos (início, julho, fim).
+  - **Aposentadoria anunciada** (migração 027, `retire_planned`): sorteio no início da temporada, e-mail ao treinador, saída na virada seguinte, sem
+    renovação; ninguém com contrato se aposenta no 1º dia; saves antigos usam a regra antiga uma vez. Ver `docs/CAREER_CYCLE.md`.
+  - **Elenco de 35** (`SQUAD_MAX`, padrão das ligas e base fixa); a IA enxuga acima de 35 na virada e promove jovens até 26. Decisão do usuário: os
+    elencos já importados com até 40 ficam como estão.
+  - **Contraproposta** em propostas recebidas (`buyerReply`, `counterOffer`, até 2 rodadas; migração 027 `counter_rounds`) e **rescisão de contrato**
+    (`terminateContract`: salários restantes, mínimo 1 mês, pelo `makePoster`; jogador livre). Ver `docs/TRANSFERS.md`.
+  - Testes: `club-management.test.ts` (8); testes de limite de elenco ajustados para 35. Mutação 8/8. Suíte 310/310; typecheck ok.
+  - Telas (Transferências → Contrapropor; Contratos → Rescindir e aviso de aposentadoria) NÃO verificadas no Electron.
 - **Correção — estadual sumia com pacote que muda o estado de um clube (08/11/2026; sem commit):** um estadual sem exatamente o número de
   clubes do formato não era criado, sem aviso (ex.: pacote que levou um clube do PR para a elite do RJ → Carioca com 13 → sem Carioca). Agora
   `fitStateDivisions` (`formatRepository.ts`) encaixa as divisões antes de criar os estaduais: o excesso (mais fracos por série nacional e
