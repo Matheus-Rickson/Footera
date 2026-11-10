@@ -102,5 +102,15 @@ calibração da Fase 6. Não foram alterados; ver "Decisões pendentes" no `PROG
 ## Limitações conhecidas
 - Desenvolvimento só na virada (treino individual chega na Fase 8C); minutos jogados pesam pouco por isso.
 - Sem copas, competições continentais, artilharia/prêmios individuais, rescisão de contrato ou empréstimos.
-- O usuário não pode mudar de clube (propostas de emprego: Fase 8D); os troféus do treinador são os do clube.
+- Os títulos do treinador são os conquistados pelos clubes que ele comandava (`won_by_user`); ver "Sala de troféus" abaixo.
 - Reputação do clube só muda por acesso/rebaixamento/título.
+
+## Sala de troféus (v0.8.10, migração 031)
+Decisão do usuário: "Jogo + histórico editável". `trophyRepository.ts` agrupa os títulos de um clube por competição, com uma chave que não muda entre
+temporadas: id da liga (`bra-1`), id da copa do universo (`cup-bra`, `sup-bra`; a Copa da Rússia usa `cup-rus`) ou o id da competição sem a temporada
+(estaduais `est_…`, copas estaduais `cest_…`, regionais `reg_…`). Cada taça soma os títulos conquistados no jogo (`trophies`) e os **títulos históricos**
+do pacote de dados (`clubs.honours`, mostrados como "antes da carreira"; a base vem sem eles). O rótulo da temporada sai do nome da competição
+(ano civil "2026" ou "2026/27").
+- Tela (`TrophyRoom.tsx`): prateleiras por tipo (ligas, copas nacionais, supercopas, estaduais, regionais, outros), taças em SVG com o logo da
+  competição e "×N" (bronze = só títulos históricos), janela com as temporadas, linha do tempo paginada; abas **Clube** (seletor com os clubes do
+  treinador; desempregado vê o último), **Treinador** (títulos em todos os clubes) e **Campeões** (todas as competições, por temporada e país).

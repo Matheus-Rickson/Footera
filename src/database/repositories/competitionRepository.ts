@@ -11,6 +11,8 @@ import { turnoverDate } from '../../game/career-engine/contracts.ts';
 import { UserError } from '../../shared/errors.ts';
 import { getCareerState, type CareerState } from './careerRepository.ts';
 import { settleFinances } from './financeRepository.ts';
+import { processSponsorsDay } from './sponsorRepository.ts';
+import { processLicensesDay } from './coachLicenseRepository.ts';
 import { processMarketDay } from './transferRepository.ts';
 import { processScoutingDay } from './scoutRepository.ts';
 import { youthIntake } from './youthRepository.ts';
@@ -287,6 +289,8 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
     processMarketDay(db, d);   // propostas expiram; a IA negocia dentro das janelas
     processScoutingDay(db, d); // olheiros observam jogadores
     youthIntake(db, d);        // peneira anual (15/mar)
+    if (!ff) processLicensesDay(db, d); // curso de licença do treinador concluído hoje
+    processSponsorsDay(db, d); // patrocínios do clube do usuário: propostas na janela de renovação e aceite automático no vencimento
     settleFinances(db, d);     // salários, patrocínios, TV etc. dos meses que começaram até este dia
     processBoardDay(db, d);    // diretoria: confiança, aviso/demissão, vagas e propostas de emprego
     processPromisesDay(db, d); // promessas do treinador a jogadores e à diretoria: cobradas no prazo

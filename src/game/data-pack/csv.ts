@@ -96,8 +96,26 @@ export const CSV_COLUMNS: Record<CsvKind, Col[]> = {
     { key: 'fac.youth', label: 'Categorias de base', help: 'instalação 1–20' },
     { key: 'fac.medical', label: 'Departamento médico', help: 'instalação 1–20' },
     { key: 'fac.stadium', label: 'Estádio', aliases: ['estrutura do estadio'], help: 'instalação 1–20' },
+    { key: 'honours', label: 'Títulos históricos', aliases: ['titulos'], help: 'separados por ";": [id da competição] Nome: quantidade (anos). Ex.: [bra-1] Brasileirão: 7 (1980, 1982); Copa Sul: 2. O id e os anos são opcionais; "-" apaga' },
   ],
 };
+
+/** Títulos históricos em texto de planilha: "[bra-1] Brasileirão: 7 (1980, 1982); Copa Sul: 2". */
+export function formatHonours(list: ReadonlyArray<{ competitionId?: string; name: string; count: number; years?: string }> | undefined | null): string | null {
+  if (!list?.length) return null;
+  return list.map((h) => `${h.competitionId ? `[${h.competitionId}] ` : ''}${h.name}: ${h.count}${h.years ? ` (${h.years})` : ''}`).join('; ');
+}
+/** Lê o texto de títulos históricos; `null` = apagar ("-"); erro com a parte que não deu para ler. */
+export function parseHonours(text: string): { value: Array<{ competitionId?: string; name: string; count: number; years?: string }> | null } | { error: string } {
+  if (text.trim() === '-') return { value: null };
+  const out: Array<{ competitionId?: string; name: string; count: number; years?: string }> = [];
+  for (const part of text.split(';').map((x) => x.trim()).filter(Boolean)) {
+    const m = part.match(/^(?:\[([a-z0-9-]+)\]\s*)?(.+?)\s*:\s*(\d+)\s*(?:\((.*)\))?$/i);
+    if (!m) return { error: `"${part}": use Nome: quantidade (anos), por exemplo Copa Sul: 2 (1999, 2004).` };
+    out.push({ ...(m[1] ? { competitionId: m[1].toLowerCase() } : {}), name: m[2]!.trim(), count: Number(m[3]), ...(m[4]?.trim() ? { years: m[4].trim() } : {}) });
+  }
+  return { value: out };
+}
 const POS_BY_LABEL = new Map<string, Position>([
   ...Object.entries(POS_LABEL).map(([code, label]) => [norm(label), code as Position] as const),
   ...Object.keys(POS_LABEL).map((code) => [norm(code), code as Position] as const),
@@ -169,6 +187,11 @@ export function rowsToRecords(kind: CsvKind, text: string): { records: CsvRowRes
         r.club = norm(v) === 'livre' || norm(v) === 'sem clube' ? null : v;
       } else if (k === 'nationality') r.nationality = v.toUpperCase();
       else if (k === 'state') r.state = v.toUpperCase();
+      else if (k === 'honours') {
+        const h = parseHonours(v);
+        if ('error' in h) return bad(`Títulos históricos: ${h.error}`);
+        r.honours = h.value;
+      }
       else if (k === 'stateDivision') {
         const n = intOf(v);
         if (n !== 1 && n !== 2) return bad(`Divisão estadual "${v}": use 1 (elite) ou 2 (segunda divisão).`);
@@ -198,6 +221,7 @@ export function recordToRow(kind: CsvKind, r: Rec): Array<string | number | null
     if (k === 'contractEnd') { const e = (r.contract as Rec | undefined)?.end; return e ? String(e).split('-').reverse().join('/') : null; }
     if (k === 'salary') return ((r.contract as Rec | undefined)?.salary as number | undefined) ?? null;
     if (k === 'club') return r.club === null ? 'livre' : (r.club as string | undefined) ?? null;
+    if (k === 'honours') return formatHonours(r.honours as Parameters<typeof formatHonours>[0]);
     return (r[k] as string | number | undefined) ?? null;
   });
 }

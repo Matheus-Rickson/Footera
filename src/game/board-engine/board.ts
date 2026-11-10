@@ -47,9 +47,15 @@ export function monthlyDelta(position: number, target: number, played: number): 
 }
 
 export interface SeasonVerdict { met: boolean; confidenceDelta: number; reputationDelta: number; lines: string[] }
-/** Avaliação na virada: objetivo principal e secundários (não fechar no vermelho; promover jovens da base). */
+/** Objetivo extra já julgado na virada (v0.8.10): o peso na confiança vem da importância (`objectives.ts`, `IMPORTANCE`). */
+export interface JudgedObjective { label: string; met: boolean; delta: number }
+/**
+ * Avaliação na virada: objetivo de liga (pesos próprios) e os demais objetivos. Com `objectives` (v0.8.10), cada objetivo extra soma o
+ * peso da sua importância; sem eles (saves e testes antigos), valem os dois secundários fixos de antes (caixa no azul e base, ±5 cada).
+ */
 export function evaluateSeason(a: {
   objective: Objective; target: number; position: number; champion: boolean; promoted: boolean; relegated: boolean; balance: number; youthTarget: number; youthPromoted: number;
+  objectives?: JudgedObjective[];
 }): SeasonVerdict {
   const met = a.position <= a.target;
   // superar a meta com folga também conta para a reputação (+1 por posição acima da meta, até +4)
@@ -60,6 +66,10 @@ export function evaluateSeason(a: {
   if (a.champion) { conf += 10; rep += 10; lines.push('Título conquistado.'); }
   if (a.promoted) { conf += 5; rep += 6; lines.push('Acesso conquistado.'); }
   if (a.relegated) { conf -= 15; rep -= 8; lines.push('Rebaixamento.'); }
+  if (a.objectives) {
+    for (const o of a.objectives) { conf += o.delta; lines.push(`${o.met ? 'Cumprido' : 'Não cumprido'}: ${o.label} (${o.delta > 0 ? '+' : ''}${o.delta} de confiança).`); }
+    return { met, confidenceDelta: conf, reputationDelta: rep, lines };
+  }
   if (a.balance >= 0) { conf += 5; lines.push('Finanças: o clube terminou a temporada no azul.'); } else { conf -= 5; lines.push('Finanças: o clube terminou a temporada no vermelho.'); }
   if (a.youthTarget > 0) {
     if (a.youthPromoted >= a.youthTarget) { conf += 5; lines.push(`Base: ${a.youthPromoted} jovem(ns) promovido(s) (meta ${a.youthTarget}).`); }

@@ -90,7 +90,11 @@ Regras conferidas: divisões de cada país 1, 2, 3… sem buracos; quem rebaixa 
 
 **clubs:** `name`, `country`, `league` obrigatórios (a liga precisa ser do mesmo país); `shortName` (2–5), `city`, `stadium`
 (sem estádio, um é criado: `<id>-estadio`), `reputation` (1–100; padrão 50), `balance`, `fans`, `facilities` (`training`, `youth`,
-`medical`, `stadium`, 1–20). O que faltar é derivado da reputação, como no gerador.
+`medical`, `stadium`, 1–20). O que faltar é derivado da reputação, como no gerador. `honours` (opcional, até 60): títulos anteriores ao universo,
+`[{ "competitionId": "bra-1", "name": "Campeonato Brasileiro", "count": 7, "years": "1980, 1982" }]` — `competitionId` (id de liga, `cup-<país>`,
+`sup-<país>`, `est_…`, `reg_…`) e `years` são opcionais; com o id certo, o título entra na mesma taça da competição do jogo; `null` apaga. No
+editor: seção "Títulos históricos" do clube; na planilha, coluna "Títulos históricos" no formato `[bra-1] Brasileirão: 7 (1980, 1982); Copa Sul: 2`
+(`-` apaga).
 
 **players:** `firstName`, `lastName`, `birthDate` (AAAA-MM-DD; 15 a 45 anos na data de início), `nationality` (3 letras),
 `position`, `club` (id ou `null` = livre) obrigatórios, **mais** `attributes` (os 23) **ou** `ability`.

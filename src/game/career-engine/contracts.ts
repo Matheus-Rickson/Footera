@@ -23,9 +23,12 @@ export const maxContractYears = (age: number): number => (age >= 34 ? 1 : age >=
 const personalityFactor = (p: { ambition: number; loyalty: number }) =>
   (0.92 + 0.16 * (clamp(p.ambition, 1, 20) / 20)) * (1.04 - 0.08 * (clamp(p.loyalty, 1, 20) / 20));
 
-/** Salário mensal pedido ao usuário para renovar (fidelidade reduz o pedido; ambição aumenta; quem está no auge não aceita redução). */
-export function renewalDemand(p: { marketValue: number; salary: number; ambition: number; loyalty: number }): number {
-  const base = Math.max(p.marketValue * 0.012, p.salary * 1.08, 1500);
+/**
+ * Salário mensal pedido ao usuário para renovar (fidelidade reduz o pedido; ambição aumenta; quem está no auge não aceita redução).
+ * `floor` = salário mínimo do país do clube (`minSalary`); o padrão é o piso antigo de 1.500.
+ */
+export function renewalDemand(p: { marketValue: number; salary: number; ambition: number; loyalty: number }, floor = 1500): number {
+  const base = Math.max(p.marketValue * 0.012, p.salary * 1.08, floor);
   return Math.round((base * personalityFactor(p)) / 100) * 100;
 }
 
@@ -33,8 +36,8 @@ export function renewalDemand(p: { marketValue: number; salary: number; ambition
  * Salário de uma renovação feita pela IA: acompanha o valor ATUAL do jogador (veterano em declínio aceita redução) e sobe no
  * máximo 10%. Sem isso, renovações sucessivas inflacionam as folhas e corroem as finanças em poucas temporadas.
  */
-export function aiRenewalWage(p: { marketValue: number; salary: number; ambition: number; loyalty: number }): number {
-  const fair = Math.max(p.marketValue * 0.012, 1500) * personalityFactor(p);
+export function aiRenewalWage(p: { marketValue: number; salary: number; ambition: number; loyalty: number }, floor = 1500): number {
+  const fair = Math.max(p.marketValue * 0.012, floor) * personalityFactor(p);
   return Math.round(Math.min(fair, p.salary * 1.1) / 100) * 100;
 }
 

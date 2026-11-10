@@ -375,6 +375,20 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Carregar carreira: "Abrir pasta" abre o Explorador com o `career.db` selecionado; "Excluir" pede confirmação e manda a pasta para a Lixeira.
 - [ ] Velocidade: a 2ª vez que abre "Nova carreira" (mesmo depois de fechar o jogo) é quase instantânea; o mercado de Transferências abre mais rápido.
 
+## 13z4. Finanças, Diretoria, Troféus e Histórico (v0.8.10)
+- [ ] As quatro telas (Finanças, Diretoria, Sala de troféus, Histórico da carreira) cabem em 1920×1080 sem barra de rolagem na página.
+- [ ] Gráficos legíveis no tema escuro e no claro; passar o mouse mostra a dica com o valor.
+- [ ] Os botões "?" abrem a janela de ajuda; Esc e clique fora fecham.
+- [ ] Finanças → Patrocínios: "Negociar" numa proposta, pedir mais que o oferecido → a empresa contrapropõe; na 3ª recusa ela desiste.
+- [ ] Rescindir um patrocínio mostra a multa antes de confirmar; a multa aparece no Extrato e a cota fica vaga; "Buscar patrocinador" traz propostas.
+- [ ] Extrato: paginação e filtro por categoria.
+- [ ] Diretoria: chips de tamanho e fase com explicação; objetivos agrupados por importância com barra de andamento; gráfico da confiança.
+- [ ] Editor de dados → clube → "Títulos históricos": adicionar, escolher a competição, salvar; a taça aparece como "antes da carreira" numa carreira nova.
+- [ ] Sala de troféus: clicar numa taça mostra as temporadas; abas Treinador e Campeões; seletor de clube.
+- [ ] Histórico da carreira: gráficos de reputação (faixa do teto), posição e V/E/D; tabela de temporadas paginada.
+- [ ] Licenças: começar num clube da 1ª divisão → e-mail de matrícula na PRO (carência) e licença A; matricular-se quando o botão aparecer.
+- [ ] Atributos do treinador: botão + no Histórico da carreira (saiu da Diretoria).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

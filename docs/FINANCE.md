@@ -28,7 +28,7 @@ a `economia × (reputação/65)^2,35`, e as receitas foram ancoradas na mesma es
 - Categorias de despesa `youth` (salários da base, todos os clubes) e `scouting` (olheiros e multas, só o usuário) — Fase 8B.
 - Premiação da liga (categoria `prize`) é paga na virada de temporada — fórmula e efeito na margem em `docs/CAREER_CYCLE.md`.
 - Sem empréstimos, juros, impostos nem regras de fair play; saldo negativo não gera consequências ainda.
-- Patrocínios são renovados automaticamente (sem negociação); reputação é fixa, então os valores só variam entre contratos por sorteio (±12%).
+- Patrocínios dos clubes da IA são renovados automaticamente (sem negociação), com sorteio de ±12%. Os do clube do usuário são negociados (seção abaixo).
 - Comissão técnica não é modelada por funcionário: o custo deriva do nível das instalações. Preço do ingresso não é editável.
 - Extrato detalhado só para o clube do usuário; os demais têm resumo mensal por categoria.
 - Fatores econômicos de países além de Brasil e Inglaterra caem em 1,0 até a Fase 9 (universo ampliado).
@@ -63,3 +63,72 @@ reais muito acima da receita (Flamengo do pacote de licenças: folha 4,3× a rec
   "salários reduzidos" no universo). A base fixa e os mundos gerados não passam pelo teto (a ida e volta base → pacote → universo continua idêntica).
 - **Resultado** (universo real do usuário, carreira no Brasil, 18 divisões completas, uma temporada): clubes no vermelho no fim da temporada
   **45 → 0** (antes: 36 na Série D, 4 na League One, 4 na League Two, 1 na Série A).
+
+## Patrocínios negociados (v0.8.10, migração 029)
+Decisão do usuário: "Propostas + contraproposta + bônus". Regras em `game/finance-engine/sponsors.ts` (puro) e `sponsorRepository.ts`.
+- **Quando chegam propostas:** 60 dias antes de uma cota (camisa, material esportivo, naming rights) vencer, com e-mail; ou pelo botão "Buscar
+  patrocinador" numa cota vaga (no máximo a cada 30 dias por cota). São 2 ou 3 empresas por cota.
+- **Valor de referência** = o mesmo da renovação automática (`sponsorTotalMonthly × participação da cota`). Perfis: **fixo alto** (102–110% da
+  referência, sem bônus) ou **fixo menor + bônus** (82–90%, com bônus por título da liga ×4 mensalidades, acesso ×3, posição-alvo ×1,5 e título de
+  copa ×2). O valor esperado fica perto da referência, para não mexer na margem calibrada (~+2%; `finance.test.ts` continua passando).
+- **Contraproposta:** cada empresa tem um teto secreto (106–115% da proposta). Pedido até o teto: aceita. Acima: a empresa sobe a oferta em 40% da diferença entre a oferta dela e o pedido,
+  sem passar do teto. Até 3 rodadas; na 3ª insuficiente, desiste e a cota fica 30 dias sem propostas dela.
+- **Duração:** 1 a 4 anos (o usuário escolhe ao aceitar).
+- **Rescisão:** multa de 3 mensalidades, limitada ao que resta do contrato, paga por `makePoster` (categoria `sponsorship`, valor negativo). A cota fica
+  vaga até um novo acordo: nenhuma receita dela enquanto isso.
+- **Vencimento sem decisão:** a melhor proposta aberta é aceita sozinha (com aviso), para a cota não ficar vazia sem querer.
+- **Bônus:** pagos por `makePoster` (`sponsorship`) quando a meta acontece: título de copa na final; liga, acesso e posição na virada.
+
+## Tela de Finanças (v0.8.10)
+Sem barra de rolagem na página (em telas menores que 1100×700 volta a rolar). Abas: **Visão geral** (caixa, resultado da temporada, folha × teto,
+fôlego; saldo em 24 meses; receitas × despesas em 12 meses; composição das receitas e despesas da temporada), **Receitas e despesas** (temporada atual ×
+anterior por categoria, com a tendência dos 12 meses), **Patrocínios** (3 cotas com tempo de contrato, bônus, negociação e rescisão), **Bilheteria**
+(público × capacidade por jogo) e **Extrato** (paginado, filtro por categoria, IPC `finance:ledger`). Cada bloco tem um "?" com explicação.
+Gráficos em SVG próprio (`renderer/charts.tsx`), cores pelos tokens `--viz-1..6` nos dois temas (paleta conferida com o validador da skill de
+visualização; no tema claro três cores ficam abaixo de 3:1 de contraste, por isso as roscas sempre têm legenda com os valores).
+
+## Piso de patrocínio das divisões de baixo (v0.8.10, 10/11/2026)
+Pedido do usuário: o Brasiliense (Série D, reputação 15) recebia € 12,1 mil/mês somando os 3 patrocínios (naming rights € 1,8 mil), menos que a
+venda de produtos (€ 37,7 mil) e um nono da folha (€ 105 mil). Causa: o patrocínio cai com a reputação ao expoente 2,4, e uma reputação 15 dá ~3%
+do valor de referência; o que faltava a esses clubes vinha de uma cota artificial somada à TV. Nos clubes pequenos de verdade o patrocínio
+(casas de apostas, empresas regionais) é a principal receita; orçamentos de Série D ficam em R$ 0,5–2 mi/ano (Tribuna do Norte, sem metodologia
+publicada; balanços de Série C/D não foram encontrados).
+- **Piso mensal** (`F.sponsorFloor`, × economia): 3ª divisão 30 mil, 4ª 40 mil, 5ª ("Sem divisão") 35 mil, somado à parte pela reputação.
+- **Saves antigos:** os contratos em vigor dos clubes da 3ª divisão para baixo sobem a parte do piso de cada cota, uma vez (`meta.sponsor_floor`).
+- Brasiliense depois: patrocínios € 36,1 mil/mês (camisa 20,3 mil, material 10,4 mil, naming rights 5,4 mil).
+- A primeira versão tirava o piso da cota de participação (receita total igual). A calibração abaixo, pedida em seguida, reduziu custos e
+  receitas juntos.
+
+## Calibração das divisões de baixo (v0.8.10, 10/11/2026)
+Pedido do usuário ("Pode realizar a calibração indicada"): mesmo com o piso de patrocínio, um clube da Série D movimentava ~€ 1,3 milhão por ano
+(≈ R$ 8 milhões), contra R$ 0,5–2 milhões na realidade. Causas: salário mínimo de 1.500 para todos os países (80% dos jogadores da Série D
+estavam no piso), estrutura e estádio cobrados como num clube grande e a cota de participação que cobria esse custo. Série A e B ficaram fora
+(na realidade estão acima do jogo; outra calibração).
+- **Salário mínimo por país** (`minSalary`): 1.000 × economia, entre 100 e 1.500 (Brasil 600 ≈ R$ 3,7 mil; Inglaterra e Espanha 1.500, como
+  antes). `fairSalary` = 1,2% do valor ao mês, nunca abaixo do mínimo. Usado no gerador, na montagem do universo (jogadores criados), na
+  pretensão dos livres (país da nacionalidade), nos pedidos de transferência (`wageDemand`) e de renovação (`renewalDemand`, `aiRenewalWage`;
+  país do clube que paga) e na promoção da base. O veto da diretoria por salário fora da realidade continua com o piso antigo (1.500 é "fora
+  da realidade" em nenhum país).
+- **Piso antigo rebaixado** (`rebasedFloorSalary`): quem ganha exatamente 1.500 e vale menos que isso passa ao salário pelo valor com o mínimo do
+  país. Na montagem do universo vale para a base, para os pacotes (exatamente 1.500 é o piso exportado por versões anteriores) e para os livres
+  (país da nacionalidade). **Saves antigos:** a mesma correção uma vez (`meta.salary_floor`), sem mexer nos jovens da base nem em quem vale mais.
+- **Porte do clube** (`sizeFactor` = reputação / 30, entre 0,2 e 1): multiplica estrutura (comissão), instalações, manutenção do estádio e venda
+  de produtos. Reputação 30+ (praticamente toda a 1ª e a 2ª divisão) paga como antes.
+- **Cota de participação** 80/105/120 mil → **25/18/16 mil** (3ª/4ª/5ª, × economia), recalculada para a margem mediana voltar a ~+2%.
+- **Resultado** (base fixa, Brasil, medianas anuais):
+
+  | Divisão | Receita antes | Receita depois | Margem depois |
+  |---|---|---|---|
+  | Série C | € 2,2 mi | € 1,8 mi | +6,4% |
+  | Série D | € 1,3 mi | € 0,75 mi (≈ R$ 4,6 mi) | +2,1% |
+  | Sem divisão | € 1,1 mi | € 0,49 mi (≈ R$ 3 mi) | −0,4% |
+
+  Outros países, 3ª divisão: Inglaterra −5,7%, Espanha +4,1%, Alemanha +5,9%; 4ª da Inglaterra +9,9%. A faixa por divisão do teste (−8% a +12%) e a calibração dos mundos
+  gerados (`finance.test.ts`, −4% a +8%) continuam valendo; o teste novo prende a receita mediana da Série D em € 0,5–1 milhão e a dos clubes sem
+  divisão em € 0,3–0,7 milhão.
+- **Com os pacotes do usuário** (carreira nova): Série D mediana +4,4%; o Brasiliense fica com folha de € 61 mil/mês (o teto da folha da montagem
+  reduz os salários do pacote) e −11% ao ano.
+- **No save atual do usuário** (cópia): a folha do Brasiliense cai de € 105,4 mil para € 91,9 mil/mês (15 jogadores saem do piso antigo), mas a
+  receita estimada cai de € 1,62 mi para € 1,06 mi por ano. O déficit previsto passa de −€ 389 mil para −€ 479 mil por ano. Ele vem de 7 contratos
+  de € 9,9–10,6 mil/mês (do pacote "1" e de contratações), que os saves não reduzem (contrato assinado).
+- O universo em cache no disco é refeito (`UNIVERSE_CACHE_FORMAT` 2).

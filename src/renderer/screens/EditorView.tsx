@@ -406,6 +406,40 @@ function LeagueForm({ r, set, errors, opts, isNew, logo }: { r: Rec; set: (r: Re
   );
 }
 
+type Honour = { competitionId?: string; name: string; count: number; years?: string };
+/** Títulos anteriores ao universo (Sala de troféus, "antes da carreira"). A competição liga o título à taça do jogo (logo e contagem juntos). */
+function HonoursField({ r, set, leagues, errors }: { r: Rec; set: (r: Rec) => void; leagues: EditorOptionsDto['leagues']; errors: Errors }) {
+  const list = (Array.isArray(r.honours) ? r.honours : []) as Honour[];
+  const country = String(r.country ?? '');
+  const comps = [...leagues.map((l) => ({ id: l.id, name: l.name })), ...(country ? [{ id: `cup-${country}`, name: 'Copa nacional' }, { id: `sup-${country}`, name: 'Supercopa' }] : [])];
+  const put = (next: Honour[]) => set({ ...r, honours: next.length ? next : null });
+  const upd = (i: number, h: Partial<Honour>) => put(list.map((x, j) => {
+    if (j !== i) return x;
+    const m = { ...x, ...h };
+    if (!m.competitionId) delete m.competitionId;
+    if (!m.years) delete m.years;
+    return m;
+  }));
+  const err = Object.entries(errors).filter(([k]) => k.startsWith('honours')).map(([, v]) => v)[0];
+  return (
+    <fieldset className="ed-section"><legend>Títulos históricos <span className="muted small">(antes da carreira; aparecem na Sala de troféus)</span></legend>
+      {list.length === 0 && <p className="muted small ed-wide">Nenhum título cadastrado.</p>}
+      {list.map((h, i) => (
+        <div key={i} className="ed-honour">
+          <select aria-label="Competição" value={h.competitionId ?? ''} onChange={(e) => { const c = comps.find((x) => x.id === e.target.value); upd(i, { competitionId: e.target.value || undefined, ...(c && !h.name ? { name: c.name } : {}) }); }}>
+            <option value="">Outra competição</option>{comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <input aria-label="Nome do título" placeholder="Nome (ex.: Campeonato Brasileiro)" maxLength={80} value={h.name} onChange={(e) => upd(i, { name: e.target.value })} />
+          <input aria-label="Quantidade" type="number" min={1} max={500} value={h.count} onChange={(e) => upd(i, { count: Math.max(1, Number(e.target.value) || 1) })} />
+          <input aria-label="Anos" placeholder="Anos (opcional)" maxLength={400} value={h.years ?? ''} onChange={(e) => upd(i, { years: e.target.value })} />
+          <button type="button" className="secondary" onClick={() => put(list.filter((_, j) => j !== i))}>Remover</button>
+        </div>
+      ))}
+      <div className="ed-wide"><button type="button" className="secondary" disabled={list.length >= 60} onClick={() => put([...list, { name: '', count: 1 }])}>Adicionar título</button></div>
+      {err && <p className="error small ed-wide">{err}</p>}
+    </fieldset>
+  );
+}
+
 function ClubForm({ r, set, stadium, setStadium, errors, opts, images }: { r: Rec; set: (r: Rec) => void; stadium: Rec | null; setStadium: (s: Rec) => void; errors: Errors; opts: EditorOptionsDto; images: ReactNode }) {
   const leagues = opts.leagues.filter((l) => l.countryId === r.country).sort((a, b) => a.tier - b.tier);
   const states = opts.countries.find((c) => c.id === r.country)?.states ?? [];
@@ -435,6 +469,7 @@ function ClubForm({ r, set, stadium, setStadium, errors, opts, images }: { r: Re
           <Field key={k} label={label} error={errors[`facilities.${k}`]}><NumIn r={r} set={set} path={`facilities.${k}`} min={1} max={20} /></Field>
         ))}
       </fieldset>
+      <HonoursField r={r} set={set} leagues={leagues} errors={errors} />
       <fieldset className="ed-section ed-images"><legend>Imagens</legend>{images}</fieldset>
       {stadium && (
         <fieldset className="ed-section"><legend>Estádio</legend>

@@ -88,4 +88,54 @@ momento com troca imediata; orçamentos de transferência e de folha **e autonom
 ## Limitações conhecidas
 - O usuário não pode pedir demissão nem procurar emprego ativamente.
 - Reputação do treinador começa baixa (15–35), então no começo só clubes modestos fazem propostas.
-- Objetivos não incluem copas nem competições continentais (Fase 9).
+- Objetivos ainda não incluem competições continentais (não existem no jogo).
+
+## Objetivos por tamanho e fase do clube (v0.8.10, migração 030)
+Regras em `game/board-engine/objectives.ts` (puro) e `boardObjectiveRepository.ts`.
+- **Tamanho** (início da temporada): gigante = 1ª divisão com reputação 78+ ou entre os 3 de maior reputação do país; grande = 1ª divisão com 64+ ou
+  entre os 8; médio = demais da 1ª, ou 2ª divisão com 42+; pequeno = o resto.
+- **Fase** (nesta ordem de prioridade): recém-rebaixado; recém-promovido; crise financeira (caixa negativo ou prejuízo previsto acima de 10% da
+  receita); reconstrução (média de idade dos 18 mais fortes 29,5+ ou elenco 4 posições abaixo da reputação no país); em ascensão (última posição 3+
+  acima da esperada); estável.
+- **Objetivos (4 a 6)**, cada um com importância: **essencial** (+10 se cumprir / −15 se falhar), **importante** (+6/−8) ou **desejável** (+3/−2).
+  O de liga (o de sempre, +15/−20) continua essencial; recém-rebaixado → acesso, recém-promovido → permanência. Os demais: copa nacional (fase-alvo
+  pelo tamanho: final para gigante, semifinal para grande, quartas para médio, uma fase além da entrada para pequeno), estadual (clubes
+  brasileiros: título, 1ª fase entre os 4 ou não cair), finanças (terminar no azul; importante para pequeno e recém-promovido), folha dentro do teto,
+  corte de 10% da folha na crise, base (promover jovens) e minutos para jovens/idade média na reconstrução. Os bônus antigos de saldo e base (±5)
+  viraram objetivos.
+- **Andamento ao vivo** na tela; o status (cumprido/não cumprido) é gravado na avaliação da virada, que lista cada objetivo no relatório.
+- `board_confidence_log`: confiança no dia 1º de cada mês e na avaliação (gráfico da Diretoria). A demissão continua regida pela confiança.
+
+## Licenças de treinador (v0.8.10, migração 032)
+Decisões do usuário: "Teto de reputação + exigência" e "Tempo + pré-requisitos" (sem custo). Valores aproximados dos cursos da CBF Academy/UEFA.
+Regras em `game/coach-engine/licenses.ts` (puro) e `coachLicenseRepository.ts`.
+
+| Licença | Pré-requisito | Curso | Bônus de reputação | Teto de reputação |
+|---|---|---|---|---|
+| Sem licença | — | — | — | 35 |
+| C | — | 30 dias | +2 | 45 |
+| B | C + 90 dias de carreira | 120 dias | +3 | 60 |
+| A | B + 1 temporada completa no comando de um clube | 240 dias | +5 | 80 |
+| PRO | A + 2 temporadas completas | 365 dias | +8 | 100 |
+
+- **Exigência:** 1ª divisão → PRO; 2ª → A; demais divisões → B; clube sem divisão nacional (só estadual) → C. Clubes que exigem uma licença que o
+  treinador não tem **não fazem proposta**, salvo se ele estiver matriculado no curso dela (**carência**).
+- **Teto:** a reputação nunca passa do teto da licença (`cappedReputation`, aplicado em toda mudança: avaliação, demissão, conclusão de curso);
+  quem já está acima do teto não perde por isso, só não sobe.
+- **Um curso por vez**, só a próxima licença da trilha. Conclusão no `moveClock`, no dia do término: licença obtida, bônus de reputação (já com o teto
+  novo) e e-mail da "Escola de treinadores".
+- **Licença inicial:** C, ou B com reputação inicial 25+, nunca com teto abaixo da reputação. Se o clube escolhido exige mais, o treinador chega com a
+  licença imediatamente abaixo da exigida e é matriculado no curso dela (sem os pré-requisitos), com e-mail explicando a carência. Saves anteriores
+  recebem a licença inicial pela mesma regra.
+- **Promoção** do clube para uma divisão mais exigente: aviso pedindo a matrícula, **sem demissão**. O convite de emergência a um desempregado (clube
+  pequeno) prefere clubes que ele pode assumir; se nenhum servir, vem com matrícula automática.
+
+## Histórico da carreira (v0.8.10, migração 032)
+- `coach_seasons`: uma linha por temporada (ou parte) no comando de um clube, gravada na avaliação da virada (`season`) e na saída do clube
+  (`sacked`/`left`); avaliação seguida de demissão troca só o motivo. Guarda posição, objetivo de liga, se cumpriu, reputação no início e no fim,
+  licença e confiança final. `board_state` passou a guardar a reputação e a data de início da temporada no clube.
+- Jogos, vitórias, empates, derrotas e gols **não são gravados**: são contados das partidas do clube entre o início e o fim do período, em todas as
+  competições (regra 4). Títulos = `trophies` com `won_by_user`.
+- Saves anteriores: as temporadas encerradas são recuperadas das passagens (`coach_spells`) e dos resultados de liga (`season_results`), com a
+  reputação desconhecida (uma vez por save).
+- Os atributos do treinador (botão +) saíram da Diretoria e ficam no Histórico da carreira.

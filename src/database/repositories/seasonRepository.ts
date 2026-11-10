@@ -14,11 +14,12 @@ import { seasonPlayingTime, setSquadStatus, squadRoles, syncSquadRoles, type Squ
 import { groupOf, SQUAD_MAX, SQUAD_MIN, squadStaysValid, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { LeagueRules, Player, Position } from '../../shared/types.ts';
 import type {
-  ContractRowDto, HistoryRowDto, NewSeasonReportDto, RenewInput, RenewResultDto, SeasonStatusDto, TerminateResultDto, TrophyDto, TrophyRoomDto,
+  ContractRowDto, HistoryRowDto, NewSeasonReportDto, RenewInput, RenewResultDto, SeasonStatusDto, TerminateResultDto,
 } from '../../shared/api.ts';
 import { getCareerState } from './careerRepository.ts';
 import { createSeason, getCompetitionTable, listCompetitions } from './competitionRepository.ts';
-import { makePoster, settleFinances, type Poster } from './financeRepository.ts';
+import { makePoster, settleFinances, wageFloorOf, type Poster } from './financeRepository.ts';
+import { paySponsorBonuses } from './sponsorRepository.ts';
 import { addNews } from './newsRepository.ts';
 import { aiSignFreeAgents, neededGroup, processMarketDay, releasePlayer } from './transferRepository.ts';
 import { rowToPlayer } from './worldRepository.ts';
@@ -181,7 +182,7 @@ export function renegotiateContract(db: SqlDb, input: RenewInput): RenewResultDt
   const rounds = fresh ? 0 : N(talkRow.rounds);
   const terms = `${next}|${input.years}`;
   const lastCounter = !fresh && talkRow.last_counter != null && S(talkRow.terms) === terms ? N(talkRow.last_counter) : null;
-  const demand = Math.round(renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }) * negotiationMultiplier(coachOf(db).attributes));
+  const demand = Math.round(renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }, wageFloorOf(db, p.clubId!)) * negotiationMultiplier(coachOf(db).attributes));
   const target = renegotiationTarget(demand, current, next);
   const reply = renegotiationReply({ offered: input.wage, target, round: rounds, lastCounter });
   const saveTalk = (r: number, counter: number | null, lockedUntil: string | null) => db.prepare(`INSERT INTO contract_talks (player_id, rounds, last_counter, terms, locked_until) VALUES (?, ?, ?, ?, ?)
@@ -432,6 +433,9 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
         if (champ.clubId === st.clubId) addNews(db, date, 'trophy', `CAMPEÃO! ${champ.clubName} conquista a ${c.name}`, `Parabéns, professor! O ${champ.clubName} é campeão da ${c.name}. Uma conquista histórica para o clube e para a sua carreira.\n\nO troféu já está na Sala de troféus. Títulos aumentam a reputação do clube e a sua, e contam na avaliação da diretoria.`);
       }
     }
+    // bônus dos patrocínios do clube do usuário pela campanha na liga (título, acesso, posição)
+    const userTableRow = st.clubId ? [...tables.values()].flat().find((r) => r.clubId === st.clubId) : undefined;
+    if (userTableRow) paySponsorBonuses(db, post, date, st.clubId, { champion: userTableRow.position === 1, promoted: direction.get(st.clubId) === 'promoted', position: userTableRow.position });
     for (const m of moves) {
       db.prepare('UPDATE clubs SET league_id = ?, reputation = MAX(1, MIN(99, reputation + ?)) WHERE id = ?').run(m.toLeague, direction.get(m.clubId) === 'relegated' ? -3 : 3, m.clubId);
     }
@@ -484,7 +488,7 @@ function runTurnover(db: SqlDb, date: string, countryIds: readonly string[], opt
       const age = ageOn(p.birthDate, date);
       if (rng.chance(coreOf.get(p.clubId!)!.has(p.id) ? AI_RENEW_CHANCE.core : AI_RENEW_CHANCE.other)) {
         const years = Math.min(maxContractYears(age), rng.int(1, 3));
-        const wage = aiRenewalWage({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty });
+        const wage = aiRenewalWage({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }, wageFloorOf(db, p.clubId!));
         db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(wage, contractEndIn(date, years, clubStart(p.clubId!)), p.id);
         report.aiRenewed++;
       } else { releasePlayer(db, p.id, date, false); report.aiReleased++; }
@@ -603,11 +607,3 @@ export function getHistory(db: SqlDb): HistoryRowDto[] {
   return rows;
 }
 
-export function getTrophies(db: SqlDb): TrophyRoomDto {
-  // ligas e copas (copa depois das divisões do país)
-  const all: TrophyDto[] = db.prepare(`SELECT t.season, c.name AS comp, co.name AS country, cl.name AS club, t.won_by_user FROM trophies t
-    JOIN competitions c ON c.id = t.competition_id LEFT JOIN leagues l ON l.id = c.league_id JOIN countries co ON co.id = COALESCE(l.country_id, c.country_id) JOIN clubs cl ON cl.id = t.club_id
-    ORDER BY t.season DESC, co.rowid, COALESCE(l.tier, 99)`).all()
-    .map((r) => ({ season: N(r.season), competitionName: S(r.comp), country: S(r.country), clubName: S(r.club), wonByUser: N(r.won_by_user) === 1 }));
-  return { mine: all.filter((t) => t.wonByUser), champions: all };
-}

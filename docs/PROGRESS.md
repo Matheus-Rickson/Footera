@@ -742,6 +742,42 @@ Sem novas funcionalidades de jogo.
   sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.
 
 ## Fase 9 — Base de dados editável (branch `fase-9-base-de-dados`; detalhes em `docs/DATABASE.md`)
+- **v0.8.10 — Finanças, Diretoria, Sala de troféus e Histórico da carreira com licenças (10/11/2026; sem commit):** pedido do usuário em 4 itens;
+  decisões: licenças com teto de reputação + exigência, cursos por tempo + pré-requisitos (sem custo), patrocínios com propostas + contraproposta +
+  bônus, troféus do jogo + histórico editável. Migrações 029–032.
+  - **Funcional e testado (`npm test`):**
+    - Patrocínios negociados (`docs/FINANCE.md`): propostas na janela de 60 dias e pela busca, contraproposta em 3 rodadas, rescisão com multa por
+      `makePoster`, aceite automático no vencimento, bônus de título/acesso/posição/copa. `sponsors.test.ts` (8); mutação 12/12.
+    - Objetivos da diretoria por tamanho e fase (`docs/BOARD_JOBS.md`): 4–6 objetivos com importância, andamento ao vivo, julgados na virada,
+      confiança mensal registrada. `board-objectives.test.ts` (6); mutação 12/12; `board.test.ts` segue passando.
+    - Títulos históricos dos clubes (`clubs.honours`): pacote → universo → save, exportação, patch que apaga, editor de clubes e coluna da planilha;
+      JSON Schema regenerado. Sala de troféus agrupada por competição (jogo + histórico), títulos do treinador em vários clubes, clube padrão do
+      desempregado, campeões do universo. `trophy-room.test.ts` (4); mutação 13/13 (o teste da ordem das prateleiras foi reforçado depois de 1 mutante
+      vivo). `getTrophies` antigo (seasonRepository) substituído por `getTrophyRoom`.
+    - Licenças C/B/A/PRO e histórico da carreira (`docs/BOARD_JOBS.md`): exigência por divisão, carência pelo curso, teto de reputação em toda
+      mudança, pré-requisitos, um curso por vez, conclusão no `moveClock` com bônus, licença inicial e matrícula automática, propostas filtradas pela
+      licença, aviso (sem demissão) na promoção; `coach_seasons` gravada na virada e na demissão, números derivados das partidas, recuperação em saves
+      antigos. `coach-licenses.test.ts` (6); mutação 21/21 (1 mutante equivalente da 1ª rodada foi trocado por um correto; 3 sobreviventes mataram-se
+      reforçando os testes).
+    - Suíte completa: 347/347 (10/11/2026, com o piso de patrocínio e a calibração das divisões de baixo). `npm run typecheck` e `npm run build`
+      sem erros.
+  - **Telas refeitas — NÃO verificadas no Electron** (precisam do seu `npm run dev`; roteiro em `docs/CHECKLIST_VALIDACAO.md` 13z4):
+    Finanças (`FinanceView.tsx`, abas, gráficos, ajuda, negociação/rescisão), Diretoria (`BoardView.tsx`), Sala de troféus (`TrophyRoom.tsx`),
+    Histórico da carreira (`CoachCareer.tsx`; substitui `CareerRecordsView.tsx`) e a seção "Títulos históricos" no editor de clubes. Componentes novos
+    `charts.tsx` (linha, barras, rosca, medidor, minigráfico) e `helpDialog.tsx`. As quatro telas entram no modo sem rolagem (`content-fit`).
+  - **Piso de patrocínio das divisões de baixo** (pedido do usuário, com a tela de Patrocínios do Brasiliense): 3ª/4ª/5ª divisão ganham piso de
+    45/40/35 mil × economia, tirado da cota de participação da TV (receita total igual, calibração preservada); saves antigos têm os contratos em
+    vigor reajustados uma vez. Testes em `club-management.test.ts` e `finance.test.ts`; mutação 4/5 (1 equivalente: sem o `continue`, a 1ª e a 2ª
+    somam zero). Ver `docs/FINANCE.md`.
+  - **Calibração das divisões de baixo** (pedido do usuário, em seguida): salário mínimo por país (Brasil 600 em vez de 1.500) no gerador, na
+    montagem do universo, nos livres e nos pedidos de salário; o piso antigo de 1.500 é rebaixado na base, nos pacotes e nos saves (uma vez); o
+    porte do clube reduz estrutura, estádio e produtos abaixo da reputação 30; cota de participação 25/18/16 mil. Série D: receita mediana
+    € 1,3 mi → € 0,75 mi por ano, margem +2,1%. Testes em `club-management.test.ts` (3 novos) e `finance.test.ts` (1 novo); mutação 19/20 (1
+    equivalente: `>=` → `>` no rebaixamento, porque quem vale exatamente 1.500 recebe 1.500 nos dois casos). Conferido numa cópia do save do
+    usuário (números em `docs/FINANCE.md`). **Não executado:** temporada inteira no save do usuário depois da mudança.
+  - **Pendente / limitações:** competições continentais (não existem: sem objetivo nem troféu continental); foto do treinador no Histórico (usa um
+    ícone); a reputação das temporadas recuperadas de saves antigos fica desconhecida; o pagamento do bônus de patrocínio na virada só tem teste por
+    chamada direta, não por uma temporada inteira simulada.
 - **v0.8.9 — contratos com tempo de jogo, desempenho e gestão de saves (09/11/2026):** pedidos do usuário antes dos continentais.
   - **Contratos refeitos** (`ContractsView.tsx`): resumo em cartões (folha, vencem, na lista, insatisfeitos), filtros por situação e setor, tabela com
     tempo de jogo (status, barra de minutos × esperado, veredito), moral, salário e tempo de contrato; painel do jogador com Renegociar, Lista de

@@ -172,6 +172,25 @@ export interface AdvanceResultDto {
   reason: 'ok' | 'pending_matches' | 'season_complete'; pendingMatches: number; message: string;
 }
 
+export type SponsorKindDto = 'shirt' | 'kit' | 'stadium';
+export interface SponsorBonusDto { trigger: 'league_title' | 'promotion' | 'position' | 'cup_title'; label: string; amount: number; target: number | null }
+export interface SponsorDealDto {
+  id: string; kind: SponsorKindDto; sponsor: string; monthly: number; start: string; end: string; bonuses: SponsorBonusDto[];
+  /** fechado pelo usuário (negociação) × renovação automática */ negotiated: boolean;
+  /** multa para rescindir hoje (0 se ainda não começou) */ terminationFee: number;
+}
+export interface SponsorOfferDto {
+  id: string; kind: SponsorKindDto; sponsor: string; profile: 'fixed' | 'bonus';
+  /** proposta inicial e o que a empresa oferece hoje (última contraproposta) */ initial: number; standing: number;
+  years: number; bonuses: SponsorBonusDto[]; roundsLeft: number; expires: string;
+  status: 'open' | 'walkout'; lockedUntil: string | null;
+}
+export interface SponsorSlotDto {
+  kind: SponsorKindDto; label: string; current: SponsorDealDto | null; /** contrato já fechado que começa quando o atual vencer */ upcoming: SponsorDealDto | null;
+  offers: SponsorOfferDto[]; /** valor de referência da cota pelo mercado (média das renovações automáticas) */ reference: number;
+  /** "Buscar patrocinador": só com a cota vaga ou na janela de renovação sem propostas; `searchFrom` = a partir de quando (intervalo de 30 dias) */
+  canSearch: boolean; searchFrom: string | null; vacant: boolean;
+}
 export interface FinanceOverviewDto {
   balance: number; lastSettledMonth: string | null;
   /** `items`: lançamentos do mês por categoria (positivo = receita, negativo = despesa). `settled`: false = mês sem a cobrança mensal (save anterior às finanças). */
@@ -181,8 +200,15 @@ export interface FinanceOverviewDto {
   runwayMonths: number | null;
   sponsors: Array<{ id: string; kind: 'shirt' | 'kit' | 'stadium'; sponsor: string; monthly: number; start: string; end: string }>;
   gates: Array<{ fixtureId: string; date: string; opponent: string; attendance: number; capacity: number; revenue: number }>;
-  ledger: Array<{ date: string; category: string; amount: number; description: string }>;
+  /** saldo no fim de cada mês (o mês corrente = saldo de hoje), até 24 meses */ balanceHistory: Array<{ month: string; balance: number }>;
+  /** totais por categoria da temporada corrente e da anterior (janelas da temporada do país do clube) */
+  season: { label: string; current: Array<{ category: string; amount: number }>; previousLabel: string | null; previous: Array<{ category: string; amount: number }> };
+  budgets: { transfer: number; spent: number; remaining: number; wageCeiling: number; payroll: number } | null;
+  ticketPrice: number; capacity: number;
+  sponsorSlots: SponsorSlotDto[];
 }
+export interface FinanceLedgerDto { rows: Array<{ date: string; category: string; amount: number; description: string }>; total: number; page: number; pageSize: number }
+export interface SponsorNegotiationDto { outcome: 'accepted' | 'counter' | 'walkout'; monthly: number | null; roundsLeft: number; message: string }
 export interface Range { low: number; high: number }
 export interface MarketFilter {
   position?: 'GK' | 'DEF' | 'MID' | 'ATT' | Position; minAge?: number; maxAge?: number; maxValue?: number; name?: string; /** só jogadores sem clube */ freeOnly?: boolean;
@@ -341,7 +367,7 @@ export interface CareerOverviewDto {
 
 // ---------------------------------------------------------------- ciclo de carreira (Fase 8A)
 /** Tela do jogo para onde uma mensagem da caixa de entrada leva (ação sugerida). */
-export type InboxAction = 'overview' | 'squad' | 'tactics' | 'contracts' | 'season' | 'transfers' | 'scouting' | 'youth' | 'training' | 'staff' | 'medical' | 'infrastructure' | 'board' | 'finance' | 'trophies';
+export type InboxAction = 'overview' | 'squad' | 'tactics' | 'contracts' | 'season' | 'transfers' | 'scouting' | 'youth' | 'training' | 'staff' | 'medical' | 'infrastructure' | 'board' | 'finance' | 'trophies' | 'history';
 /** Mensagem da caixa de entrada do treinador. */
 export interface NewsDto {
   id: number; date: string; kind: 'season' | 'trophy' | 'transfer' | 'contract' | 'youth' | 'retirement' | 'offer' | 'staff' | 'medical' | 'market' | 'board' | 'squad';
@@ -410,8 +436,49 @@ export interface HistoryRowDto {
   played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; points: number;
   outcome: 'champion' | 'promoted' | 'relegated' | null; prize: number;
 }
-export interface TrophyDto { season: number; competitionName: string; country: string; clubName: string; wonByUser: boolean }
-export interface TrophyRoomDto { mine: TrophyDto[]; champions: TrophyDto[] }
+/** Sala de troféus (v0.8.10): prateleiras por tipo de competição. */
+export type TrophyKindDto = 'league' | 'cup' | 'supercup' | 'state' | 'regional' | 'other';
+export interface TrophyLogoDto { kind: 'leagues' | 'cups'; id: string }
+/** Taça de uma competição: títulos no jogo (`wins`, mais recente primeiro) + históricos do pacote de dados ("antes da carreira"). */
+export interface TrophyCaseDto {
+  key: string; name: string; kind: TrophyKindDto; tier: number | null; logo: TrophyLogoDto | null;
+  total: number; historical: number; historicalYears: string | null;
+  wins: Array<{ season: number; label: string; byUser: boolean }>;
+}
+export interface TrophyRoomDto {
+  club: { id: string; name: string } | null;
+  /** clubes do treinador (atual primeiro, depois as passagens mais recentes) */
+  clubs: Array<{ id: string; name: string; current: boolean }>;
+  cases: TrophyCaseDto[];
+  totals: { all: number; inGame: number; historical: number; byUser: number };
+  coachTitles: Array<{ season: number; label: string; competition: string; key: string; kind: TrophyKindDto; logo: TrophyLogoDto | null; clubId: string; clubName: string }>;
+  champions: Array<{ season: number; label: string; competition: string; kind: TrophyKindDto; country: string; clubName: string; wonByUser: boolean }>;
+}
+
+/** Histórico da carreira e licenças do treinador (v0.8.10). */
+export type LicenseIdDto = 'C' | 'B' | 'A' | 'PRO';
+export interface CoachLicenseDto {
+  id: LicenseIdDto; name: string; status: 'held' | 'course' | 'available' | 'locked'; obtained: string | null; initial: boolean;
+  courseDays: number; reputationBonus: number; reputationCap: number; requirement: string; /** motivo de não poder matricular */ blocked: string | null;
+  course: { start: string; end: string; progress: number; waived: boolean } | null; requiredBy: string;
+}
+export interface CoachSeasonDto {
+  season: number; label: string; clubId: string; clubName: string; competition: string | null; position: number | null;
+  objective: string | null; met: boolean | null; played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number;
+  titles: number; reputationStart: number | null; reputationEnd: number | null; endReason: 'season' | 'sacked' | 'left' | 'current'; start: string; end: string;
+}
+export interface CoachCareerDto {
+  coach: {
+    name: string; nationality: string; age: number; reputation: number; reputationCap: number; license: LicenseIdDto | 'none'; licenseName: string;
+    clubId: string | null; clubName: string | null; requiredHere: LicenseIdDto | null; compliant: boolean;
+  };
+  totals: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; pointsPct: number; titles: number; clubs: number; seasons: number };
+  /** mais recente primeiro (a temporada em andamento, se houver, com endReason 'current') */
+  seasons: CoachSeasonDto[];
+  licenses: CoachLicenseDto[];
+  careerDays: number; employedSeasons: number;
+  attributes: CoachAttributes; points: number;
+}
 
 // ---------------------------------------------------------------- olheiros e categorias de base (Fase 8B)
 export type { ScoutCriteria, ScoutScope } from '../game/scouting-engine/tasks.ts';
@@ -546,13 +613,22 @@ export interface ConversationsDto {
 }
 export interface TalkResultDto { message: string; conversations: ConversationsDto }
 
+export interface BoardObjectiveDto {
+  kind: string; importance: 'essential' | 'important' | 'desirable'; importanceLabel: string; label: string;
+  status: 'pending' | 'on_track' | 'close' | 'off_track' | 'met' | 'missed'; /** 0–1, para a barra */ progress: number; detail: string;
+  /** confiança ganha ou perdida na avaliação da temporada */ reward: { met: number; missed: number };
+}
+export interface ClubProfileBoardDto { size: 'giant' | 'big' | 'medium' | 'small'; sizeLabel: string; phase: 'relegated' | 'promoted' | 'crisis' | 'rebuilding' | 'rising' | 'stable'; phaseLabel: string; phaseText: string }
 export interface BoardOverviewDto {
   employed: boolean; coachReputation: number;
   /** atributos do treinador (1–20) e pontos ainda não distribuídos */ coachAttributes: CoachAttributes; coachPoints: number;
   spells: Array<{ clubName: string; start: string; end: string | null; reason: 'sacked' | 'left' | null }>;
   offers: Array<{ id: number; clubName: string; league: string; reputation: number; date: string; expires: string }>;
   club: {
-    name: string; confidence: number; warning: boolean;
+    name: string; clubId: string; confidence: number; warning: boolean;
+    /** tamanho e fase do clube no início da temporada (null em saves sem a classificação) */ profile: ClubProfileBoardDto | null;
+    /** todos os objetivos da temporada (liga incluída) com andamento */ objectives: BoardObjectiveDto[];
+    /** confiança no dia 1º de cada mês e nas avaliações (até 24 pontos) */ confidenceHistory: Array<{ date: string; confidence: number }>;
     objective: { label: string; target: number; expected: number; position: number | null; played: number; status: BoardStatus };
     secondary: Array<{ label: string; status: BoardStatus; detail: string }>;
     budgets: { transfer: number; spent: number; remaining: number; wageCeiling: number; payroll: number };
@@ -624,6 +700,13 @@ export interface GameApi {
   counterOffer(profileId: string, careerId: string, offerId: number, fee: number): Promise<IpcResult<CounterOfferResultDto>>;
   setListed(profileId: string, careerId: string, playerId: string, listed: boolean): Promise<IpcResult<true>>;
   getFinance(profileId: string, careerId: string): Promise<IpcResult<FinanceOverviewDto>>;
+  getFinanceLedger(profileId: string, careerId: string, query: { page: number; category?: string }): Promise<IpcResult<FinanceLedgerDto>>;
+  /** contraproposta a uma empresa: valor mensal pedido e temporadas (1–4) */
+  negotiateSponsor(profileId: string, careerId: string, input: { offerId: string; monthly: number; years: number }): Promise<IpcResult<SponsorNegotiationDto>>;
+  /** aceita o que a empresa oferece hoje (proposta ou última contraproposta) */
+  acceptSponsorOffer(profileId: string, careerId: string, offerId: string, years: number): Promise<IpcResult<{ message: string }>>;
+  terminateSponsor(profileId: string, careerId: string, kind: SponsorKindDto): Promise<IpcResult<{ message: string }>>;
+  searchSponsors(profileId: string, careerId: string, kind: SponsorKindDto): Promise<IpcResult<{ message: string }>>;
   getTactics(profileId: string, careerId: string): Promise<IpcResult<TacticsOverviewDto>>;
   saveScheme(profileId: string, careerId: string, scheme: SchemeInput): Promise<IpcResult<SchemeDto>>;
   duplicateScheme(profileId: string, careerId: string, schemeId: string): Promise<IpcResult<SchemeDto>>;
@@ -647,7 +730,8 @@ export interface GameApi {
   /** rede social do futebol (aba Notícias) */
   getSocialFeed(profileId: string, careerId: string, filter: SocialFilter): Promise<IpcResult<SocialFeedDto>>;
   getHistory(profileId: string, careerId: string): Promise<IpcResult<HistoryRowDto[]>>;
-  getTrophies(profileId: string, careerId: string): Promise<IpcResult<TrophyRoomDto>>;
+  /** `clubId` opcional: clube exibido (padrão: o atual ou, sem clube, o último) */
+  getTrophies(profileId: string, careerId: string, clubId?: string): Promise<IpcResult<TrophyRoomDto>>;
   getScouting(profileId: string, careerId: string): Promise<IpcResult<ScoutingOverviewDto>>;
   hireScout(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
   fireScout(profileId: string, careerId: string, scoutId: string): Promise<IpcResult<number>>;
@@ -675,6 +759,8 @@ export interface GameApi {
   getInfrastructure(profileId: string, careerId: string): Promise<IpcResult<InfrastructureOverviewDto>>;
   startUpgrade(profileId: string, careerId: string, kind: FacilityKind): Promise<IpcResult<true>>;
   getBoard(profileId: string, careerId: string): Promise<IpcResult<BoardOverviewDto>>;
+  getCoachCareer(profileId: string, careerId: string): Promise<IpcResult<CoachCareerDto>>;
+  enrollLicense(profileId: string, careerId: string, license: LicenseIdDto): Promise<IpcResult<{ message: string; career: CoachCareerDto }>>;
   getClubInfo(profileId: string, careerId: string, clubId: string): Promise<IpcResult<ClubInfoDto>>;
   getClubProfile(profileId: string, careerId: string, clubId: string): Promise<IpcResult<ClubProfileDto>>;
   getConversations(profileId: string, careerId: string): Promise<IpcResult<ConversationsDto>>;

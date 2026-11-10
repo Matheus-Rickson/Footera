@@ -18,7 +18,8 @@ import { CalendarView } from './CalendarView.tsx';
 import { CompetitionsView } from './CompetitionsView.tsx';
 import { SeasonView } from './SeasonView.tsx';
 import { ContractsView } from './ContractsView.tsx';
-import { HistoryView, TrophiesView } from './CareerRecordsView.tsx';
+import { CoachCareerView } from './CoachCareer.tsx';
+import { TrophiesView } from './TrophyRoom.tsx';
 import { SocialView } from './SocialView.tsx';
 import { InboxView } from './InboxView.tsx';
 import { ScoutingView } from './ScoutingView.tsx';
@@ -134,7 +135,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         </div>
       </nav>}
 
-      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview') ? 'content content-fit' : 'content'}>
+      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview' || view === 'board' || view === 'trophies' || view === 'history' || view === 'finance') ? 'content content-fit' : 'content'}>
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>
@@ -188,7 +189,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         {!match && !player && !clubPage && view === 'board' && <BoardView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && !clubPage && view === 'inbox' && <InboxView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} coachFirstName={coach.firstName} clubName={club?.name ?? null} onGo={(v) => go(v)} onChanged={() => void onRefresh()} onOpenPlayer={setPlayer} />}
         {!match && !player && !clubPage && view === 'news' && <SocialView profileId={profileId} careerId={careerId} refreshKey={refreshKey} today={summary.gameDate} />}
-        {!match && !player && !clubPage && view === 'history' && <HistoryView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
+        {!match && !player && !clubPage && view === 'history' && <CoachCareerView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onChanged={onRefresh} />}
         {!match && !player && !clubPage && view === 'trophies' && <TrophiesView profileId={profileId} careerId={careerId} refreshKey={refreshKey} />}
         {!match && !player && !clubPage && view === 'calendar' && <CalendarView profileId={profileId} careerId={careerId} refreshKey={refreshKey} club={club} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} />}
         {!match && !player && !clubPage && view === 'competitions' && <CompetitionsView profileId={profileId} careerId={careerId} refreshKey={refreshKey} onOpenPlayer={setPlayer} onOpenMatch={(id) => setMatch({ fixtureId: id, autoplay: false })} onOpenClub={setClubPage} />}

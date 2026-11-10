@@ -72,7 +72,7 @@ let cache: { key: string; world: World; applied: string[]; warnings: string[]; o
  */
 let cacheTag = 'dev';
 export function setUniverseCacheTag(tag: string): void { cacheTag = tag; cache = null; }
-const UNIVERSE_CACHE_FORMAT = 1;
+const UNIVERSE_CACHE_FORMAT = 2; // 2: salário mínimo por país (v0.8.10)
 const cacheDir = (dataDir: string) => path.join(dataDir, 'cache');
 
 /** Pacotes ativos (sem ler os dados) na ordem de carga; a chave do cache muda se qualquer arquivo de um deles mudar. */

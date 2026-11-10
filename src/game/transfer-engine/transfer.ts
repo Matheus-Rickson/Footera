@@ -39,9 +39,12 @@ export function askingPrice(p: PricedPlayer, seller: { balance: number }): numbe
   return Math.max(Math.round(ask / 1000) * 1000, 1000);
 }
 
-/** Salário mensal que o jogador exige para se transferir (depende do prestígio do novo clube e da ambição). */
-export function wageDemand(p: { marketValue: number; salary: number; ambition: number }, fromReputation: number, toReputation: number): number {
-  const base = Math.max(p.marketValue * 0.012, p.salary * 1.05, 1500);
+/**
+ * Salário mensal que o jogador exige para se transferir (depende do prestígio do novo clube e da ambição). `floor` = salário mínimo do país
+ * do clube que contrata (`minSalary`); o padrão é o piso antigo de 1.500.
+ */
+export function wageDemand(p: { marketValue: number; salary: number; ambition: number }, fromReputation: number, toReputation: number, floor = 1500): number {
+  const base = Math.max(p.marketValue * 0.012, p.salary * 1.05, floor);
   const prestige = toReputation - fromReputation;
   const f = prestige >= 10 ? 0.92 : prestige <= -10 ? 1.2 : 1;
   return Math.round((base * f * (0.9 + 0.2 * (p.ambition / 20))) / 100) * 100;

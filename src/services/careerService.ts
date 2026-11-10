@@ -1,4 +1,5 @@
 import type { SqlDb } from '../database/types.ts';
+import { ensureLicenses } from '../database/repositories/coachLicenseRepository.ts';
 import { withTransaction } from '../database/types.ts';
 import { migrate } from '../database/migrator.ts';
 import { saveWorld } from '../database/repositories/worldRepository.ts';
@@ -67,6 +68,7 @@ export function createCareer(db: SqlDb, universe: World, coach: Coach, clubId: s
   // aposentadorias anunciadas para o fim da temporada (com simulação prévia, as do país do clube são sorteadas na virada que abre a carreira)
   planRetirementsAtCreation(db, world.startDate, preCareer ? userSeason(db).turnover : null);
   if (preCareer) fastForwardToCareerStart(db, now);
+  ensureLicenses(db); // licença inicial (e matrícula, se o clube exigir mais), no primeiro dia de trabalho
   ensureSquadRoles(db); // tempo de jogo combinado com cada jogador do elenco (status padrão pela força)
 }
 

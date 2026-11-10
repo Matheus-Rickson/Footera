@@ -7,8 +7,9 @@ import { advanceTime, getCareerState, getCompetitionTable, listCompetitions } fr
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { makeOffer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
 import {
-  getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renegotiateContract, SeasonError, startNextSeason,
+  getContracts, getHistory, getSeasonStatus, isSeasonComplete, renegotiateContract, SeasonError, startNextSeason,
 } from '../database/repositories/seasonRepository.ts';
+import { getTrophyRoom } from '../database/repositories/trophyRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { PEAK_AGE, prizeMoney } from '../game/career-engine/development.ts';
 import { renewalDemand } from '../game/career-engine/contracts.ts';
@@ -96,10 +97,12 @@ test('Virada: rebaixados e promovidos trocam de liga por país, troféus e regis
   const prev = hist.find((h) => h.season === 2026)!;
   assert.equal(prev.position, report.previous!.position);
   assert.equal(prev.prize, report.previous!.prize);
-  const room = getTrophies(db);
+  const room = getTrophyRoom(db);
   assert.equal(room.champions.length, 6, '4 ligas + 2 copas nacionais');
-  assert.equal(room.mine.length, n(db, 'SELECT COUNT(*) AS n FROM trophies WHERE club_id = ?', clubId));
-  assert.ok(room.mine.every((t) => t.clubName === String(db.prepare('SELECT name FROM clubs WHERE id = ?').get(clubId)!.name)));
+  assert.equal(room.coachTitles.length, n(db, 'SELECT COUNT(*) AS n FROM trophies WHERE club_id = ?', clubId));
+  assert.ok(room.coachTitles.every((t) => t.clubName === String(db.prepare('SELECT name FROM clubs WHERE id = ?').get(clubId)!.name)));
+  assert.equal(room.club?.id, clubId);
+  assert.equal(room.totals.inGame, room.coachTitles.length);
 });
 
 test('Virada: prêmios passam por makePoster e saldo = saldo inicial + lançamentos para TODOS os clubes, também na temporada seguinte', async () => {

@@ -2,25 +2,20 @@ import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import {
-  attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, SPONSOR_SHARE, sponsorTotalMonthly, staffMonthly, staffUserMonthly, tvMonthly,
+  attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, SPONSOR_SHARE, sponsorFloorOf, sponsorTotalMonthly, minSalary, rebasedFloorSalary, staffMonthly, staffUserMonthly, ticketPrice, tvMonthly,
   type ClubEcon, type FinanceCategory, type SponsorKind, type Weather,
 } from '../../game/finance-engine/finance.ts';
 import { addDays } from '../../shared/date.ts';
-import type { FinanceOverviewDto } from '../../shared/api.ts';
+import { SPONSOR_KIND_LABEL as KIND_LABEL, SPONSOR_NAMES } from '../../game/finance-engine/sponsors.ts';
+import type { FinanceLedgerDto, FinanceOverviewDto } from '../../shared/api.ts';
+import { seasonLabelFor } from '../../game/career-engine/calendar.ts';
 import { getCareerState } from './careerRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
-import { CURRENT_COMP } from './countrySeasonRepository.ts';
+import { CURRENT_COMP, userSeason } from './countrySeasonRepository.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 const KINDS: SponsorKind[] = ['shirt', 'kit', 'stadium'];
-const KIND_LABEL: Record<SponsorKind, string> = { shirt: 'Patrocínio master (camisa)', kit: 'Fornecedora de material esportivo', stadium: 'Naming rights do estádio' };
-const SPONSOR_NAMES: Record<SponsorKind, string[]> = {
-  shirt: ['Banco Aurora', 'Telecom Nova', 'Seguros Horizonte', 'Energia Solaris', 'Rede Atlântica', 'Construtora Pilar', 'Aero Cumulus', 'Cervejaria Vale', 'Mineração Meridional', 'Financeira Prisma'],
-  kit: ['Kinetic', 'Vexa', 'Orbita', 'Lumo', 'Stride', 'Zefir', 'Nuvem Sports'],
-  stadium: ['Arena Cobalto', 'Grupo Savana', 'Laticínios Serra', 'Hotéis Lagoa', 'Supermercados Faro', 'Tecnologia Íris'],
-};
-
 const monthOf = (date: string) => date.slice(0, 7);
 function nextMonth(m: string): string {
   const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
@@ -73,6 +68,15 @@ function createDeal(db: SqlDb, seed: string, econ: ClubEcon, clubId: string, kin
 const coveringDeal = (db: SqlDb, clubId: string, kind: SponsorKind, date: string) =>
   db.prepare('SELECT * FROM sponsor_deals WHERE club_id = ? AND kind = ? AND start_date <= ? AND end_date >= ? ORDER BY end_date DESC LIMIT 1').get(clubId, kind, date, date);
 
+/**
+ * Cota do clube do usuário que ele mesmo deixou vaga (rescindiu o último contrato e ainda não fechou outro): não é preenchida
+ * automaticamente. Contrato que só venceu continua sendo renovado (propostas e aceite automático em `sponsorRepository`).
+ */
+export function vacatedByUser(db: SqlDb, clubId: string, kind: SponsorKind): boolean {
+  const last = db.prepare('SELECT terminated_on FROM sponsor_deals WHERE club_id = ? AND kind = ? ORDER BY start_date DESC, rowid DESC LIMIT 1').get(clubId, kind);
+  return last != null && last.terminated_on != null;
+}
+
 const worldSeed = (db: SqlDb) => getMeta(db, 'world_seed') ?? 'sem-semente';
 
 /** Cria contratos de patrocínio iniciais (vencimentos escalonados) para clubes sem contrato vigente na data. */
@@ -81,6 +85,7 @@ export function ensureSponsorDeals(db: SqlDb, date: string): void {
   for (const c of db.prepare(`${ECON_SQL} WHERE c.id IN ${FULL_CLUBS}`).all().map(toClub)) {
     for (const kind of KINDS) {
       if (coveringDeal(db, c.id, kind, date)) continue;
+      if (vacatedByUser(db, c.id, kind)) continue;
       const rng = createRng(`sponsor-len:${seed}:${c.id}:${kind}:${date}`);
       createDeal(db, seed, c.econ, c.id, kind, date, rng.int(180, 1460));
     }
@@ -92,8 +97,56 @@ export function ensureFinance(db: SqlDb): void {
   withTransaction(db, () => {
     const st = getCareerState(db);
     if (getMeta(db, 'finance_last_month') === null) setMeta(db, 'finance_last_month', monthOf(st.gameDate));
+    applySponsorFloor(db, st.gameDate);
+    applySalaryFloor(db);
     ensureSponsorDeals(db, st.gameDate);
   });
+}
+
+/** Salário mínimo do país do clube (`minSalary`): piso dos pedidos de salário de quem joga ou vai jogar nele. */
+export function wageFloorOf(db: SqlDb, clubId: string): number {
+  return minSalary(N(db.prepare('SELECT co.economy FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)?.economy ?? 1));
+}
+
+/** Economia do país de uma nacionalidade (1 para quem não é de um país do universo). */
+export function nationEconomy(db: SqlDb, code: string): number {
+  return N(db.prepare('SELECT economy FROM countries WHERE code = ?').get(code)?.economy ?? 1);
+}
+
+/**
+ * Saves anteriores ao salário mínimo por país (v0.8.10): quem ganha exatamente o piso antigo (1.500) porque o valor dava menos passa ao
+ * salário pelo valor com o mínimo do país do clube (livres: da nacionalidade). Jovens da base não mudam. Uma vez por save. NÃO abre transação.
+ */
+function applySalaryFloor(db: SqlDb): void {
+  if (getMeta(db, 'salary_floor') !== null) return;
+  const up = db.prepare('UPDATE players SET salary = ? WHERE id = ?');
+  const rows = db.prepare(`SELECT p.id, p.salary, p.market_value, p.nationality, co.economy AS club_econ FROM players p
+    LEFT JOIN clubs cl ON cl.id = p.club_id LEFT JOIN countries co ON co.id = cl.country_id
+    WHERE p.salary = 1500 AND (p.club_id IS NOT NULL OR p.youth_club_id IS NULL)`).all();
+  for (const r of rows) {
+    const econ = r.club_econ != null ? N(r.club_econ) : nationEconomy(db, S(r.nationality));
+    const next = rebasedFloorSalary(N(r.salary), N(r.market_value), econ);
+    if (next !== N(r.salary)) up.run(next, S(r.id));
+  }
+  setMeta(db, 'salary_floor', '1');
+}
+
+/**
+ * Saves anteriores ao piso de patrocínio (v0.8.10): a cota de participação da TV caiu pelo valor do piso, então os contratos em vigor dos
+ * clubes da 3ª divisão para baixo sobem a parte do piso de cada cota (mesma receita total de antes). Uma vez por save; carreira nova só
+ * marca (os contratos já nascem com o piso). NÃO abre transação.
+ */
+function applySponsorFloor(db: SqlDb, date: string): void {
+  if (getMeta(db, 'sponsor_floor') !== null) return;
+  const up = db.prepare('UPDATE sponsor_deals SET monthly_amount = monthly_amount + ? WHERE id = ?');
+  for (const c of db.prepare(ECON_SQL).all().map(toClub)) {
+    const floor = sponsorFloorOf(c.econ.tier);
+    if (!floor) continue;
+    for (const d of db.prepare("SELECT id, kind FROM sponsor_deals WHERE club_id = ? AND end_date >= ? AND (terminated_on IS NULL OR terminated_on = '')").all(c.id, date)) {
+      up.run(Math.round(c.econ.econ * floor * SPONSOR_SHARE[S(d.kind) as SponsorKind]), S(d.id));
+    }
+  }
+  setMeta(db, 'sponsor_floor', '1');
 }
 
 /** Liquida (uma única vez) cada mês cujo dia 1 já passou. NÃO abre transação: chame dentro de uma. */
@@ -116,6 +169,7 @@ export function settleFinances(db: SqlDb, upTo: string): number {
       post(c.id, date, 'merchandising', merchMonthly(c.econ), 'Produtos oficiais e licenciamento');
       for (const kind of KINDS) {
         let deal = coveringDeal(db, c.id, kind, date);
+        if (!deal && vacatedByUser(db, c.id, kind)) continue; // cota rescindida pelo usuário: sem receita até um contrato novo
         if (!deal) {
           createDeal(db, seed, c.econ, c.id, kind, date, createRng(`sponsor-renew:${seed}:${c.id}:${kind}:${date}`).int(730, 1460));
           deal = coveringDeal(db, c.id, kind, date)!;
@@ -151,7 +205,7 @@ export function recordGate(db: SqlDb, post: Poster, f: { id: string; date: strin
   return { attendance: att, revenue };
 }
 
-export function getFinanceOverview(db: SqlDb): FinanceOverviewDto {
+export function getFinanceOverview(db: SqlDb): Omit<FinanceOverviewDto, 'sponsorSlots'> {
   const st = getCareerState(db);
   const club = db.prepare(`${ECON_SQL} WHERE c.id = ?`).get(st.clubId)!;
   const econ = toClub(club).econ;
@@ -187,16 +241,45 @@ export function getFinanceOverview(db: SqlDb): FinanceOverviewDto {
   const income = tvMonthly(econ) + merchMonthly(econ) + sponsorsMonthly + gateMonthly;
   const expense = wageBill + youthBill + scoutBill + coachingBill + staffFixed + maintenanceMonthly(econ) + operationsMonthly(econ);
   const net = income - expense;
+  // saldo no fim de cada mês: de trás para frente a partir do saldo de hoje (o mês corrente termina no saldo atual)
+  const monthTotals = db.prepare('SELECT month, SUM(amount) AS t FROM finance_months WHERE club_id = ? GROUP BY month ORDER BY month DESC LIMIT 24').all(st.clubId);
+  const balanceHistory: Array<{ month: string; balance: number }> = [];
+  let running = balance;
+  for (const r of monthTotals) { balanceHistory.push({ month: S(r.month), balance: running }); running -= N(r.t); }
+  balanceHistory.reverse();
+  // temporada corrente × anterior (janelas da temporada do país do clube)
+  const cs = userSeason(db);
+  const prevStarts = `${Number(cs.starts.slice(0, 4)) - 1}${cs.starts.slice(4)}`;
+  const byCategory = (fromMonth: string, toMonth: string | null) => db.prepare(`SELECT category, SUM(amount) AS a FROM finance_months WHERE club_id = ? AND month >= ? ${toMonth ? 'AND month < ?' : ''} GROUP BY category ORDER BY category`)
+    .all(...(toMonth ? [st.clubId, fromMonth, toMonth] : [st.clubId, fromMonth])).map((r) => ({ category: S(r.category), amount: N(r.a) }));
+  const previous = byCategory(prevStarts.slice(0, 7), cs.starts.slice(0, 7));
+  const b = db.prepare('SELECT transfer_budget, transfer_spent, wage_ceiling FROM board_state WHERE id = 1 AND club_id = ?').get(st.clubId);
   return {
+    balanceHistory,
+    season: { label: cs.label, current: byCategory(cs.starts.slice(0, 7), null), previousLabel: previous.length ? seasonLabelFor(cs.season - 1, cs.start, false) : null, previous },
+    budgets: b ? { transfer: N(b.transfer_budget), spent: N(b.transfer_spent), remaining: Math.max(0, N(b.transfer_budget) - N(b.transfer_spent)), wageCeiling: N(b.wage_ceiling), payroll: wageBill } : null,
+    ticketPrice: ticketPrice(econ), capacity: econ.capacity,
     balance, lastSettledMonth: lastMonth, last12, lastMonth: breakdown,
     projection: { income, expense, net, wageBill, youthBill, scoutBill, coachingBill, staffFixed, gate: gateMonthly, gateEstimated },
     runwayMonths: net < 0 && balance > 0 ? Math.floor(balance / -net) : null,
     sponsors: deals.map((d) => ({ id: S(d.id), kind: S(d.kind) as SponsorKind, sponsor: S(d.sponsor_name), monthly: N(d.monthly_amount), start: S(d.start_date), end: S(d.end_date) })),
     gates: db.prepare(`SELECT m.fixture_id, f.match_date, a.name AS away, m.attendance, st.capacity, m.gate_revenue FROM matches m JOIN fixtures f ON f.id = m.fixture_id
       JOIN clubs a ON a.id = f.away_club_id JOIN clubs h ON h.id = f.home_club_id JOIN stadiums st ON st.id = h.stadium_id
-      WHERE f.home_club_id = ? AND m.attendance IS NOT NULL ORDER BY f.match_date DESC LIMIT 10`).all(st.clubId)
+      WHERE f.home_club_id = ? AND m.attendance IS NOT NULL ORDER BY f.match_date DESC LIMIT 24`).all(st.clubId)
       .map((r) => ({ fixtureId: S(r.fixture_id), date: S(r.match_date), opponent: S(r.away), attendance: N(r.attendance), capacity: N(r.capacity), revenue: N(r.gate_revenue) })),
-    ledger: db.prepare('SELECT date, category, amount, description FROM finance_ledger WHERE club_id = ? ORDER BY id DESC LIMIT 60').all(st.clubId)
-      .map((r) => ({ date: S(r.date), category: S(r.category) as FinanceCategory, amount: N(r.amount), description: S(r.description) })),
   };
+}
+
+export const LEDGER_PAGE_SIZE = 14;
+/** Extrato do clube do usuário, paginado (mais recente primeiro) e filtrado por categoria. */
+export function getLedgerPage(db: SqlDb, page: number, category?: string): FinanceLedgerDto {
+  const st = getCareerState(db);
+  const where = category ? 'club_id = ? AND category = ?' : 'club_id = ?';
+  const args = category ? [st.clubId, category] : [st.clubId];
+  const total = N(db.prepare(`SELECT COUNT(*) AS n FROM finance_ledger WHERE ${where}`).get(...args)!.n);
+  const pages = Math.max(1, Math.ceil(total / LEDGER_PAGE_SIZE));
+  const p = Math.min(Math.max(0, Math.floor(page)), pages - 1);
+  const rows = db.prepare(`SELECT date, category, amount, description FROM finance_ledger WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...args, LEDGER_PAGE_SIZE, p * LEDGER_PAGE_SIZE)
+    .map((r) => ({ date: S(r.date), category: S(r.category), amount: N(r.amount), description: S(r.description) }));
+  return { rows, total, page: p, pageSize: LEDGER_PAGE_SIZE };
 }

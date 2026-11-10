@@ -1,27 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BoardOverviewDto, BoardStatus } from '../../shared/api.ts';
-import { Plus } from 'lucide-react';
+import { Briefcase, CheckCircle2, CircleDashed, CircleX, Flag, TrendingUp } from 'lucide-react';
+import type { BoardObjectiveDto, BoardOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { Stars } from '../stars.tsx';
-import { HelpTip } from '../help.tsx';
-import { COACH_ATTRS, type CoachAttrKey } from '../../shared/coachAttributes.ts';
-import { COACH_ATTR_CAP, COACH_EFFECT } from '../../game/coach-engine/coach.ts';
-
-/** O que cada atributo do treinador faz no jogo (efeito máximo, com o atributo em 20; na base 5 não há efeito). */
-const pct = (x: number) => `${Math.round(x * 100)}%`;
-const COACH_EFFECT_TEXT: Record<CoachAttrKey, string> = {
-  tactics: `Força do time em campo: até +${String(COACH_EFFECT.tactics * 100).replace('.', ',')}% (soma ao entrosamento).`,
-  motivation: `Conversa no vestiário: efeito bom até ${pct(COACH_EFFECT.talkBoost)} maior; efeito ruim até ${pct(COACH_EFFECT.talkSoften)} menor.`,
-  youth: `Evolução mensal dos jogadores de até 21 anos do seu clube (elenco e base): até +${pct(COACH_EFFECT.youth)}.`,
-  discipline: `Chance de cartão (amarelo e vermelho) dos seus jogadores: até −${pct(COACH_EFFECT.cards)}.`,
-  negotiation: `Taxa pedida pelos clubes e salário pedido pelos jogadores (contratação e renovação): até −${pct(COACH_EFFECT.negotiation)}.`,
-  adaptability: `Quem entra ou muda de posição por decisão sua rende até +${pct(COACH_EFFECT.inGame)}; ao assumir um clube novo, até +${COACH_EFFECT.newClub} de confiança da diretoria.`,
-};
+import { ClubCrest } from '../flags.tsx';
+import { useImages } from '../images.ts';
+import { Gauge, LineChart } from '../charts.tsx';
+import { HelpButton } from '../helpDialog.tsx';
+import { moneyShort } from './FinanceView.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
-const STATUS: Record<BoardStatus, { label: string; cls: string }> = {
-  pending: { label: 'a começar', cls: 'muted' }, on_track: { label: 'no caminho', cls: 'pos' }, close: { label: 'perto da meta', cls: 'notice-text' }, off_track: { label: 'fora da meta', cls: 'neg' },
+const STATUS: Record<BoardObjectiveDto['status'], { label: string; cls: string }> = {
+  pending: { label: 'A começar', cls: 'bo-st-pending' }, on_track: { label: 'No caminho', cls: 'bo-st-on' }, close: { label: 'Perto da meta', cls: 'bo-st-close' },
+  off_track: { label: 'Fora da meta', cls: 'bo-st-off' }, met: { label: 'Cumprido', cls: 'bo-st-on' }, missed: { label: 'Não cumprido', cls: 'bo-st-off' },
 };
+const ICON = { met: CheckCircle2, missed: CircleX } as const;
+const IMPORTANCE_ORDER: Array<BoardObjectiveDto['importance']> = ['essential', 'important', 'desirable'];
+const dayLabel = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props) {
   const [ov, setOv] = useState<BoardOverviewDto | null>(null);
@@ -29,91 +24,168 @@ export function BoardView({ profileId, careerId, refreshKey, onChanged }: Props)
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmJob, setConfirmJob] = useState<number | null>(null);
+  const img = useImages();
   const load = useCallback(async () => { setOv(await unwrap(window.api.getBoard(profileId, careerId))); }, [profileId, careerId]);
   useEffect(() => { load().catch((e) => setError(errMsg(e))); }, [load, refreshKey]);
   async function run(fn: () => Promise<string | null>, refreshAll = false) {
     setBusy(true); setError(null); setNotice(null);
     try { setNotice(await fn()); setConfirmJob(null); await load(); if (refreshAll) await onChanged(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
-
   if (!ov) return error ? <p className="error" role="alert">{error}</p> : <p className="muted">Carregando diretoria…</p>;
   const c = ov.club;
 
-  return (
-    <div className="grid1">
-      {notice && <p className="ok" role="status">{notice}</p>}
-      {error && <p className="error" role="alert">{error}</p>}
-      {!ov.employed && <p className="notice">Você está <strong>sem clube</strong>. O calendário continua; clubes com vaga fazem propostas conforme a sua reputação (<Stars reputation={ov.coachReputation} />). Aceite uma para voltar a trabalhar.</p>}
-
-      {c && (
-        <div className="grid2">
-          <section className="card">
-            <h2>Confiança da diretoria — {c.name}</h2>
-            <div className="meter"><i className={c.confidence < 25 ? 'low' : c.confidence < 50 ? 'mid' : ''} style={{ width: `${c.confidence}%` }} /></div>
-            <p><strong>{Math.round(c.confidence)}</strong>/100 {c.warning && <span className="neg">· cargo ameaçado</span>}</p>
-            <p className="muted small">Vitórias sobem e derrotas descem a confiança; todo dia 1º a diretoria compara a posição com a meta e olha o caixa. Abaixo de 25 vem um aviso;
-              chegando a 10 (depois de 6 jogos no cargo) o treinador é demitido. Na virada, a temporada é avaliada.</p>
-          </section>
-          <section className="card">
-            <h2>Objetivos da temporada</h2>
-            <p><strong>{c.objective.label}</strong> — meta: terminar até o {c.objective.target}º (expectativa pelo elenco: {c.objective.expected}º)</p>
-            <p>Hoje: {c.objective.position ? `${c.objective.position}º em ${c.objective.played} jogo(s)` : 'liga ainda não começou'} · <span className={STATUS[c.objective.status].cls}>{STATUS[c.objective.status].label}</span></p>
-            <h3>Secundários</h3>
-            <ul className="plain">{c.secondary.map((s) => <li key={s.label}>{s.label} · <span className={STATUS[s.status].cls}>{STATUS[s.status].label}</span> <span className="muted small">({s.detail})</span></li>)}</ul>
-          </section>
-          <section className="card wide">
-            <h2>Orçamentos</h2>
-            <p>Transferências: <strong>{fmtMoney(c.budgets.remaining)}</strong> disponíveis (orçamento {fmtMoney(c.budgets.transfer)}, gasto {fmtMoney(c.budgets.spent)}; vendas devolvem metade da taxa)</p>
-            <p>Folha salarial: <strong>{fmtMoney(c.budgets.payroll)}</strong> de um teto de {fmtMoney(c.budgets.wageCeiling)} por mês</p>
-            <p className="muted small">A diretoria barra contratações e renovações que estourem o orçamento ou o teto, e veta valores fora da realidade do clube (taxa acima de 2× o valor de mercado,
-              salário acima de 2,2× o justo). Obras acima de 30% do caixa precisam de aprovação. Cada pedido de aumento pode ser feito uma vez por temporada e depende da confiança (65+).</p>
-            <div className="row">
-              <button className="secondary" disabled={busy || !c.requests.transfer} onClick={() => void run(async () => (await unwrap(window.api.requestBudget(profileId, careerId, 'transfer'))).message)}>Pedir mais orçamento de transferências</button>
-              <button className="secondary" disabled={busy || !c.requests.wage} onClick={() => void run(async () => (await unwrap(window.api.requestBudget(profileId, careerId, 'wage'))).message)}>Pedir aumento do teto da folha</button>
-            </div>
-          </section>
-        </div>
+  const offers = (
+    <section className="card bo-offers">
+      <div className="bo-head"><h2><Briefcase size={16} aria-hidden="true" /> Propostas de emprego ({ov.offers.length})</h2></div>
+      {ov.offers.length === 0 ? <p className="muted small">Nenhuma proposta no momento. Clubes que demitem o técnico procuram treinadores com reputação compatível.</p> : (
+        <ul className="bo-offer-list">
+          {ov.offers.map((o) => (
+            <li key={o.id}>
+              <div className="bo-offer-info"><strong>{o.clubName}</strong><span className="muted small">{o.league}</span><Stars reputation={o.reputation} /></div>
+              <span className="muted small">responder até {fmtDate(o.expires)}</span>
+              <div className="row bo-offer-actions">{confirmJob === o.id
+                ? <><button disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.respondJobOffer(profileId, careerId, o.id, true)); return `Você é o novo treinador do ${o.clubName}.`; }, true)}>Confirmar troca</button>
+                  <button className="secondary" onClick={() => setConfirmJob(null)}>Cancelar</button></>
+                : <><button disabled={busy} onClick={() => setConfirmJob(o.id)}>Aceitar</button>
+                  <button className="secondary" disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.respondJobOffer(profileId, careerId, o.id, false)); return 'Proposta recusada.'; })}>Recusar</button></>}</div>
+            </li>
+          ))}
+        </ul>
       )}
+      {ov.employed && ov.offers.length > 0 && <p className="muted small">Aceitar troca de clube na hora: comissão técnica, olheiros e rotina de treino ficam no clube atual.</p>}
+    </section>
+  );
 
-      <section className="card">
-        <h2>Propostas de emprego ({ov.offers.length})</h2>
-        {ov.offers.length === 0 ? <p className="muted">Nenhuma proposta no momento. Clubes que demitem o técnico procuram treinadores com reputação compatível.</p> : (
-          <table><thead><tr><th>Clube</th><th>Liga</th><th>Reputação</th><th>Recebida</th><th>Responder até</th><th /></tr></thead>
-            <tbody>{ov.offers.map((o) => (
-              <tr key={o.id}><td><strong>{o.clubName}</strong></td><td>{o.league}</td><td><Stars reputation={o.reputation} /></td><td>{fmtDate(o.date)}</td><td>{fmtDate(o.expires)}</td>
-                <td className="row">{confirmJob === o.id
-                  ? <><button disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.respondJobOffer(profileId, careerId, o.id, true)); return `Você é o novo treinador do ${o.clubName}.`; }, true)}>Confirmar troca</button>
-                    <button className="secondary" onClick={() => setConfirmJob(null)}>Cancelar</button></>
-                  : <><button disabled={busy} onClick={() => setConfirmJob(o.id)}>Aceitar</button>
-                    <button className="secondary" disabled={busy} onClick={() => void run(async () => { await unwrap(window.api.respondJobOffer(profileId, careerId, o.id, false)); return 'Proposta recusada.'; })}>Recusar</button></>}</td></tr>))}</tbody></table>
-        )}
-        {ov.employed && ov.offers.length > 0 && <p className="muted small">Aceitar troca de clube na hora: comissão técnica, olheiros e rotina de treino ficam no clube atual.</p>}
+  if (!c) {
+    return (
+      <div className="bo bo-unemployed">
+        {notice && <p className="ok" role="status">{notice}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
+        <p className="notice">Você está <strong>sem clube</strong>. O calendário continua; clubes com vaga fazem propostas conforme a sua reputação (<Stars reputation={ov.coachReputation} />) e a sua licença de treinador. Aceite uma para voltar a trabalhar.</p>
+        {offers}
+      </div>
+    );
+  }
+  const conf = c.confidence;
+  return (
+    <div className="bo">
+      <section className="card bo-top">
+        <ClubCrest id={c.clubId} name={c.name} size={52} src={img.url('clubs', c.clubId)} />
+        <div className="bo-top-name">
+          <h2>{c.name}</h2>
+          {c.profile ? (
+            <div className="bo-chips">
+              <span className="bo-chip"><Flag size={13} aria-hidden="true" /> Clube {c.profile.sizeLabel.toLowerCase()}</span>
+              <span className={`bo-chip bo-phase-${c.profile.phase}`}><TrendingUp size={13} aria-hidden="true" /> {c.profile.phaseLabel}</span>
+              <HelpButton title="Tamanho e fase do clube">
+                <p><strong>Tamanho: {c.profile.sizeLabel}.</strong> Vem da reputação do clube, da divisão e da posição de reputação no país. Gigantes e grandes têm metas mais altas na liga e nas copas.</p>
+                <p><strong>Fase: {c.profile.phaseLabel}.</strong> {c.profile.phaseText}</p>
+                <ul>
+                  <li><strong>Recém-rebaixado</strong>: o acesso imediato vira essencial.</li>
+                  <li><strong>Recém-promovido</strong>: permanência e finanças no azul.</li>
+                  <li><strong>Crise financeira</strong>: caixa negativo ou prejuízo previsto acima de 10% da receita; a diretoria pede corte de 10% na folha.</li>
+                  <li><strong>Reconstrução</strong>: elenco velho (idade média dos 18 mais fortes ≥ 29,5) ou fraco para a reputação; pede jogos para quem tem até 21 anos.</li>
+                  <li><strong>Em ascensão</strong>: terminou a temporada passada 3 ou mais posições acima do esperado.</li>
+                </ul>
+                <p>Tamanho e fase são definidos no início de cada temporada (ou quando você assume o clube).</p>
+              </HelpButton>
+            </div>
+          ) : <span className="muted small">Classificação do clube disponível a partir da próxima temporada.</span>}
+        </div>
+        <div className="bo-fans">
+          <span className="bo-label">Torcida</span>
+          <strong className={c.fans.mood >= 55 ? 'pos' : c.fans.mood >= 40 ? 'notice-text' : 'neg'}>{c.fans.label}</strong>
+          <span className="muted small">{c.fans.detail}</span>
+        </div>
       </section>
 
-      <section className="card">
-        <h2>Carreira do treinador</h2>
-        <p className="row">Reputação: <Stars reputation={ov.coachReputation} size={18} label="Reputação do treinador" />
-          <HelpTip text="Sobe com objetivos cumpridos (mais ainda quando a campanha supera a meta com folga), títulos e acessos; cai com objetivos não cumpridos, rebaixamentos e demissões. Define quais clubes fazem propostas (clubes grandes só chamam treinadores com reputação alta) e dá crédito com a diretoria ao assumir um clube de reputação menor." /></p>
-        <h3 className="row">Atributos {ov.coachPoints > 0 && <span className="bd-points">{ov.coachPoints} ponto(s) para distribuir</span>}
-          <HelpTip text="Escala 1–20. Na avaliação de cada temporada no cargo o treinador ganha 1 ponto, +1 se cumprir o objetivo, +1 por título e +1 por acesso. Cada atributo vai até 20. Os efeitos começam acima de 5 (a base da criação) e são pequenos de propósito." /></h3>
-        <div className="bd-attrs">
-          {COACH_ATTRS.map((a) => {
-            const v = ov.coachAttributes[a.key];
+      <section className="card bo-conf">
+        <div className="bo-head"><h2>Confiança da diretoria
+          <HelpButton title="Confiança da diretoria">
+            <ul>
+              <li>Cada vitória vale +1,5 e cada derrota −1,5 (−2 para quem tem meta de título ou acesso).</li>
+              <li>Todo dia 1º a diretoria compara a posição na liga com a meta (+2 dentro dela, até −6 bem abaixo) e tira 3 se o caixa estiver negativo.</li>
+              <li>Abaixo de 25 vem um aviso; chegando a 10 (depois de 6 jogos no cargo) o treinador é demitido.</li>
+              <li>Na virada, cada objetivo cumprido ou não soma o peso da sua importância. Falhar na liga com a confiança em 15 ou menos também demite.</li>
+            </ul>
+          </HelpButton></h2></div>
+        <div className="bo-conf-body">
+          <Gauge value={conf} max={100} label={c.warning ? 'Cargo ameaçado' : 'de 100'} display={`${Math.round(conf)}`} tone={conf < 25 ? 'bad' : conf < 50 ? 'warn' : 'ok'} />
+          {c.confidenceHistory.length >= 2
+            ? <LineChart ariaLabel="Confiança da diretoria ao longo do tempo" domain={[0, 100]} format={(v) => String(Math.round(v))} compactLabels
+              band={{ from: 0, to: 25, label: 'zona de alerta' }} points={c.confidenceHistory.map((h) => ({ label: dayLabel(h.date), value: h.confidence }))} />
+            : <p className="muted small bo-conf-empty">O histórico aparece a partir do dia 1º do próximo mês.</p>}
+        </div>
+      </section>
+
+      <section className="card bo-obj">
+        <div className="bo-head"><h2>Objetivos da temporada
+          <HelpButton title="Objetivos da temporada">
+            <p>A diretoria define de 4 a 6 objetivos no início da temporada, conforme o tamanho e a fase do clube. Cada um tem uma importância:</p>
+            <ul>
+              <li><strong>Essencial</strong> (a liga): cumprir dá +15 de confiança, falhar tira 20 (e pode custar o cargo).</li>
+              <li><strong>Importante</strong>: +6 ou −8.</li>
+              <li><strong>Desejável</strong>: +3 ou −2.</li>
+            </ul>
+            <p>Objetivos de copa se resolvem quando o clube é eliminado ou chega à fase pedida; os demais são julgados na virada da temporada.</p>
+          </HelpButton></h2>
+          <span className="muted small">Meta da liga: até {c.objective.target}º · expectativa pelo elenco: {c.objective.expected}º</span></div>
+        <div className="bo-obj-list">
+          {IMPORTANCE_ORDER.map((imp) => {
+            const list = c.objectives.filter((o) => o.importance === imp);
+            if (!list.length) return null;
             return (
-              <div key={a.key} className="bd-attr">
-                <span className="bd-attr-name">{a.label}<HelpTip text={`${a.description} ${COACH_EFFECT_TEXT[a.key]}`} /></span>
-                <div className="meter bd-attr-bar"><i style={{ width: `${(v / COACH_ATTR_CAP) * 100}%` }} /></div>
-                <strong className="bd-attr-val">{v}</strong>
-                {ov.coachPoints > 0 && <button className="nc-ghost bd-attr-plus" disabled={busy || v >= COACH_ATTR_CAP} aria-label={`Adicionar ponto em ${a.label}`}
-                  onClick={() => void run(async () => { setOv(await unwrap(window.api.spendCoachPoint(profileId, careerId, a.key))); return null; })}><Plus size={14} aria-hidden="true" /></button>}
+              <div key={imp} className="bo-obj-group">
+                <h3 className="bo-h3">{list[0]!.importanceLabel}</h3>
+                {list.map((o) => {
+                  const Icon = o.status === 'met' || o.status === 'missed' ? ICON[o.status] : CircleDashed;
+                  return (
+                    <div key={o.label} className={`bo-objective bo-imp-${o.importance}`}>
+                      <Icon size={18} aria-hidden="true" className={STATUS[o.status].cls} />
+                      <div className="bo-objective-main">
+                        <div className="bo-objective-top"><strong>{o.label}</strong><span className={`bo-st ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span></div>
+                        <div className="bo-progress" role="img" aria-label={`Andamento ${Math.round(o.progress * 100)}%`}><i className={STATUS[o.status].cls} style={{ width: `${Math.round(o.progress * 100)}%` }} /></div>
+                        <div className="bo-objective-foot"><span className="muted small">{o.detail}</span><span className="small bo-reward"><span className="pos">+{o.reward.met}</span> / <span className="neg">{o.reward.missed}</span></span></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
+          {c.objectives.length === 0 && <p className="muted small">{c.objective.label} — meta até {c.objective.target}º.</p>}
         </div>
-        <h3>Clubes</h3>
-        <table><thead><tr><th>Clube</th><th>Início</th><th>Fim</th><th>Saída</th></tr></thead>
-          <tbody>{ov.spells.map((s, i) => <tr key={i} className={s.end ? '' : 'mine'}><td>{s.clubName}</td><td>{fmtDate(s.start)}</td><td>{s.end ? fmtDate(s.end) : 'atual'}</td><td>{s.reason === 'sacked' ? 'demitido' : s.reason === 'left' ? 'saiu para outro clube' : '—'}</td></tr>)}</tbody></table>
       </section>
+
+      <section className="card bo-budget">
+        <div className="bo-head"><h2>Orçamentos
+          <HelpButton title="Orçamentos da diretoria">
+            <p>A diretoria barra contratações e renovações que estourem o orçamento de transferências ou o teto salarial, e veta valores fora da realidade do clube (taxa acima de 2× o valor de mercado, salário acima de 2,2× o justo). Vendas devolvem metade da taxa ao orçamento. Obras acima de 30% do caixa precisam de aprovação.</p>
+            <p>Cada pedido de aumento pode ser feito uma vez por temporada e depende da confiança (65 ou mais).</p>
+          </HelpButton></h2></div>
+        {(() => {
+          const t = c.budgets.transfer > 0 ? c.budgets.spent / c.budgets.transfer : 0, w = c.budgets.payroll / Math.max(1, c.budgets.wageCeiling);
+          return (
+            <div className="bo-budget-rows">
+              <div className="bo-bar-row">
+                <div className="bo-bar-top"><span>Transferências</span><span className="muted small">{moneyShort(c.budgets.spent)} de {moneyShort(c.budgets.transfer)} · restam <strong>{fmtMoney(c.budgets.remaining)}</strong></span></div>
+                <div className="bo-progress"><i className={t > 0.9 ? 'bo-st-close' : 'bo-st-on'} style={{ width: `${Math.min(100, t * 100)}%` }} /></div>
+              </div>
+              <div className="bo-bar-row">
+                <div className="bo-bar-top"><span>Folha mensal</span><span className="muted small">{moneyShort(c.budgets.payroll)} de {moneyShort(c.budgets.wageCeiling)}</span></div>
+                <div className="bo-progress"><i className={w > 1 ? 'bo-st-off' : w > 0.92 ? 'bo-st-close' : 'bo-st-on'} style={{ width: `${Math.min(100, w * 100)}%` }} /></div>
+              </div>
+              <div className="row bo-budget-actions">
+                <button className="secondary" disabled={busy || !c.requests.transfer} onClick={() => void run(async () => (await unwrap(window.api.requestBudget(profileId, careerId, 'transfer'))).message)}>Pedir mais para transferências</button>
+                <button className="secondary" disabled={busy || !c.requests.wage} onClick={() => void run(async () => (await unwrap(window.api.requestBudget(profileId, careerId, 'wage'))).message)}>Pedir aumento do teto</button>
+              </div>
+            </div>
+          );
+        })()}
+        {notice && <p className="ok small" role="status">{notice}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
+      </section>
+      {offers}
     </div>
   );
 }

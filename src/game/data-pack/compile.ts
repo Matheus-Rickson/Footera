@@ -15,7 +15,7 @@ import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQ
 import { PackError, type CupRec, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
 import { defaultSeasonStart } from '../career-engine/calendar.ts';
-import { WAGE_CAP, wageCapFactor, type ClubEcon } from '../finance-engine/finance.ts';
+import { fairSalary, rebasedFloorSalary, WAGE_CAP, wageCapFactor, type ClubEcon } from '../finance-engine/finance.ts';
 
 export const DEFAULT_RULES: LeagueRules = {
   rounds: 2, pointsWin: 3, pointsDraw: 1, tiebreakers: ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'],
@@ -197,6 +197,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
           balance: c.balance ?? (autoBalance.add(c.id), 0),
           fans: c.fans ?? reputation * 3500 + rng.int(0, 20_000),
           facilities: { training: fac(2), youth: fac(3), medical: fac(2), stadium: fac(2), ...c.facilities },
+          ...(c.honours?.length ? { honours: c.honours.map((h) => ({ ...h })) } : {}),
         };
       }, (cur, c) => {
         if (c.name) cur.name = c.name; if (c.shortName) cur.shortName = c.shortName; if (c.country) cur.countryId = c.country; if (c.league) cur.leagueId = c.league;
@@ -204,6 +205,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
         if (c.balance !== undefined) { cur.balance = c.balance; autoBalance.delete(cur.id); } if (c.fans !== undefined) cur.fans = c.fans; if (c.facilities) cur.facilities = { ...cur.facilities, ...c.facilities };
         if (c.state !== undefined) { if (c.state) cur.state = c.state; else { delete cur.state; delete cur.stateDivision; } }
         if (c.stateDivision !== undefined) { if (c.stateDivision) cur.stateDivision = c.stateDivision; else delete cur.stateDivision; }
+        if (c.honours !== undefined) { if (c.honours?.length) cur.honours = c.honours.map((h) => ({ ...h })); else delete cur.honours; }
       });
     }
 
@@ -299,7 +301,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     if (rec.marketValue !== undefined) pl.marketValue = rec.marketValue;
     else if (created || rec.ability !== undefined || rec.attributes || rec.potential !== undefined || rec.birthDate) pl.marketValue = marketValue(pl.overall, age, pl.potentialHidden, economyOf(pl.nationality));
     if (rec.contract?.salary !== undefined) { pl.salary = rec.contract.salary; if (!fromBase) packSalary.add(pl.id); }
-    else if (created) pl.salary = Math.max(Math.round((pl.marketValue * 0.012) / 100) * 100, 1500);
+    else if (created) pl.salary = fairSalary(pl.marketValue, economyOf(pl.nationality));
     if (rec.contract?.end !== undefined) pl.contractEnd = rec.contract.end;
     else if (created) pl.contractEnd = addYears(startDate, 1 + (Math.abs(hash(pl.id)) % 4));
   }
@@ -377,6 +379,9 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
       players.set(p.id, p); squad.push(p); added++;
     }
     if (added) warnings.push({ pack: 'universo', file: 'clubs.json', record: c.id, message: `elenco completado com ${added} jogador(es) gerado(s)` });
+    // piso salarial antigo (1.500 para todos) → salário mínimo do país do clube (v0.8.10). Vale também para pacotes: exatamente 1.500 com valor
+    // que dá menos é o piso exportado por versões anteriores (o save faz a mesma correção em `applySalaryFloor`)
+    for (const p of squad) p.salary = rebasedFloorSalary(p.salary, p.marketValue, country.economy);
     // folha fora da realidade do clube (salários reais informados por pacotes do usuário): reduzida para caber na receita (docs/FINANCE.md)
     const league = leagues.get(c.leagueId)!;
     const econ: ClubEcon = { econ: country.economy, tier: league.tier, reputation: c.reputation, fans: c.fans, capacity: stadiums.get(c.stadiumId)?.capacity ?? 10_000, facilities: c.facilities };
@@ -388,6 +393,7 @@ export function compileUniverse(base: World, packs: Pack[]): CompileResult {
     if (autoBalance.has(c.id)) c.balance = startingBalance(c.reputation, country.economy, squad);
     if (squad.length > rules.squadMax) issues.push({ pack: 'universo', file: 'players.json', record: c.id, message: `elenco com ${squad.length} jogadores (máximo ${rules.squadMax})` });
   }
+  for (const p of players.values()) if (!p.clubId) p.salary = rebasedFloorSalary(p.salary, p.marketValue, economyOf(p.nationality)); // livres: país da nacionalidade
   for (const l of leagues.values()) {
     l.teamCount = [...clubs.values()].filter((c) => c.leagueId === l.id).length;
     if (l.teamCount < 2 && l.active !== false) issues.push({ pack: 'universo', file: 'leagues.json', record: l.id, message: `liga com ${l.teamCount} clube(s): são necessários pelo menos 2` });

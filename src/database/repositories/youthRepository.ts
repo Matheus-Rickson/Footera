@@ -18,6 +18,7 @@ import { addNews } from './newsRepository.ts';
 import { playerInserter, rowToPlayer } from './worldRepository.ts';
 import { resetToFreeAgentWage } from './transferRepository.ts';
 import { recordYouthPromotionForBoard } from './boardRepository.ts';
+import { wageFloorOf } from './financeRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { to20 } from '../../shared/scale.ts';
 import { clubSeasonStart, userSeason } from './countrySeasonRepository.ts';
@@ -42,7 +43,6 @@ const ANY_GROUP: PositionGroup[] = ['DEF', 'MID', 'ATT', 'DEF', 'MID', 'ATT', 'G
 
 export const youthOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FROM players WHERE youth_club_id = ? ORDER BY id').all(clubId).map(rowToPlayer);
 const seniorOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FROM players WHERE club_id = ? ORDER BY id').all(clubId).map(rowToPlayer);
-const economyOf = (db: SqlDb, clubId: string) => N(db.prepare('SELECT co.economy FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!.economy);
 
 /**
  * Fábrica de jogadores novos (base, reposições) com IDs estáveis e únicos por `tag`. Qualidade = 45% reputação do clube + 45% nível da base.
@@ -120,7 +120,7 @@ export function youthIntake(db: SqlDb, date: string): number {
 
 /** Sobe um jogador da base para o elenco principal do mesmo clube (contrato profissional de 3 temporadas). NÃO abre transação. */
 export function promoteFromYouth(db: SqlDb, p: Player, clubId: string, date: string): void {
-  const salary = Math.max(Math.round((p.marketValue * 0.012) / 100) * 100, p.salary, Math.round((1500 * economyOf(db, clubId)) / 100) * 100);
+  const salary = Math.max(Math.round((p.marketValue * 0.012) / 100) * 100, p.salary, wageFloorOf(db, clubId));
   db.prepare('UPDATE players SET club_id = ?, youth_club_id = NULL, salary = ?, contract_end = ? WHERE id = ? AND youth_club_id = ?').run(clubId, salary, contractEndIn(date, 3, clubSeasonStart(db, clubId)), p.id, clubId);
 }
 

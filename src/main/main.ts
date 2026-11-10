@@ -8,9 +8,9 @@ import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
   advanceCareer, careerSaveFile, closeAllCareerDbs, continueCareerDay, deleteCareerSave, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
-  simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
+  simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, financeLedger, sponsorNegotiate, sponsorAccept, sponsorTerminate, sponsorSearch, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
+  getBoard, coachCareer, enrollLicenseFor, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, createScoutTaskFor, previewScoutTaskFor, removeScoutTaskFor, scoutTaskPlayersFor, scoutedPlayersFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -249,6 +249,13 @@ function registerHandlers(): void {
   handle('transfers:counter', ref.extend({ offerId: z.number().int().positive(), fee: z.number().int().min(1).max(1e10) }), (i) => answerWithCounterOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.fee));
   handle('transfers:list', ref.extend({ playerId: z.string().min(1).max(60), listed: z.boolean() }), (i) => listPlayerForSale(dataDir(), i.profileId, i.careerId, i.playerId, i.listed));
   handle('finance:get', ref, (i) => getFinance(dataDir(), i.profileId, i.careerId));
+  handle('finance:ledger', ref.extend({ query: z.object({ page: z.number().int().min(0).max(100000), category: z.string().min(1).max(30).optional() }) }), (i) => financeLedger(dataDir(), i.profileId, i.careerId, i.query));
+  const sponsorKind = z.enum(['shirt', 'kit', 'stadium']);
+  handle('sponsor:negotiate', ref.extend({ input: z.object({ offerId: z.string().min(1).max(120), monthly: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(4) }) }),
+    (i) => sponsorNegotiate(dataDir(), i.profileId, i.careerId, i.input));
+  handle('sponsor:accept', ref.extend({ offerId: z.string().min(1).max(120), years: z.number().int().min(1).max(4) }), (i) => sponsorAccept(dataDir(), i.profileId, i.careerId, i.offerId, i.years));
+  handle('sponsor:terminate', ref.extend({ kind: sponsorKind }), (i) => sponsorTerminate(dataDir(), i.profileId, i.careerId, i.kind));
+  handle('sponsor:search', ref.extend({ kind: sponsorKind }), (i) => sponsorSearch(dataDir(), i.profileId, i.careerId, i.kind));
   handle('tactics:get', ref, (i) => getTactics(dataDir(), i.profileId, i.careerId));
   handle('tactics:save', ref.extend({ scheme: z.object({
     id: z.string().max(60).nullable().optional(), name: z.string().max(200), formation: z.string().max(80), settings, lineup: z.array(z.string().max(60)).length(11).nullable(),
@@ -270,7 +277,7 @@ function registerHandlers(): void {
   handle('news:read', ref.extend({ id: z.number().int().positive().nullable() }), (i) => markInboxRead(dataDir(), i.profileId, i.careerId, i.id));
   handle('news:social', ref.extend({ filter: z.enum(['all', 'mine', 'match', 'transfer', 'injury', 'coach', 'league']) }), (i) => socialFeed(dataDir(), i.profileId, i.careerId, i.filter));
   handle('career:history', ref, (i) => careerHistory(dataDir(), i.profileId, i.careerId));
-  handle('career:trophies', ref, (i) => trophyRoom(dataDir(), i.profileId, i.careerId));
+  handle('career:trophies', ref.extend({ clubId: z.string().min(1).max(80).optional() }), (i) => trophyRoom(dataDir(), i.profileId, i.careerId, i.clubId));
   const id60 = z.string().min(1).max(60);
   handle('scouting:get', ref, (i) => getScouting(dataDir(), i.profileId, i.careerId));
   handle('scouting:hire', ref.extend({ candidateId: id60 }), (i) => hireScoutFor(dataDir(), i.profileId, i.careerId, i.candidateId));
@@ -322,6 +329,8 @@ function registerHandlers(): void {
   handle('coach:info', ref.extend({ coachId: z.string().min(1).max(80) }), (i) => aiCoachInfo(dataDir(), i.profileId, i.careerId, i.coachId));
   handle('coach:unemployed', ref, (i) => unemployedCoaches(dataDir(), i.profileId, i.careerId));
   handle('board:job', ref.extend({ offerId: z.number().int().positive(), accept: z.boolean() }), (i) => answerJobOffer(dataDir(), i.profileId, i.careerId, i.offerId, i.accept));
+  handle('coach:career', ref, (i) => coachCareer(dataDir(), i.profileId, i.careerId));
+  handle('coach:enroll', ref.extend({ license: z.enum(['C', 'B', 'A', 'PRO']) }), (i) => enrollLicenseFor(dataDir(), i.profileId, i.careerId, i.license));
   handle('board:coachPoint', ref.extend({ key: z.enum(['tactics', 'motivation', 'youth', 'discipline', 'negotiation', 'adaptability']) }), (i) => spendCoachPointFor(dataDir(), i.profileId, i.careerId, i.key));
   handle('board:budget', ref.extend({ kind: z.enum(['transfer', 'wage']) }), (i) => askBudget(dataDir(), i.profileId, i.careerId, i.kind));
   handle('app:quit', z.unknown(), () => { setImmediate(() => app.quit()); return true as const; });

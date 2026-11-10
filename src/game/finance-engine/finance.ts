@@ -24,19 +24,48 @@ export const F = {
   refRep: { 1: 65, 2: 44, 3: 30, 4: 20 } as Record<number, number>,
   tvBase: { 1: 0.70e6, 2: 0.27e6, 3: 0.1e6, 4: 0.04e6 } as Record<number, number>,
   /**
-   * Cota de participação mensal (× economia) paga a todo clube da 3ª divisão para baixo, independente da reputação. Nessas divisões as
-   * receitas (que caem com a reputação) não cobriam os pisos de custo (salário mínimo de 1.500, estrutura e estádio): a 3ª perdia ~40% da
-   * receita por ano, a 4ª ~150% e a "Sem divisão" ~330%, e os clubes começavam as temporadas no vermelho. Valores = o que faltava ao clube
-   * mediano de cada divisão para a margem ficar perto de +2% (base fixa, 16 países; docs/FINANCE.md).
+   * Cota de participação mensal (× economia) paga a todo clube da 3ª divisão para baixo, independente da reputação: sem ela as receitas (que
+   * caem com a reputação) não cobrem os pisos de custo. Recalibrada na v0.8.10 junto com o salário mínimo por país, o porte (`sizeFactor`) e o
+   * piso de patrocínio: antes 80/105/120 mil, com custos de clube grande, a Série D movimentava ~€ 1,3 milhão por ano (≈ R$ 8 milhões; na
+   * realidade, R$ 0,5–2 milhões). Valores = o que faltava ao clube mediano de cada divisão para a margem ficar perto de +2% (base fixa).
    */
-  participation: { 3: 80_000, 4: 105_000, 5: 120_000 } as Record<number, number>,
+  participation: { 3: 25_000, 4: 18_000, 5: 16_000 } as Record<number, number>,
+  /**
+   * Piso mensal de patrocínio (× economia) da 3ª divisão para baixo (v0.8.10, pedido do usuário): com o expoente 2,4 da reputação, um clube
+   * da Série D recebia ~3% do valor de referência (Brasiliense: € 12 mil/mês, menos que a venda de camisas), enquanto nesses clubes o
+   * patrocínio (casas de apostas, empresas regionais) é a principal receita.
+   */
+  sponsorFloor: { 3: 30_000, 4: 40_000, 5: 35_000 } as Record<number, number>,
   sponsorBase: 0.65e6, sponsorExp: 2.4,
   merchPerFan: 1.1,
   staffBase: 15_000, staffPerLevel: 3_000,
   maintPerSeat: 1.0, maintPerLevel: 6_000, maintBase: 30_000,
   opsBase: 0.50e6, opsExp: 2.3,
   ticketBase: 8.5, ticketExp: 1.2,
+  /** porte do clube (custos fixos de estrutura e estádio, produtos licenciados): reputação / sizeRep, entre sizeMin e 1 */
+  sizeRep: 30, sizeMin: 0.2,
 };
+
+/**
+ * Porte do clube (0,2–1): clubes de reputação 30+ (praticamente toda 1ª e 2ª divisão) pagam a estrutura e o estádio cheios; abaixo disso,
+ * custos fixos e venda de produtos caem com a reputação. Antes eram iguais para todos, e um clube da Série D gastava com estrutura e
+ * estádio quase o orçamento real inteiro de um clube dessa divisão (v0.8.10; docs/FINANCE.md).
+ */
+export const sizeFactor = (reputation: number): number => clamp(reputation / F.sizeRep, F.sizeMin, 1);
+
+/** Salário mínimo mensal do país: 1.000 × economia, entre 100 e 1.500 (Brasil 600 ≈ R$ 3,7 mil; Inglaterra 1.500). Antes: 1.500 para todos. */
+export const MIN_SALARY = { perEconomy: 1000, min: 100, max: 1500, legacy: 1500 } as const;
+export const minSalary = (economy: number): number => Math.round(clamp(economy * MIN_SALARY.perEconomy, MIN_SALARY.min, MIN_SALARY.max) / 100) * 100;
+/** Salário pelo valor (1,2% do valor de mercado ao mês, em centenas), nunca abaixo do mínimo do país. */
+export const fairSalary = (marketValue: number, economy: number): number => Math.max(Math.round((marketValue * 0.012) / 100) * 100, minSalary(economy));
+/**
+ * Quem ganhava exatamente o piso antigo (1.500) porque o valor dava menos passa ao salário pelo valor com o mínimo do país (bases, pacotes e
+ * saves feitos antes da v0.8.10). Salários acima do piso antigo, ou de quem vale mais, não mudam.
+ */
+export function rebasedFloorSalary(salary: number, marketValue: number, economy: number): number {
+  if (salary !== MIN_SALARY.legacy || Math.round((marketValue * 0.012) / 100) * 100 >= MIN_SALARY.legacy) return salary;
+  return fairSalary(marketValue, economy);
+}
 
 const rep65 = (rep: number, exp: number) => Math.pow(Math.max(rep, 1) / 65, exp);
 
@@ -44,17 +73,19 @@ const rep65 = (rep: number, exp: number) => Math.pow(Math.max(rep, 1) / 65, exp)
 export const tvMonthly = (c: ClubEcon): number =>
   Math.round(c.econ * ((F.tvBase[c.tier] ?? F.tvBase[4]!) * Math.pow(c.reputation / (F.refRep[c.tier] ?? 20), 0.8) + participationOf(c.tier)));
 export const participationOf = (tier: number): number => (tier >= 3 ? F.participation[Math.min(tier, 5)] ?? 0 : 0);
-export const merchMonthly = (c: ClubEcon): number => Math.round(c.fans * F.merchPerFan * c.econ);
-/** Total mensal de patrocínios (soma dos três contratos) esperado para o clube. */
-export const sponsorTotalMonthly = (c: ClubEcon): number => Math.round(c.econ * F.sponsorBase * rep65(c.reputation, F.sponsorExp));
+export const merchMonthly = (c: ClubEcon): number => Math.round(c.fans * F.merchPerFan * c.econ * sizeFactor(c.reputation));
+/** Piso de patrocínio da divisão (3ª em diante; ver `F.sponsorFloor`). */
+export const sponsorFloorOf = (tier: number): number => (tier >= 3 ? F.sponsorFloor[Math.min(tier, 5)] ?? 0 : 0);
+/** Total mensal de patrocínios (soma dos três contratos) esperado para o clube: piso da divisão + parte pela reputação. */
+export const sponsorTotalMonthly = (c: ClubEcon): number => Math.round(c.econ * (sponsorFloorOf(c.tier) + F.sponsorBase * rep65(c.reputation, F.sponsorExp)));
 export const staffMonthly = (c: ClubEcon): number =>
-  Math.round(c.econ * (F.staffBase + F.staffPerLevel * (c.facilities.training + c.facilities.medical + c.facilities.youth)));
+  Math.round(c.econ * sizeFactor(c.reputation) * (F.staffBase + F.staffPerLevel * (c.facilities.training + c.facilities.medical + c.facilities.youth)));
 /**
  * Clube do usuário (Fase 8C): a comissão técnica é contratada à parte (categoria `coaching`); aqui fica só a estrutura — categorias de base,
  * administração do futebol e a manutenção do centro de treinamento e do departamento médico (metade do peso que esses níveis têm em `staffMonthly`).
  */
 export const staffUserMonthly = (c: ClubEcon): number =>
-  Math.round(c.econ * (F.staffBase + F.staffPerLevel * c.facilities.youth + (F.staffPerLevel / 2) * (c.facilities.training + c.facilities.medical)
+  Math.round(c.econ * sizeFactor(c.reputation) * (F.staffBase + F.staffPerLevel * c.facilities.youth + (F.staffPerLevel / 2) * (c.facilities.training + c.facilities.medical)
     + (F.staffPerLevel / 3) * ((c.facilities.scouting ?? 10) + (c.facilities.recruitment ?? 10) - 20)));
 /**
  * Parte da manutenção mensal de cada instalação do usuário (cards da Infraestrutura). Base: nível × 3.000 (× economia); treino e médico
@@ -63,10 +94,10 @@ export const staffUserMonthly = (c: ClubEcon): number =>
 export function facilityMonthly(c: ClubEcon, kind: 'training' | 'youth' | 'medical' | 'stadium' | 'scouting' | 'recruitment'): number {
   if (kind === 'stadium') return maintenanceMonthly(c);
   const w = kind === 'youth' ? 1 : kind === 'training' || kind === 'medical' ? 1 / 2 : 1 / 3;
-  return Math.round(c.econ * F.staffPerLevel * w * (c.facilities[kind] ?? 10));
+  return Math.round(c.econ * sizeFactor(c.reputation) * F.staffPerLevel * w * (c.facilities[kind] ?? 10));
 }
 export const maintenanceMonthly = (c: ClubEcon): number =>
-  Math.round(c.econ * (c.capacity * F.maintPerSeat + c.facilities.stadium * F.maintPerLevel + F.maintBase));
+  Math.round(c.econ * sizeFactor(c.reputation) * (c.capacity * F.maintPerSeat + c.facilities.stadium * F.maintPerLevel + F.maintBase));
 export const operationsMonthly = (c: ClubEcon): number => Math.round(c.econ * F.opsBase * rep65(c.reputation, F.opsExp));
 
 export type SponsorKind = 'shirt' | 'kit' | 'stadium';

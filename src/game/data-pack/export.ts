@@ -17,6 +17,7 @@ export const clubRec = (c: Club): ClubRec => ({
   id: c.id, name: c.name, shortName: c.shortName, country: c.countryId, league: c.leagueId, city: c.city, stadium: c.stadiumId,
   ...(c.state ? { state: c.state, stateDivision: c.stateDivision ?? null } : {}),
   reputation: c.reputation, balance: c.balance, fans: c.fans, facilities: { ...c.facilities },
+  ...(c.honours?.length ? { honours: c.honours.map((h) => ({ ...h })) } : {}),
 });
 /** `internal`: inclui os valores do motor (exportação exata); o editor usa sem eles. */
 export function playerRec(p: Player, internal = true): PlayerRec {

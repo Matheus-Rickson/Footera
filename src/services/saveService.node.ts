@@ -1,6 +1,6 @@
 import { getClubProfile } from '../database/repositories/clubProfileRepository.ts';
 import { getConversations, talkToBoard, talkToPlayer } from '../database/repositories/promiseRepository.ts';
-import type { BoardTopicDto, ClubProfileDto, ConversationsDto, PlayerTopicDto, TalkResultDto } from '../shared/api.ts';
+import type { BoardTopicDto, ClubProfileDto, ConversationsDto, PlayerTopicDto, TalkResultDto, FinanceLedgerDto, SponsorNegotiationDto, SponsorKindDto } from '../shared/api.ts';
 import { ensureAiCoaches, getAiCoachDetail, getClubInfo, listUnemployedCoaches } from '../database/repositories/aiCoachRepository.ts';
 import { createCups, getCupBracket } from '../database/repositories/cupRepository.ts';
 import { getStagedView } from '../database/repositories/formatRepository.ts';
@@ -14,12 +14,17 @@ import {
   advanceTime, countPending, ensureSeason, getCareerState, getClubCalendar, getCompetitionLeaders, getCompetitionTable, getNextFixture, listCompetitions, listRound,
 } from '../database/repositories/competitionRepository.ts';
 import { getMatchReport, previewUserMatch, simulateMatchday } from '../database/repositories/matchRepository.ts';
-import { ensureFinance, getFinanceOverview } from '../database/repositories/financeRepository.ts';
+import { ensureFinance, getLedgerPage } from '../database/repositories/financeRepository.ts';
+import { acceptSponsorOffer, getFinancePage, negotiateSponsor, searchSponsors, terminateSponsor } from '../database/repositories/sponsorRepository.ts';
 import { counterOffer, getNegotiation, getTransfersOverview, makeOffer, proposeFee, respondOffer, searchMarketPage, setListed } from '../database/repositories/transferRepository.ts';
 import {
   activateScheme, autoLineup, deleteScheme, duplicateScheme, ensureSchemes, getTacticsOverview, saveScheme,
 } from '../database/repositories/tacticsRepository.ts';
-import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renegotiateContract, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
+import { getTrophyRoom } from '../database/repositories/trophyRepository.ts';
+import { backfillCoachSeasons, getCoachCareer } from '../database/repositories/coachCareerRepository.ts';
+import { enrollLicense, ensureLicenses } from '../database/repositories/coachLicenseRepository.ts';
+import type { CoachCareerDto, LicenseIdDto } from '../shared/api.ts';
+import { getContracts, getHistory, getSeasonStatus, isSeasonComplete, renegotiateContract, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
 import { getNews, markRead, unreadCount } from '../database/repositories/newsRepository.ts';
 import { getSocialFeed } from '../database/repositories/socialRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
@@ -347,6 +352,8 @@ function prepareCareer(db: SqlDb, open: OpenSave): void {
   ensureFinance(db);
   ensureYouthAcademies(db);
   ensureBoard(db);
+  ensureLicenses(db); // licenças do treinador (saves anteriores à v0.8.10)
+  backfillCoachSeasons(db);
   ensureAiCoaches(db);
   ensureSquadRoles(db); // tempo de jogo: status de quem chegou ao elenco (e saves anteriores à v0.8.9)
   { // saves anteriores às copas: cria as da temporada atual se a 1ª fase ainda não passou (senão, a partir da próxima temporada)
@@ -397,7 +404,12 @@ export const activateTacticScheme = (b: string, p: string, c: string, id: string
 export const getAutoLineup = (b: string, p: string, c: string, formation: string): Promise<string[]> => withClubCareer(b, p, c, (db) => autoLineup(db, formation));
 export type { Ref };
 
-export const getFinance = (b: string, p: string, c: string): Promise<FinanceOverviewDto> => withClubCareer(b, p, c, (db) => getFinanceOverview(db));
+export const getFinance = (b: string, p: string, c: string): Promise<FinanceOverviewDto> => withClubCareer(b, p, c, (db) => getFinancePage(db));
+export const financeLedger = (b: string, p: string, c: string, q: { page: number; category?: string }): Promise<FinanceLedgerDto> => withClubCareer(b, p, c, (db) => getLedgerPage(db, q.page, q.category));
+export const sponsorNegotiate = (b: string, p: string, c: string, i: { offerId: string; monthly: number; years: number }): Promise<SponsorNegotiationDto> => withClubCareer(b, p, c, (db) => negotiateSponsor(db, i));
+export const sponsorAccept = (b: string, p: string, c: string, offerId: string, years: number): Promise<{ message: string }> => withClubCareer(b, p, c, (db) => acceptSponsorOffer(db, offerId, years));
+export const sponsorTerminate = (b: string, p: string, c: string, kind: SponsorKindDto): Promise<{ message: string }> => withClubCareer(b, p, c, (db) => terminateSponsor(db, kind));
+export const sponsorSearch = (b: string, p: string, c: string, kind: SponsorKindDto): Promise<{ message: string }> => withClubCareer(b, p, c, (db) => searchSponsors(db, kind));
 
 export const getTransfers = (b: string, p: string, c: string): Promise<TransfersOverviewDto> => withClubCareer(b, p, c, (db) => getTransfersOverview(db));
 export const searchTransferMarket = (b: string, p: string, c: string, f: MarketFilter): Promise<MarketPageDto> => withClubCareer(b, p, c, (db) => searchMarketPage(db, f));
@@ -417,7 +429,7 @@ export const markInboxRead = (b: string, p: string, c: string, id: number | null
 export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));
 export const socialFeed = (b: string, p: string, c: string, filter: SocialFilter): Promise<SocialFeedDto> => withPreparedCareer(b, p, c, (db) => getSocialFeed(db, filter));
 export const careerHistory = (b: string, p: string, c: string): Promise<HistoryRowDto[]> => withPreparedCareer(b, p, c, (db) => getHistory(db));
-export const trophyRoom = (b: string, p: string, c: string): Promise<TrophyRoomDto> => withPreparedCareer(b, p, c, (db) => getTrophies(db));
+export const trophyRoom = (b: string, p: string, c: string, clubId?: string): Promise<TrophyRoomDto> => withPreparedCareer(b, p, c, (db) => getTrophyRoom(db, clubId));
 
 export const getScouting = (b: string, p: string, c: string): Promise<ScoutingOverviewDto> => withClubCareer(b, p, c, (db) => getScoutingOverview(db));
 export const hireScoutFor = (b: string, p: string, c: string, id: string): Promise<true> => withClubCareer(b, p, c, (db) => { hireScout(db, id); return true as const; });
@@ -455,6 +467,9 @@ export const playerTalk = (b: string, p: string, c: string, playerId: string, to
 export const boardTalk = (b: string, p: string, c: string, topic: BoardTopicDto): Promise<TalkResultDto> => withPreparedCareer(b, p, c, (db) => talkToBoard(db, topic));
 export const aiCoachInfo = (b: string, p: string, c: string, coachId: string): Promise<AiCoachDetailDto> => withPreparedCareer(b, p, c, (db) => getAiCoachDetail(db, coachId));
 export const unemployedCoaches = (b: string, p: string, c: string): Promise<AiCoachDto[]> => withPreparedCareer(b, p, c, (db) => listUnemployedCoaches(db));
+export const coachCareer = (b: string, p: string, c: string): Promise<CoachCareerDto> => withPreparedCareer(b, p, c, (db) => getCoachCareer(db));
+export const enrollLicenseFor = (b: string, p: string, c: string, license: LicenseIdDto): Promise<{ message: string; career: CoachCareerDto }> =>
+  withPreparedCareer(b, p, c, (db) => { const message = enrollLicense(db, license); return { message, career: getCoachCareer(db) }; });
 export const spendCoachPointFor = (b: string, p: string, c: string, key: CoachAttrKey): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => { spendCoachPoint(db, key); return getBoardOverview(db); });
 export const answerJobOffer = (b: string, p: string, c: string, id: number, accept: boolean): Promise<true> => withPreparedCareer(b, p, c, (db) => { respondJobOffer(db, id, accept); return true as const; });
 export const askBudget = (b: string, p: string, c: string, kind: 'transfer' | 'wage'): Promise<{ approved: boolean; message: string }> => withClubCareer(b, p, c, (db) => withTransaction(db, () => requestBudget(db, kind)));

@@ -90,7 +90,11 @@ export interface Club {
   fans: number;
   /** 1..20; scouting e recruitment (rede de captação) só no clube do usuário, gravados ao subir (ausentes = 10) */
   facilities: { training: number; youth: number; medical: number; stadium: number; scouting?: number; recruitment?: number };
+  /** títulos anteriores ao universo (pacotes de dados; v0.8.10) */
+  honours?: ClubHonour[];
 }
+/** Título histórico: competição (id da liga/copa do jogo, quando existir), nome, quantidade e anos (texto livre). */
+export interface ClubHonour { competitionId?: string; name: string; count: number; years?: string }
 
 /** Calendário de uma liga. Se ausente, usa-se o padrão (início em 1º/ago, sábados, a cada 7 dias). */
 export interface LeagueCalendar {

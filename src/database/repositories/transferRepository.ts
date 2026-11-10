@@ -17,7 +17,8 @@ import { knowledgeMap, toScoutedDto } from './scoutRepository.ts';
 import { boardVeto, coachOf, getBoardOverview, recordTransferForBoard } from './boardRepository.ts';
 import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { contractEndIn } from '../../game/career-engine/calendar.ts';
-import { makePoster, type Poster } from './financeRepository.ts';
+import { makePoster, nationEconomy, wageFloorOf, type Poster } from './financeRepository.ts';
+import { fairSalary } from '../../game/finance-engine/finance.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
 import { fmtMoney } from '../../shared/money.ts';
@@ -69,11 +70,14 @@ export function executeTransfer(db: SqlDb, post: Poster, a: { player: Player; to
 }
 
 /**
- * Sem clube, o "salário" do jogador passa a ser a pretensão pelo valor ATUAL (1,2% do valor de mercado). Sem isso, livres levavam o salário
- * antigo como piso (×1,05 no pedido): ingleses dispensados assinavam no Brasil com salário inglês e as folhas subiam em cascata.
+ * Sem clube, o "salário" do jogador passa a ser a pretensão pelo valor ATUAL (1,2% do valor de mercado, nunca abaixo do salário mínimo do país
+ * da nacionalidade). Sem isso, livres levavam o salário antigo como piso (×1,05 no pedido): ingleses dispensados assinavam no Brasil com
+ * salário inglês e as folhas subiam em cascata.
  */
 export function resetToFreeAgentWage(db: SqlDb, playerId: string): void {
-  db.prepare('UPDATE players SET salary = MAX(1500, CAST(ROUND(market_value * 0.012 / 100.0) AS INTEGER) * 100) WHERE id = ?').run(playerId);
+  const r = db.prepare('SELECT market_value, nationality FROM players WHERE id = ?').get(playerId);
+  if (!r) return;
+  db.prepare('UPDATE players SET salary = ? WHERE id = ?').run(fairSalary(N(r.market_value), nationEconomy(db, S(r.nationality))), playerId);
 }
 
 /**
@@ -192,7 +196,7 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
   const seller = clubRow(db, p.clubId);
 
   const ambition = p.personality.ambition;
-  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition }, N(seller.reputation), N(me.reputation)) * negotiationMultiplier(coachOf(db).attributes));
+  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition }, N(seller.reputation), N(me.reputation), wageFloorOf(db, st.clubId)) * negotiationMultiplier(coachOf(db).attributes));
   const pd = playerDecision(input.wage, demand);
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
@@ -207,7 +211,7 @@ export function makeOffer(db: SqlDb, input: OfferInput): OfferResultDto {
 /** Jogador livre: sem clube vendedor nem taxa, e pode ser contratado fora das janelas. Só o salário é negociado. */
 function signFreeAgent(db: SqlDb, st: { clubId: string; gameDate: string }, p: Player, input: OfferInput, me: Record<string, unknown>): OfferResultDto {
   if (input.fee !== 0) throw new TransferError('Jogador sem clube: não há taxa de transferência (use 0).');
-  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(me.reputation), N(me.reputation)) * negotiationMultiplier(coachOf(db).attributes));
+  const demand = Math.round(wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(me.reputation), N(me.reputation), wageFloorOf(db, st.clubId)) * negotiationMultiplier(coachOf(db).attributes));
   const pd = playerDecision(input.wage, demand);
   if (pd.kind === 'reject') return { outcome: 'player_rejected', message: `${p.firstName} ${p.lastName} recusou: o salário oferecido está muito abaixo do que ele espera.` };
   if (pd.kind === 'counter') return { outcome: 'player_counter', counterWage: pd.wage, message: `${p.firstName} ${p.lastName} aceita se o salário for de ${fmt(pd.wage)} por mês.` };
@@ -329,7 +333,7 @@ function aiDeals(db: SqlDb, post: Poster, rng: Rng, date: string, userClub: stri
     const fee = Math.round((ask * rng.float(0.9, 1.05)) / 1000) * 1000;
     const buyer = buyers.find((b) => N(b.balance) >= fee * 1.5 && squadOf(db, S(b.id)).length < 28);
     if (!buyer) continue;
-    const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(buyer.reputation));
+    const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(buyer.reputation), wageFloorOf(db, S(buyer.id)));
     executeTransfer(db, post, { player: p, toClubId: S(buyer.id), fee, wage, years: rng.int(2, 4), date, kind: 'ai' });
   }
 }
@@ -363,10 +367,11 @@ export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string
     const squad = squadOf(db, S(c.id));
     const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível
     const budget = 1.5 * (squad.reduce((s, p) => s + p.salary, 0) / Math.max(1, squad.length)); // nem salários fora da realidade da folha
+    const floor = wageFloorOf(db, S(c.id));
     for (let guard = 0; guard < (fill ? 12 : 1); guard++) {
       const g = neededGroup(squad);
       if (!g) break;
-      const demandOf = (x: Player) => wageDemand({ marketValue: x.marketValue, salary: x.salary, ambition: x.personality.ambition }, N(c.reputation), N(c.reputation));
+      const demandOf = (x: Player) => wageDemand({ marketValue: x.marketValue, salary: x.salary, ambition: x.personality.ambition }, N(c.reputation), N(c.reputation), floor);
       const p = pool.find((x) => !taken.has(x.id) && groupOf(x.position) === g && x.overall <= ceiling && demandOf(x) <= budget);
       if (!p) { unmet.push({ clubId: S(c.id), group: g }); break; }
       taken.add(p.id);
@@ -404,7 +409,7 @@ function signStrongFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, u
       const id = S(c.id), squad = squadFor(id);
       if (squad.length >= 28 || squad.length < 11) continue;
       if (p.overall > squad[0]!.overall + 3 || p.overall <= squad[10]!.overall) continue;
-      const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation));
+      const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation), wageFloorOf(db, id));
       if (wage > 3 * (squad.reduce((s, x) => s + x.salary, 0) / squad.length)) continue;
       executeTransfer(db, post, { player: p, toClubId: id, fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
       squad.push({ ...p, clubId: id }); squad.sort((a, b) => b.overall - a.overall);

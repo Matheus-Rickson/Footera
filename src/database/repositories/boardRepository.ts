@@ -24,6 +24,9 @@ import { dismissAiCoach, hireAiCoach } from './aiCoachRepository.ts';
 import { CURRENT_COMP, followCountry } from './countrySeasonRepository.ts';
 import { formatStateOf } from './formatRepository.ts';
 import { stageTables } from '../../game/format-engine/engine.ts';
+import { applyReputation, canCoachClub, ensureCourseForClub, licenseReminder } from './coachLicenseRepository.ts';
+import { recordCoachSeason } from './coachCareerRepository.ts';
+import { buildObjectives, confidenceHistory, judgeObjectives, liveObjectives, logConfidence, sizePhaseDto } from './boardObjectiveRepository.ts';
 
 export class BoardError extends UserError {}
 
@@ -56,12 +59,8 @@ export function spendCoachPoint(db: SqlDb, key: CoachAttrKey): void {
   c.attributePoints = (c.attributePoints ?? 0) - 1;
   withTransaction(db, () => saveCoach(db, c));
 }
-function changeReputation(db: SqlDb, delta: number): number {
-  const c = coachOf(db);
-  c.reputation = Math.max(1, Math.min(100, Math.round(c.reputation + delta)));
-  db.prepare('UPDATE career SET coach_json = ? WHERE id = 1').run(JSON.stringify(c));
-  return c.reputation;
-}
+/** Reputação do treinador, com o teto da licença (coachLicenseRepository). */
+export const changeReputation = (db: SqlDb, delta: number): number => applyReputation(db, delta);
 
 // ---------------------------------------------------------------- tabela (derivada das partidas; sem depender do competitionRepository)
 interface LeagueSituation { position: number; played: number; teams: number; expected: number; rules: LeagueRules; tier: number; competitionId: string }
@@ -109,8 +108,10 @@ export function setBoardForSeason(db: SqlDb, confidence: number): void {
   const payroll = payrollOf(db, st.clubId);
   const b = seasonBudgets(balanceOf(db, st.clubId), annualEstimate(econ, payroll).income / 12, payroll);
   db.exec('DELETE FROM board_state');
-  db.prepare(`INSERT INTO board_state (id, club_id, season, objective, target_position, expected_position, confidence, transfer_budget, wage_ceiling, youth_target)
-    VALUES (1,?,?,?,?,?,?,?,?,?)`).run(st.clubId, st.season, goal.objective, goal.target, sit?.expected ?? goal.target, confidence, b.transfer, b.wageCeiling, youthTargetFor(econ.facilities.youth));
+  db.prepare(`INSERT INTO board_state (id, club_id, season, objective, target_position, expected_position, confidence, transfer_budget, wage_ceiling, youth_target, coach_rep_start, season_start)
+    VALUES (1,?,?,?,?,?,?,?,?,?,?,?)`).run(st.clubId, st.season, goal.objective, goal.target, sit?.expected ?? goal.target, confidence, b.transfer, b.wageCeiling, youthTargetFor(econ.facilities.youth),
+    coachOf(db).reputation, st.gameDate);
+  buildObjectives(db, st.clubId, st.season, sit, goal, { wageCeiling: b.wageCeiling, youthTarget: youthTargetFor(econ.facilities.youth) });
 }
 
 /** Garante diretoria e passagem atual (carreiras novas e saves anteriores à Fase 8D). Idempotente. */
@@ -119,7 +120,16 @@ export function ensureBoard(db: SqlDb): void {
   if (!st.clubId) return;
   const row = db.prepare('SELECT club_id, season, confidence FROM board_state WHERE id = 1').get();
   const spell = db.prepare('SELECT club_id FROM coach_spells WHERE end_date IS NULL').get();
-  if (row && S(row.club_id) === st.clubId && N(row.season) === st.season && spell) return;
+  if (row && S(row.club_id) === st.clubId && N(row.season) === st.season && spell) {
+    // save anterior à v0.8.10: objetivos por tamanho e fase montados para a temporada em curso
+    if (!db.prepare('SELECT 1 AS x FROM board_objectives WHERE club_id = ? AND season = ? LIMIT 1').get(st.clubId, st.season)) {
+      withTransaction(db, () => {
+        const b = board(db)!;
+        buildObjectives(db, st.clubId, st.season, leagueSituation(db, st.clubId, st.season), { objective: S(b.objective) as Objective, target: N(b.target_position) }, { wageCeiling: N(b.wage_ceiling), youthTarget: N(b.youth_target) });
+      });
+    }
+    return;
+  }
   withTransaction(db, () => {
     if (!spell) {
       const start = S((db.prepare("SELECT value FROM meta WHERE key = 'world_start_date'").get() ?? { value: st.gameDate }).value);
@@ -213,6 +223,12 @@ export function requestBudget(db: SqlDb, kind: 'transfer' | 'wage'): { approved:
 /** Sai do clube atual: o que era "do usuário" (comissão, olheiros, rotina, listas) fica para trás; obras em andamento seguem com o clube. NÃO abre transação. */
 function leaveClub(db: SqlDb, date: string, reason: 'sacked' | 'left'): void {
   const st = getCareerState(db);
+  // histórico do treinador: a temporada (parcial) no clube que ele deixa
+  const b = board(db);
+  if (st.clubId && b) {
+    const sit = leagueSituation(db, st.clubId, st.season);
+    recordCoachSeason(db, { date, reason, position: sit?.played ? sit.position : null, competitionId: sit?.competitionId ?? null, objectiveLabel: OBJECTIVE_LABEL[S(b.objective) as Objective] ?? null, met: null, confidence: N(b.confidence) });
+  }
   db.prepare('UPDATE coach_spells SET end_date = ?, end_reason = ? WHERE end_date IS NULL').run(date, reason);
   db.exec(`DELETE FROM staff; DELETE FROM scouts; DELETE FROM scout_knowledge; DELETE FROM scout_shortlist; DELETE FROM player_training; DELETE FROM transfer_list;
     UPDATE training_settings SET intensity = 'normal', delegated = 0 WHERE id = 1; UPDATE tactic_schemes SET lineup_json = NULL; DELETE FROM board_state;`);
@@ -224,9 +240,9 @@ function leaveClub(db: SqlDb, date: string, reason: 'sacked' | 'left'): void {
 export function fireCoach(db: SqlDb, date: string, why: string): void {
   const st = getCareerState(db);
   const name = clubName(db, st.clubId);
+  changeReputation(db, -6); // antes da saída: a linha da temporada no histórico já sai com a reputação depois da demissão
   leaveClub(db, date, 'sacked');
   db.prepare('UPDATE career SET club_id = NULL WHERE id = 1').run();
-  changeReputation(db, -6);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending'").run();
   addNews(db, date, 'board', `DEMITIDO: ${name} encerra o trabalho do treinador`, `A diretoria do ${name} decidiu encerrar o seu trabalho. ${why}\n\nSua reputação caiu 6 pontos (agora ${String(toStars(coachOf(db).reputation)).replace('.', ',')} de 5 estrelas). Comissão técnica, olheiros, rotina de treino e listas de transferência ficam no clube.\n\nA carreira continua: o calendário segue e clubes com vaga fazem propostas conforme a sua reputação. Acompanhe e responda na Diretoria.`, { actionLabel: 'Ver propostas na Diretoria' });
 }
@@ -243,6 +259,7 @@ function takeJob(db: SqlDb, clubId: string, date: string): void {
   db.prepare('DELETE FROM job_vacancies WHERE club_id = ?').run(clubId);
   db.prepare('INSERT INTO coach_spells (club_id, start_date) VALUES (?, ?)').run(clubId, date);
   db.prepare("UPDATE job_offers SET status = 'expired' WHERE status = 'pending'").run();
+  ensureCourseForClub(db, clubId, date); // clube que exige licença maior (convite de emergência): matrícula com carência
   // reputação acima da do clube dá crédito; a adaptabilidade também
   const coach = coachOf(db);
   setBoardForSeason(db, hireConfidence(CONFIDENCE.newHire, coach.reputation, N(db.prepare('SELECT reputation FROM clubs WHERE id = ?').get(clubId)!.reputation), coach.attributes));
@@ -279,6 +296,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
       let delta = sit ? monthlyDelta(sit.position, N(b.target_position), sit.played) : 0;
       if (balanceOf(db, st.clubId) < 0) delta -= 3;
       setConfidence(db, N(b.confidence) + delta);
+      logConfidence(db, date, st.clubId, N(board(db)!.confidence));
     }
     const conf = N(board(db)!.confidence);
     if (conf < CONFIDENCE.warning && !N(b.warned)) {
@@ -322,7 +340,7 @@ export function processBoardDay(db: SqlDb, date: string): void {
     const rng = createRng(`job-offers:${seed}:${date}`);
     for (const v of db.prepare('SELECT v.club_id, c.reputation FROM job_vacancies v JOIN clubs c ON c.id = v.club_id ORDER BY v.club_id').all()) {
       const roll = rng.next();
-      if (S(v.club_id) === now.clubId || !eligibleForCoach(N(v.reputation), coachRep, unemployed)) continue;
+      if (S(v.club_id) === now.clubId || !eligibleForCoach(N(v.reputation), coachRep, unemployed) || !canCoachClub(db, S(v.club_id))) continue;
       if (!unemployed && !worthLeaving(N(v.reputation), currentRep)) continue;
       // o mesmo clube não insiste: pendente, ou chamou há pouco (empregado: qualquer resposta; desempregado: recusada)
       if (db.prepare(`SELECT 1 AS x FROM job_offers WHERE club_id = ? AND (status = 'pending' OR (date > ? AND ${unemployed ? "status = 'declined'" : '1 = 1'}))`).get(S(v.club_id), addDays(date, -pace.sameClubDays))) continue;
@@ -334,7 +352,9 @@ export function processBoardDay(db: SqlDb, date: string): void {
     if (unemployed && pending === 0 && !db.prepare("SELECT 1 AS x FROM job_offers WHERE status = 'pending'").get()) {
       const lastEnd = S(db.prepare('SELECT MAX(end_date) AS d FROM coach_spells').get()!.d ?? date);
       if (daysBetween(lastEnd, date) >= 15 && daysBetween(lastEnd, date) % 15 === 0) {
-        const small = db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.id IN ${FULL_CLUBS} ORDER BY l.tier DESC, c.reputation, c.id LIMIT 6`).all().map((r) => S(r.id));
+        const all = db.prepare(`SELECT c.id FROM clubs c JOIN leagues l ON l.id = c.league_id WHERE c.id IN ${FULL_CLUBS} ORDER BY l.tier DESC, c.reputation, c.id`).all().map((r) => S(r.id));
+        const fit = all.filter((id) => canCoachClub(db, id)); // licença: só clubes que ele pode assumir (sem nenhum, o convite vem com matrícula)
+        const small = (fit.length ? fit : all).slice(0, 6);
         const pick = createRng(`job-fallback:${seed}:${date}`).pick(small);
         db.prepare('INSERT OR IGNORE INTO job_vacancies (club_id, opened_on) VALUES (?, ?)').run(pick, date);
         offerJob(db, pick, date);
@@ -367,12 +387,16 @@ export function reviewSeason(db: SqlDb, date: string, a: { position: number; cha
   }
   const b = board(db);
   if (!st.clubId || !b || !a) return null;
-  const verdict = evaluateSeason({ objective: S(b.objective) as Objective, target: N(b.target_position), ...a, balance: balanceOf(db, st.clubId), youthTarget: N(b.youth_target), youthPromoted: N(b.youth_promoted) });
+  const sit = leagueSituation(db, st.clubId, st.season);
+  const objectives = judgeObjectives(db, st.clubId, N(b.season), sit);
+  const verdict = evaluateSeason({ objective: S(b.objective) as Objective, target: N(b.target_position), ...a, balance: balanceOf(db, st.clubId), youthTarget: N(b.youth_target), youthPromoted: N(b.youth_promoted), objectives });
   const conf = Math.max(0, Math.min(100, N(b.confidence) + verdict.confidenceDelta));
+  logConfidence(db, date, st.clubId, conf);
   changeReputation(db, verdict.reputationDelta);
   const pts = seasonPoints({ met: verdict.met, champion: a.champion, promoted: a.promoted });
   grantPoints(db, pts);
-  verdict.lines.push(`Treinador: +${pts} ponto(s) de atributo para distribuir (aba Diretoria).`);
+  verdict.lines.push(`Treinador: +${pts} ponto(s) de atributo para distribuir (Histórico da carreira).`);
+  recordCoachSeason(db, { date, reason: 'season', position: a.position, competitionId: sit?.competitionId ?? null, objectiveLabel: OBJECTIVE_LABEL[S(b.objective) as Objective] ?? null, met: verdict.met, confidence: conf });
   addNews(db, date, 'board', verdict.met ? 'Diretoria satisfeita com a temporada' : 'Diretoria insatisfeita com a temporada', `A diretoria concluiu a avaliação da temporada:\n\n${verdict.lines.join('\n')}\n\nConfiança da diretoria agora: ${Math.round(Math.max(0, Math.min(100, N(b.confidence) + verdict.confidenceDelta)))}/100.`, { actionLabel: 'Distribuir pontos e ver objetivos' });
   if (conf <= CONFIDENCE.sack + 5 && !verdict.met) { fireCoach(db, date, 'A diretoria não renovou a confiança depois da avaliação da temporada.'); return { verdict, sacked: true }; }
   setConfidence(db, conf);
@@ -382,7 +406,10 @@ export function reviewSeason(db: SqlDb, date: string, a: { position: number; cha
 /** Objetivos e orçamentos da temporada nova (depois do calendário), mantendo a confiança. NÃO abre transação. */
 export function startBoardSeason(db: SqlDb): void {
   const b = board(db);
-  if (getCareerState(db).clubId) setBoardForSeason(db, b ? N(b.confidence) : CONFIDENCE.start);
+  const st = getCareerState(db);
+  if (!st.clubId) return;
+  setBoardForSeason(db, b ? N(b.confidence) : CONFIDENCE.start);
+  licenseReminder(db, st.gameDate); // promovido a uma divisão que exige licença maior: aviso, sem demissão
 }
 
 /**
@@ -418,12 +445,15 @@ export function getBoardOverview(db: SqlDb): BoardOverviewDto {
   const payroll = payrollOf(db, st.clubId);
   const target = N(b.target_position);
   const status: BoardStatus = !sit || sit.played === 0 ? 'pending' : sit.position <= target ? 'on_track' : sit.position <= target + 2 ? 'close' : 'off_track';
+  const objectives = liveObjectives(db, st.clubId, N(b.season), sit);
+  const asBoardStatus = (s: string): BoardStatus => (s === 'met' ? 'on_track' : s === 'missed' ? 'off_track' : (s as BoardStatus));
   return {
     ...base,
     club: {
-      name: clubName(db, st.clubId), confidence: N(b.confidence), warning: N(b.confidence) < CONFIDENCE.warning,
+      name: clubName(db, st.clubId), clubId: st.clubId, confidence: N(b.confidence), warning: N(b.confidence) < CONFIDENCE.warning,
+      profile: sizePhaseDto(b.size == null ? null : S(b.size), b.phase == null ? null : S(b.phase)), objectives, confidenceHistory: confidenceHistory(db, st.clubId),
       objective: { label: OBJECTIVE_LABEL[S(b.objective) as Objective], target, expected: N(b.expected_position), position: sit?.played ? sit.position : null, played: sit?.played ?? 0, status },
-      secondary: [
+      secondary: objectives.length ? objectives.filter((o) => o.kind !== 'league').map((o) => ({ label: o.label, status: asBoardStatus(o.status), detail: o.detail })) : [
         { label: 'Terminar a temporada no azul', status: balanceOf(db, st.clubId) >= 0 ? 'on_track' : 'off_track', detail: `Caixa atual: ${fmt(balanceOf(db, st.clubId))}` },
         ...(N(b.youth_target) > 0 ? [{ label: `Promover ${N(b.youth_target)} jovem(ns) da base`, status: N(b.youth_promoted) >= N(b.youth_target) ? 'on_track' : 'pending', detail: `${N(b.youth_promoted)} promovido(s) por você nesta temporada` }] : []),
       ] as Array<{ label: string; status: BoardStatus; detail: string }>,

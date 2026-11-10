@@ -16,6 +16,7 @@ import type { MatchDecider } from '../../game/match-engine/types.ts';
 import type { Poster } from './financeRepository.ts';
 import type { CupBracketDto } from '../../shared/api.ts';
 import { addNews } from './newsRepository.ts';
+import { paySponsorBonuses } from './sponsorRepository.ts';
 import { getCareerState } from './careerRepository.ts';
 import { countrySeason } from './countrySeasonRepository.ts';
 import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.ts';
@@ -269,6 +270,7 @@ export function recordCupResult(db: SqlDb, fixtureId: string, r: { winner: 0 | 1
   if (stage === n - 1) { // supercopa: só troféu (prêmios zerados, sem lançamento)
     if (state.prizes.winner) post(winner, date, 'prize', state.prizes.winner, `${name}: campeão`);
     if (state.prizes.runnerUp) post(loser, date, 'prize', state.prizes.runnerUp, `${name}: vice-campeão`);
+    if (state.format.kind !== 'supercup' && winner === getCareerState(db).clubId) paySponsorBonuses(db, post, date, winner, { cupTitle: true });
   }
 }
 

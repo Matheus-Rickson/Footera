@@ -10,6 +10,7 @@ import type {
 import { deriveGoalkeeper } from './goalkeeper.ts';
 import { defaultCoaches } from '../coach-engine/worldCoaches.ts';
 import { defaultCups } from '../cup-engine/catalog.ts';
+import { fairSalary } from '../finance-engine/finance.ts';
 
 export interface WorldOptions {
   seed: string;
@@ -163,7 +164,7 @@ export function buildPlayer(
     morale: 70,
     form: 50,
     marketValue: value,
-    salary: Math.max(Math.round((value * 0.012) / 100) * 100, 1500),
+    salary: fairSalary(value, tpl.wageScale),
     contractEnd: addYears(startDate, rng.int(1, 4)),
     overall,
   };

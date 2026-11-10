@@ -73,6 +73,10 @@ export const clubSchema = z.object({
   stadium: id.optional(),
   reputation: int(1, 100).optional(), balance: int(-1e10, 1e11).optional(), fans: int(0, 1e8).optional(),
   facilities: z.object({ training: attr.optional(), youth: attr.optional(), medical: attr.optional(), stadium: attr.optional() }).strict().optional(),
+  /** títulos anteriores ao universo (Sala de troféus); `competitionId` = id da liga ou copa do jogo (ex.: bra-1, cup-bra), quando existir; null = apagar */
+  honours: z.array(z.object({
+    competitionId: id.optional(), name: text(80), count: int(1, 500), years: z.string().trim().max(400).optional(),
+  }).strict()).max(60).nullable().optional(),
 }).strict();
 
 const technical = z.object({ finishing: attr, passing: attr, dribbling: attr, tackling: attr, marking: attr, firstTouch: attr, crossing: attr, heading: attr, longShots: attr, goalkeeping: attr }).strict();

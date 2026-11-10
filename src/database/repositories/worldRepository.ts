@@ -32,9 +32,12 @@ export function saveWorld(db: SqlDb, w: World): void {
     const insClub = db.prepare(
       'INSERT INTO clubs (id, name, short_name, country_id, city, league_id, stadium_id, reputation, balance, fans, facilities_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
     const upClubState = hasStates ? db.prepare('UPDATE clubs SET state = ?, state_division = ? WHERE id = ?') : null;
+    const hasHonours = db.prepare("SELECT 1 AS x FROM pragma_table_info('clubs') WHERE name = 'honours_json'").get() !== undefined;
+    const upHonours = hasHonours ? db.prepare('UPDATE clubs SET honours_json = ? WHERE id = ?') : null;
     for (const c of w.clubs) {
       insClub.run(c.id, c.name, c.shortName, c.countryId, c.city, c.leagueId, c.stadiumId, c.reputation, c.balance, c.fans, JSON.stringify(c.facilities));
       if (upClubState && c.state) upClubState.run(c.state, c.stateDivision ?? null, c.id);
+      if (upHonours && c.honours?.length) upHonours.run(JSON.stringify(c.honours), c.id);
     }
 
     const insPlayer = playerInserter(db);
@@ -86,6 +89,7 @@ export function loadWorld(db: SqlDb): World {
     leagueId: s(r.league_id), stadiumId: s(r.stadium_id), reputation: n(r.reputation), balance: n(r.balance),
     fans: n(r.fans), facilities: JSON.parse(s(r.facilities_json)),
     ...(r.state != null ? { state: s(r.state), ...(r.state_division != null ? { stateDivision: n(r.state_division) as 1 | 2 } : {}) } : {}),
+    ...(r.honours_json != null ? { honours: JSON.parse(s(r.honours_json)) as Club['honours'] } : {}),
   }));
   const players: Player[] = db.prepare('SELECT * FROM players ORDER BY rowid').all().map(rowToPlayer);
   // copas e supercopas gravadas (saves anteriores ao editor de copas não têm: ficam de fora, e a criação usa as padrão)

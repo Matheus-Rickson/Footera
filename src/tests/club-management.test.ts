@@ -9,11 +9,13 @@ import { createCareer } from '../services/careerService.ts';
 import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
-import { counterOffer, getTransfersOverview, makeOffer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
+import { counterOffer, getTransfersOverview, makeOffer, releasePlayer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
 import { getContracts, renegotiateContract, SeasonError, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { makePoster } from '../database/repositories/financeRepository.ts';
-import { annualEstimate, F, participationOf, tvMonthly, WAGE_CAP, wageCapFactor, type ClubEcon } from '../game/finance-engine/finance.ts';
+import { annualEstimate, F, fairSalary, maintenanceMonthly, merchMonthly, minSalary, participationOf, rebasedFloorSalary, sizeFactor, sponsorFloorOf, sponsorTotalMonthly, staffMonthly, tvMonthly, WAGE_CAP, wageCapFactor, type ClubEcon } from '../game/finance-engine/finance.ts';
+import { wageDemand } from '../game/transfer-engine/transfer.ts';
+import { aiRenewalWage, renewalDemand } from '../game/career-engine/contracts.ts';
 import { buyerReply, MAX_COUNTER_ROUNDS, SQUAD_MAX } from '../game/transfer-engine/transfer.ts';
 import { terminationCost } from '../game/career-engine/contracts.ts';
 import { compileUniverse } from '../game/data-pack/compile.ts';
@@ -48,6 +50,14 @@ test('Finanças: cota de participação só da 3ª divisão para baixo, e a base
   for (const t of [3, 4, 5]) assert.equal(participationOf(t), F.participation[t]);
   assert.equal(participationOf(9), F.participation[5], 'abaixo da 5ª vale a da 5ª');
   assert.equal(tvMonthly({ ...e(4), econ: 2 }) - 2 * tvMonthly(e(4)) <= 1, true, 'a cota também escala com a economia');
+  // piso de patrocínio: só da 3ª divisão para baixo (abaixo da 5ª vale o da 5ª)
+  assert.deepEqual([sponsorFloorOf(1), sponsorFloorOf(2)], [0, 0]);
+  for (const t of [3, 4, 5]) assert.equal(sponsorFloorOf(t), F.sponsorFloor[t]);
+  assert.equal(sponsorFloorOf(8), F.sponsorFloor[5]);
+  // clube da Série D com reputação 15 (Brasiliense, economia 0,6): o patrocínio passa a ser receita relevante
+  const d = { ...e(4), econ: 0.6, reputation: 15, fans: 57_079, capacity: 5_700 };
+  assert.ok(sponsorTotalMonthly(d) >= 30_000, `patrocínio da Série D: ${sponsorTotalMonthly(d)}`);
+  assert.ok(sponsorTotalMonthly(d) > tvMonthly(d) * 0.5);
   const w = compileUniverse(EMPTY_WORLD, [basePack()]).world;
   const lg = new Map(w.leagues.map((l) => [l.id, l])), co = new Map(w.countries.map((c) => [c.id, c])), st = new Map(w.stadiums.map((s) => [s.id, s]));
   const byTier = new Map<number, number[]>();
@@ -58,6 +68,38 @@ test('Finanças: cota de participação só da 3ª divisão para baixo, e a base
     byTier.set(l.tier, [...(byTier.get(l.tier) ?? []), a.net / a.income]);
   }
   for (const [t, m] of byTier) assert.ok(q(m, 0.5) > -0.08 && q(m, 0.5) < 0.12, `divisão ${t}: margem mediana ${(100 * q(m, 0.5)).toFixed(1)}% (antes: 3ª −40%, 4ª −150%, 5ª −330%)`);
+  // calibração das divisões de baixo (v0.8.10): o orçamento de um clube brasileiro da Série D / sem divisão fica na ordem do real
+  const bra = w.countries.find((c) => c.code === 'BRA')!;
+  const incomeOf = (tier: number) => w.clubs.filter((c) => c.countryId === bra.id && lg.get(c.leagueId)!.tier === tier).map((c) =>
+    annualEstimate({ econ: bra.economy, tier, reputation: c.reputation, fans: c.fans, capacity: st.get(c.stadiumId)!.capacity, facilities: c.facilities }, w.players.filter((p) => p.clubId === c.id).reduce((s, p) => s + p.salary, 0)).income);
+  const d4 = q(incomeOf(4), 0.5), d5 = q(incomeOf(5), 0.5);
+  assert.ok(d4 > 500_000 && d4 < 1_000_000, `receita mediana da Série D: ${Math.round(d4)} (antes ~1,3 milhão)`);
+  assert.ok(d5 > 300_000 && d5 < 700_000, `receita mediana dos clubes sem divisão: ${Math.round(d5)} (antes ~1,1 milhão)`);
+  // salários da base: ninguém do Brasil fica no piso antigo de 1.500 se o valor dá menos; o mínimo é o do país
+  const braPlayers = w.players.filter((p) => w.clubs.find((c) => c.id === p.clubId)?.countryId === bra.id);
+  assert.ok(braPlayers.every((p) => p.salary >= minSalary(bra.economy)));
+  assert.ok(!braPlayers.some((p) => p.salary === 1500 && Math.round((p.marketValue * 0.012) / 100) * 100 < 1500), 'piso antigo rebaixado ao mínimo do país');
+  assert.ok(braPlayers.some((p) => p.salary < 1500), 'há salários abaixo do piso antigo');
+});
+
+test('Finanças: salário mínimo por país, porte do clube e pedidos de salário pelo país do clube (v0.8.10)', () => {
+  assert.deepEqual([minSalary(0.6), minSalary(1.6), minSalary(0.05), minSalary(1)], [600, 1500, 100, 1000]);
+  assert.equal(fairSalary(20_000, 0.6), 600, 'valor baixo: mínimo do país');
+  assert.equal(fairSalary(1_000_000, 0.6), 12_000, '1,2% do valor');
+  assert.equal(rebasedFloorSalary(1500, 20_000, 0.6), 600, 'piso antigo → mínimo do país');
+  assert.equal(rebasedFloorSalary(1500, 125_000, 0.6), 1500, 'quem vale 1.500 mantém');
+  assert.equal(rebasedFloorSalary(1600, 20_000, 0.6), 1600, 'acima do piso antigo não muda');
+  assert.equal(rebasedFloorSalary(1500, 20_000, 1.6), 1500, 'país rico: o mínimo já é 1.500');
+  // porte: reputação 30+ paga a estrutura cheia; abaixo, proporcional, com piso de 20%
+  assert.deepEqual([sizeFactor(65), sizeFactor(30), sizeFactor(15), sizeFactor(1)], [1, 1, 0.5, 0.2]);
+  const c = (reputation: number): ClubEcon => ({ econ: 1, tier: 4, reputation, fans: 50_000, capacity: 10_000, facilities: { training: 8, youth: 8, medical: 8, stadium: 8 } });
+  assert.equal(staffMonthly(c(15)), Math.round(staffMonthly(c(30)) / 2), 'estrutura cai pela metade com reputação 15');
+  assert.ok(maintenanceMonthly(c(15)) < maintenanceMonthly(c(30)) && merchMonthly(c(15)) < merchMonthly({ ...c(15), reputation: 30 }));
+  // pedidos: o piso é o mínimo do país do clube (padrão = piso antigo)
+  const cheap = { marketValue: 20_000, salary: 600, ambition: 10, loyalty: 10 };
+  assert.ok(wageDemand(cheap, 20, 20, 600) < 1000 && wageDemand(cheap, 20, 20) >= 1500);
+  assert.ok(renewalDemand(cheap, 600) < 1000 && renewalDemand(cheap) >= 1500);
+  assert.ok(aiRenewalWage(cheap, 600) <= 660 && aiRenewalWage({ ...cheap, salary: 1500 }) >= 1400);
 });
 
 test('Finanças: folha acima de 80% da receita (salários reais de pacote) é reduzida a 65% na montagem do universo, com aviso', () => {
@@ -77,6 +119,34 @@ test('Finanças: folha acima de 80% da receita (salários reais de pacote) é re
   assert.ok(12 * wages <= WAGE_CAP.over * annualEstimate(ce, wages).income, 'folha cabe na receita');
   assert.ok(after.every((p) => p.salary < 3_000_000) && new Set(after.map((p) => p.salary)).size === 1, 'redução proporcional (todos iguais continuam iguais)');
   assert.ok(r.warnings.some((w) => w.record === club.id && /salários reduzidos/.test(w.message)));
+});
+
+test('Finanças: salário de 1.500 vindo de pacote (piso exportado por versões anteriores) também cai ao mínimo do país; livres pela nacionalidade', () => {
+  const base = compileUniverse(EMPTY_WORLD, [basePack()]).world;
+  const bra = base.countries.find((c) => c.code === 'BRA')!;
+  const [a, b] = base.players.filter((p) => base.clubs.find((c) => c.id === p.clubId)?.countryId === bra.id && p.nationality === 'BRA');
+  const pack = { manifest: { format: 1, id: 'piso', name: 'Piso', version: '1.0.0' }, data: { countries: [], leagues: [], stadiums: [], clubs: [], coaches: [], cups: [],
+    players: [{ id: a!.id, marketValue: 20_000, contract: { salary: 1500 } }, { id: b!.id, club: null, marketValue: 30_000, contract: { salary: 1500 } }] } } as unknown as Pack;
+  const w = compileUniverse(EMPTY_WORLD, [basePack(), pack]).world;
+  const pa = w.players.find((p) => p.id === a!.id)!, pb = w.players.find((p) => p.id === b!.id)!;
+  assert.equal(pa.salary, minSalary(bra.economy));
+  assert.equal(pb.clubId, null);
+  assert.equal(pb.salary, fairSalary(30_000, bra.economy));
+});
+
+test('Finanças: livre barato assina pelo salário mínimo do país do clube que contrata (v0.8.10)', async () => {
+  const { db, clubId } = await setup('cm-floor');
+  db.prepare('UPDATE countries SET economy = 0.6 WHERE id = (SELECT country_id FROM clubs WHERE id = ?)').run(clubId);
+  const id = String(db.prepare('SELECT id FROM players WHERE club_id IS NOT NULL AND club_id <> ? ORDER BY id LIMIT 1').get(clubId)!.id);
+  // dispensado: a pretensão vira o salário pelo valor, com o mínimo do país da nacionalidade (aqui, economia 0,6)
+  const code = String(db.prepare('SELECT co.code FROM clubs cl JOIN countries co ON co.id = cl.country_id WHERE cl.id = ?').get(clubId)!.code);
+  db.prepare('UPDATE players SET salary = 5000, market_value = 20000, nationality = ?, retire_planned = 0 WHERE id = ?').run(code, id);
+  releasePlayer(db, id, getCareerState(db).gameDate, false);
+  assert.equal(n(db, 'SELECT salary AS n FROM players WHERE id = ? AND club_id IS NULL', id), 600);
+  const r = makeOffer(db, { playerId: id, fee: 0, wage: 900, years: 2 });
+  assert.equal(r.outcome, 'completed', `${r.outcome}: ${r.message}`);
+  assert.equal(n(db, 'SELECT salary AS n FROM players WHERE id = ?', id), 900);
+  db.close();
 });
 
 // ---------------------------------------------------------------- 2. aposentadoria anunciada

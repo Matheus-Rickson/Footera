@@ -1,6 +1,6 @@
 {
   "name": "football-manager-simulator",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "description": "Jogo de gerenciamento de futebol offline (Electron + React + TypeScript + SQLite)",
   "private": true,
   "type": "module",

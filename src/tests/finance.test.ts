@@ -8,7 +8,7 @@ import { advanceTime, getCareerState } from '../database/repositories/competitio
 import { getMatchReport, simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { ensureFinance, getFinanceOverview, loadClubEcon, settleFinancesTx } from '../database/repositories/financeRepository.ts';
 import {
-  annualEstimate, attendance, expectedFill, gateRevenue, maintenanceMonthly, merchMonthly, operationsMonthly, sponsorTotalMonthly, staffMonthly, staffUserMonthly, ticketPrice, tvMonthly,
+  annualEstimate, attendance, expectedFill, fairSalary, gateRevenue, maintenanceMonthly, merchMonthly, minSalary, operationsMonthly, sponsorFloorOf, sponsorTotalMonthly, staffMonthly, staffUserMonthly, ticketPrice, tvMonthly,
   type ClubEcon,
 } from '../game/finance-engine/finance.ts';
 import { composeBar } from '../shared/financeChart.ts';
@@ -252,4 +252,54 @@ test('Projeção mensal inclui a bilheteria (estimada antes de 3 jogos em casa, 
   const avg = after.gates.reduce((a, g) => a + g.revenue, 0) / after.gates.length;
   const homeNow = n(db, "SELECT COUNT(*) AS n FROM fixtures WHERE home_club_id = ?", clubId); // a copa sorteia jogos novos ao longo da temporada
   assert.equal(after.projection.gate, Math.round((avg * homeNow) / 12));
+});
+
+test('Piso de patrocínio (v0.8.10): save antigo da 3ª divisão para baixo tem os contratos em vigor reajustados uma vez; carreira nova já nasce com o piso', async () => {
+  const { db } = await setup();
+  assert.ok(db.prepare("SELECT 1 AS x FROM meta WHERE key = 'sponsor_floor'").get(), 'carreira nova marca o reajuste como feito');
+  // simula um save antigo com uma liga de 3ª divisão (os contratos foram feitos sem o piso)
+  const lg = String(db.prepare('SELECT league_id AS l FROM clubs LIMIT 1').get()!.l);
+  db.prepare('UPDATE leagues SET tier = 3 WHERE id = ?').run(lg);
+  db.exec("DELETE FROM meta WHERE key = 'sponsor_floor'");
+  const today = getCareerState(db).gameDate;
+  const before = new Map(db.prepare('SELECT d.id, d.kind, d.monthly_amount, c.league_id, co.economy FROM sponsor_deals d JOIN clubs c ON c.id = d.club_id JOIN countries co ON co.id = c.country_id WHERE d.end_date >= ?').all(today)
+    .map((r) => [String(r.id), r]));
+  ensureFinance(db);
+  ensureFinance(db); // idempotente
+  for (const [id, r] of before) {
+    const now = Number(db.prepare('SELECT monthly_amount AS m FROM sponsor_deals WHERE id = ?').get(id)!.m);
+    const share = { shirt: 0.55, kit: 0.3, stadium: 0.15 }[String(r.kind) as 'shirt'];
+    const want = Number(r.monthly_amount) + (r.league_id === lg ? Math.round(Number(r.economy) * sponsorFloorOf(3) * share) : 0);
+    assert.equal(now, want, `${id}: só a 3ª divisão sobe, pela parte do piso da cota`);
+  }
+  db.close();
+});
+
+test('Salário mínimo por país (v0.8.10): save antigo tem o piso de 1.500 rebaixado uma vez; livres pela nacionalidade; base e quem vale mais não mudam', async () => {
+  const { db, clubId } = await setup();
+  assert.ok(db.prepare("SELECT 1 AS x FROM meta WHERE key = 'salary_floor'").get(), 'carreira nova marca a correção como feita');
+  const cty = String(db.prepare('SELECT country_id AS c FROM clubs WHERE id = ?').get(clubId)!.c);
+  db.prepare('UPDATE countries SET economy = 0.6 WHERE id = ?').run(cty);
+  const code = String(db.prepare('SELECT code FROM countries WHERE id = ?').get(cty)!.code);
+  const ids = db.prepare('SELECT id FROM players WHERE club_id = ? ORDER BY id LIMIT 3').all(clubId).map((r) => String(r.id));
+  const [cheap, rich, same] = ids as [string, string, string];
+  db.prepare('UPDATE players SET salary = 1500, market_value = 20000 WHERE id = ?').run(cheap);
+  db.prepare('UPDATE players SET salary = 1500, market_value = 200000 WHERE id = ?').run(rich); // vale 2.400: o piso antigo não era a causa
+  db.prepare('UPDATE players SET salary = 1600, market_value = 20000 WHERE id = ?').run(same);
+  const free = String(db.prepare('SELECT id FROM players WHERE club_id IS NOT NULL AND club_id <> ? ORDER BY id LIMIT 1').get(clubId)!.id);
+  db.prepare('UPDATE players SET club_id = NULL, youth_club_id = NULL, salary = 1500, market_value = 30000, nationality = ? WHERE id = ?').run(code, free);
+  const youth = db.prepare('SELECT id FROM players WHERE youth_club_id IS NOT NULL ORDER BY id LIMIT 1').get();
+  if (youth) db.prepare('UPDATE players SET salary = 1500, market_value = 1000 WHERE id = ?').run(String(youth.id));
+  db.exec("DELETE FROM meta WHERE key = 'salary_floor'");
+  ensureFinance(db);
+  const sal = (id: string) => n(db, 'SELECT salary AS n FROM players WHERE id = ?', id);
+  assert.equal(sal(cheap), minSalary(0.6), 'piso antigo → mínimo do país do clube');
+  assert.equal(sal(rich), 1500);
+  assert.equal(sal(same), 1600);
+  assert.equal(sal(free), fairSalary(30_000, 0.6), 'livre: mínimo do país da nacionalidade');
+  if (youth) assert.equal(sal(String(youth.id)), 1500, 'jovem da base não muda');
+  db.prepare('UPDATE players SET salary = 1500 WHERE id = ?').run(cheap);
+  ensureFinance(db);
+  assert.equal(sal(cheap), 1500, 'uma vez por save');
+  db.close();
 });
