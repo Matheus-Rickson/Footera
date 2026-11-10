@@ -47,8 +47,32 @@
 ## Contratos
 - Todo contrato novo (transferência, livre, renovação, jovem) termina em **30/jun**, para vencer exatamente numa virada. Saves antigos têm fins em 1º/jul ou no meio
   da temporada; eles vencem na primeira virada em que `contract_end ≤ 1º/jul`.
-- **Renovação pelo usuário:** só com até 24 meses restantes; conta a partir do fim do contrato atual. Pedido = max(valor × 1,2%, salário × 1,08) × fator de
-  ambição (+) e fidelidade (−). Máximo de temporadas por idade: 5 (≤29), 3 (30–31), 2 (32–33), 1 (34+). Decisão igual à das transferências (≥ 97% aceita; ≥ 80% contraproposta).
+- **Renegociação pelo usuário (v0.8.9, a qualquer momento):** em Contratos → painel do jogador → "Renegociar": salário, temporadas a acrescentar
+  (0 = mantém o fim do contrato; contam a partir do fim atual) e **status de tempo de jogo**. Pedido = max(valor × 1,2%, salário × 1,08) × fator de
+  ambição (+) e fidelidade (−) × multiplicador de negociação do treinador × peso do status novo ÷ peso do atual (`renegotiationTarget`).
+  - Oferta ≥ 97% do pedido: aceita. Abaixo disso o jogador **contrapropõe**: oferta + 40% da diferença, nunca abaixo de 85% do pedido nem acima
+    do pedido anterior nos mesmos termos (status e temporadas). Aceitar o pedido dele sempre fecha, mesmo abaixo do salário atual (redução negociada).
+  - **3 tentativas**: na 3ª oferta insuficiente ele encerra a conversa e só volta a negociar 30 dias depois (`contract_talks`, migração 028).
+  - Temporadas: máximo pela idade, 5 (≤29), 3 (30–31), 2 (32–33), 1 (34+), e o contrato resultante não passa desse limite + 24 meses a partir de
+    hoje (quem tem contrato longo acrescenta menos). Antes, a renovação só era possível com até 24 meses restantes.
+  - Veto da diretoria para salários fora do orçamento; quem anunciou a aposentadoria não renegocia.
+- **Tempo de jogo (v0.8.9):** cada jogador do clube do usuário tem um status combinado no contrato (`squad_roles`, migração 028):
+
+  | Status | Minutos esperados | Peso no salário pedido |
+  |---|---|---|
+  | Jogador-chave | 85% | 1,15 |
+  | Titular | 70% | 1,05 |
+  | Rotação | 40% | 1,00 |
+  | Reserva | 15% | 0,92 |
+  | Promessa (até 21 anos) | 10% | 0,90 |
+
+  - Status padrão (carreira nova e quem chega ao elenco): pela força, 3 jogadores-chave, 8 titulares, 7 de rotação; do resto, até 21 anos promessa e
+    os demais reserva. Promessa que passa dos 21 vira reserva. Só muda por renegociação; rebaixar o status custa 5 de moral por degrau.
+  - **Avaliação mensal** (dia 1º, `processPlayingTimeMonth` dentro do `moveClock`): minutos do jogador desde a última avaliação ÷ (jogos do clube no
+    período × 90), em todas as competições, com pelo menos 3 jogos (com menos, acumula para o mês seguinte). Abaixo de 60% do esperado: insatisfeito,
+    moral −6; no esperado ou acima: satisfeito, +2; entre os dois: nada. Quem se lesionou no período fica de fora. Um e-mail da comissão técnica lista os
+    insatisfeitos (ação "Abrir contratos"). Não calibrado em várias temporadas.
+  - Na tela, a barra mostra a parte dos minutos da temporada corrente (com a marca do esperado) e o ícone, o último veredito mensal.
 - **Renovação pela IA:** salário = valor × 1,2% × fator de personalidade, **no máximo +10%** sobre o atual (veterano desvalorizado aceita redução).
   Com o piso de +8% do usuário aplicado também à IA, as folhas inflavam e a margem mediana caía de +1% para −9% em cinco temporadas.
 

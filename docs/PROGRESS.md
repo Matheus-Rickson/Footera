@@ -742,6 +742,36 @@ Sem novas funcionalidades de jogo.
   sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.
 
 ## Fase 9 — Base de dados editável (branch `fase-9-base-de-dados`; detalhes em `docs/DATABASE.md`)
+- **v0.8.9 — contratos com tempo de jogo, desempenho e gestão de saves (09/11/2026):** pedidos do usuário antes dos continentais.
+  - **Contratos refeitos** (`ContractsView.tsx`): resumo em cartões (folha, vencem, na lista, insatisfeitos), filtros por situação e setor, tabela com
+    tempo de jogo (status, barra de minutos × esperado, veredito), moral, salário e tempo de contrato; painel do jogador com Renegociar, Lista de
+    transferências (reaproveita `setListed`) e Rescindir. **Renegociação a qualquer momento** (`renegotiateContract`, substitui `renewContract`):
+    salário, temporadas a mais (0–5) e status; até 3 contrapropostas do jogador e bloqueio de 30 dias (decisão do usuário: "ganha 30.000, oferece
+    25.000, ele pede 27.000"). **Tempo de jogo** com efeito na moral e e-mail mensal (`squadRoleRepository.ts`; migração 028 `squad_roles`,
+    `contract_talks`). Regras em `docs/CAREER_CYCLE.md`.
+  - **Desempenho** (medido neste PC, pacotes ativos com 32.862 jogadores e o save de 56 MB do usuário):
+    - montagem do universo (`attributesForAbility` calculava a força montando 97 objetos por jogador): **7,6 s → 1,0 s**, resultado idêntico (mesmo hash
+      do universo antes e depois; teste compara com a implementação anterior em 1.920 casos);
+    - "Nova carreira" na 1ª abertura: ~10 s → ~3,5 s; com o **cache do universo em disco** (`<dados>/cache`, chave = versão do programa + base +
+      datas dos arquivos dos pacotes ativos): **0,4 s**, inclusive depois de fechar o jogo (pré-carga depois da 1ª pintura);
+    - o índice de imagens e a chave do cache não leem mais os pacotes inteiros (só o `manifest.json`): antes, 0,4 s de validação a cada consulta;
+    - **conexão do save mantida aberta** (até 2 saves; fechada ao excluir e ao sair): sem reabrir o arquivo nem repetir migrações/verificações a cada
+      chamada (repetem só quando muda a data, a temporada ou o clube): ~35–45 ms a menos por chamada (ex.: temporada 103 → 85 ms; táticas 10 → 4 ms);
+    - mercado de transferências: filtra com as colunas mínimas e monta só a página: **503 → 102 ms**;
+    - lista de carreiras (perfil com 19 saves): leitura só para leitura e cache por data/tamanho do arquivo: 25 ms e 2 ms com cache; a tela inicial
+      não relista os saves a cada troca de tela;
+    - imagens: em cache no navegador (URL com versão), o índice de 21 mil chaves é pedido uma vez e compartilhado pelas telas (antes, a cada componente
+      montado), e o editor não lista a pasta inteira a cada imagem; fundo da tela inicial de 2,4 MB (PNG) → 135 KB (WebP);
+    - medição contínua: `FOOTERA_PERF=1` (ou em desenvolvimento) registra no console as chamadas IPC de 50 ms ou mais.
+    - Não medido: o tempo de abertura do Electron em si (janela e carregamento do JavaScript), nem antes e depois na máquina do usuário pelo app.
+  - **Carregar carreira:** botões "Abrir pasta" (Explorador com o `career.db` selecionado) e "Excluir" (confirmação; a pasta vai para a **Lixeira**,
+    `shell.trashItem`), também para saves ilegíveis.
+  - Testes: `contracts-playing-time.test.ts` (4), `performance.test.ts` (3), exclusão em `saves.test.ts`; testes de renovação adaptados à nova regra.
+    Mutação: 10/10 nos contratos, 5/6 no desempenho (1 equivalente: a ordem dos grupos de atributos não importa porque nenhum nome se repete) e a
+    exclusão sem fechar a conexão falha no Windows. Suíte 318/318 (numa das execuções o teste de tempo "rodada de 40 jogos em menos de 2 s" passou do
+    limite com a máquina carregada: 3,3 s; isolado, 1,1 s; a execução seguinte da suíte passou inteira). Typecheck ok.
+  - Verificado pelo usuário no Electron (09/11/2026): tela de Contratos (cartões, filtros, tabela com tempo de jogo) e exclusão de save em Carregar carreira.
+    Não confirmados pelo usuário: renegociação com contrapropostas no app, "Abrir pasta" e o e-mail mensal de tempo de jogo.
 Decisões do usuário: JSON + CSV; pacotes só para carreiras novas (exceto fotos/nomes); começar pela etapa 1; commit da v0.8.7 antes (feito: `a33826b`).
 ### Etapa 1 — formato, IDs fixos, montagem do universo, validador (funcional, testada)
 - **IDs fixos e legíveis** no gerador, únicos no universo: `bra`, `bra-1`, clubes/estádios pelo nome, jogadores `nome-sobrenome-ano`

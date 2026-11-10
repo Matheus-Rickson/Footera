@@ -1575,3 +1575,67 @@ button.hm-quit:hover:not(:disabled) { background: var(--danger-soft); color: var
 .np-opt.sel { color: var(--primary-text); font-weight: 600; }
 .np-code { margin-left: auto; font-size: .74rem; color: var(--text-faint); letter-spacing: .04em; }
 .np-none { padding: 10px; }
+
+/* Carregar carreira: abrir pasta e excluir save */
+.csl-row-actions { gap: 6px; flex-wrap: nowrap; justify-content: flex-end; }
+.csl-actions { gap: 6px; flex-wrap: nowrap; }
+.csl-pending td { background: var(--danger-soft); }
+.csl-confirm { border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.csl-confirm h2 { color: var(--danger-text); }
+.csl-unreadable { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.csl-unreadable li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Contratos (v0.8.9): resumo, tabela com tempo de jogo e painel do jogador */
+.kt-page { display: grid; gap: 14px; }
+.kt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.kt-stat { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; row-gap: 2px; text-align: left; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; color: var(--text); box-shadow: var(--shadow-sm); font-weight: 400; }
+button.kt-stat { cursor: pointer; } button.kt-stat:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
+.kt-stat svg { color: var(--text-muted); grid-row: span 2; }
+.kt-stat span { color: var(--text-muted); font-size: .82rem; }
+.kt-stat strong { font-size: 1.35rem; grid-column: 2; }
+.kt-stat small { grid-column: 1 / -1; color: var(--text-faint); font-size: .74rem; }
+.kt-stat-on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.kt-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.kt-layout-open { grid-template-columns: minmax(0, 1fr) clamp(320px, 30vw, 390px); }
+.kt-list { padding: 14px; display: grid; gap: 10px; }
+.kt-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; }
+.kt-chips { gap: 4px; flex-wrap: wrap; } .kt-chips button { padding: 5px 10px; font-size: .82rem; }
+.kt-scroll { max-height: 64vh; }
+.kt-table td { vertical-align: middle; }
+.kt-row { cursor: pointer; } .kt-row:hover td { background: var(--surface-2); }
+.kt-row-sel td { background: var(--primary-soft) !important; }
+.kt-who { display: flex; gap: 10px; align-items: flex-start; } .kt-who > div { display: grid; gap: 1px; }
+.kt-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.kt-tag { display: inline-flex; align-items: center; gap: 3px; font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-text); }
+.kt-tag-warn { background: var(--danger-soft); color: var(--danger-text); }
+.kt-tag-muted { background: var(--surface-3); color: var(--text-muted); }
+.kt-play { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.kt-status { font-size: .74rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--surface-3); color: var(--text); white-space: nowrap; }
+.kt-status-key { background: rgba(234, 179, 8, .18); color: #eab308; }
+.kt-status-starter { background: var(--primary-soft); color: var(--primary-text); }
+.kt-status-rotation { background: rgba(59, 130, 246, .16); color: #60a5fa; }
+.kt-status-prospect { background: rgba(168, 85, 247, .16); color: #c084fc; }
+.kt-minutes { display: grid; gap: 2px; min-width: 130px; } .kt-minutes small { color: var(--text-muted); font-size: .72rem; }
+.kt-bar { position: relative; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: visible; }
+.kt-bar-fill { display: block; height: 100%; border-radius: 999px; }
+.kt-bar-ok { background: var(--primary); } .kt-bar-mid { background: var(--warning); } .kt-bar-low { background: var(--danger); } .kt-bar-none { background: transparent; }
+.kt-bar-mark { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--text); opacity: .7; border-radius: 1px; transform: translateX(-1px); }
+.kt-sub { display: block; font-size: .7rem; }
+.kt-left { height: 4px; border-radius: 999px; background: var(--surface-3); margin: 3px 0 1px; max-width: 110px; }
+.kt-left-fill { display: block; height: 100%; border-radius: 999px; background: var(--text-muted); }
+.kt-left-warn { background: var(--danger); }
+.kt-morale-great, .kt-morale-good { color: var(--primary-text); font-weight: 700; } .kt-morale-avg { color: var(--warning-text); font-weight: 700; } .kt-morale-poor { color: var(--danger-text); font-weight: 700; }
+.kt-panel { position: sticky; top: 0; display: grid; gap: 12px; padding: 16px; max-height: 78vh; overflow: auto; }
+.kt-panel-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; } .kt-panel-head h2 { margin: 0; font-size: 1.05rem; } .kt-panel-head p { margin: 2px 0 0; }
+.kt-face { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; font-weight: 700; color: #fff; background: linear-gradient(135deg, #0ea5a4, #2563eb); }
+.kt-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.kt-facts div { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); }
+.kt-facts dt { font-size: .72rem; color: var(--text-muted); } .kt-facts dd { margin: 2px 0 0; font-weight: 600; font-size: .88rem; }
+.kt-tabs { gap: 4px; } .kt-tabs button { flex: 1; justify-content: center; padding: 7px 6px; font-size: .84rem; }
+.kt-renew { display: grid; gap: 10px; } .kt-renew p { margin: 0; }
+.kt-field { display: grid; gap: 6px; font-size: .86rem; color: var(--text-muted); }
+.kt-status-pick { gap: 4px; flex-wrap: wrap; } .kt-status-pick button { padding: 5px 8px; font-size: .78rem; }
+.kt-rounds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kt-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border-strong); }
+.kt-dot-on { background: var(--primary); border-color: var(--primary); }

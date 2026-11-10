@@ -364,6 +364,17 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Com um clube russo: jogos da copa às quartas-feiras no calendário, com o nome "Copa da Rússia".
 - [ ] Na 2ª temporada com um clube russo: "Supercopa da Rússia" em Competições, final em campo neutro no fim de julho, entre o campeão da liga e o vencedor da copa.
 
+## 13z3. Contratos, saves e velocidade (v0.8.9)
+- [ ] Contratos: 4 cartões no topo (folha mensal, vencem nesta temporada, na lista, insatisfeitos); clicar num cartão filtra a tabela.
+- [ ] Tabela: status de tempo de jogo de cada jogador, barra de minutos com a marca do esperado, moral, salário e barra do contrato.
+- [ ] Clicar num jogador abre o painel: Renegociar, Lista e Rescindir.
+- [ ] Renegociar com salário bem menor: ele pede um valor intermediário; "Aceitar o pedido dele" fecha. Na 3ª proposta recusada ele encerra a conversa por 30 dias.
+- [ ] Renegociar só o status (0 temporadas a mais): o fim do contrato não muda; rebaixar derruba a moral.
+- [ ] Lista: colocar e tirar da lista de transferências pelo painel (aparece também em Transferências).
+- [ ] Dia 1º de um mês com jogos: quem jogou menos que o combinado gera um e-mail "Tempo de jogo" na Caixa de entrada.
+- [ ] Carregar carreira: "Abrir pasta" abre o Explorador com o `career.db` selecionado; "Excluir" pede confirmação e manda a pasta para a Lixeira.
+- [ ] Velocidade: a 2ª vez que abre "Nova carreira" (mesmo depois de fechar o jogo) é quase instantânea; o mercado de Transferências abre mais rápido.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

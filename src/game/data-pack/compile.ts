@@ -10,7 +10,7 @@ import type { Attributes, Club, Country, League, LeagueRules, Player, Position, 
 import { CUP_STAGE_CODES, defaultCups, resolveCup, resolveSupercup } from '../cup-engine/catalog.ts';
 import { clubCoach, defaultCoaches, packCoachDefaults } from '../coach-engine/worldCoaches.ts';
 import { templateFor, type CountryTemplate } from '../world/names.ts';
-import { overallFor } from '../world/overall.ts';
+import { overallFor, positionWeights } from '../world/overall.ts';
 import { ATTR_KEYS, ageAbilityDelta, buildPlayer, genAttributes, marketValue, SQUAD_TEMPLATE, startingBalance } from '../world/generator.ts';
 import { PackError, type CupRec, type CoachRec, type ClubRec, type CountryRec, type LeagueRec, type Pack, type PackIssue, type PlayerRec, type StadiumRec } from './format.ts';
 import { deriveGoalkeeper, syncGoalkeeping, withGoalkeeper } from '../world/goalkeeper.ts';
@@ -37,17 +37,35 @@ export interface CompileResult {
 export function attributesForAbility(rng: Rng, pos: Position, ability: number): Attributes {
   const base = genAttributes(rng, pos, 10);
   const target = ability * 5;
-  const shift = (d: number): Attributes => {
-    const mv = <T extends object>(g: T): T => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, clamp(Math.round((v as number) + d), 1, 20)])) as T;
-    return { technical: mv(base.technical), mental: mv(base.mental), physical: mv(base.physical) };
+  const mv = <T extends object>(g: T, d: number): T => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, clamp(Math.round((v as number) + d), 1, 20)])) as T;
+  // Força de `base` deslocada por d, calculada só pelas chaves com peso na posição (mesma conta de `overallFor` sobre o objeto
+  // deslocado com o grupo de goleiro derivado; precedência igual à de `flattenAttributes`: goleiro > físico > mental > técnico).
+  // O objeto completo só é montado uma vez, para o melhor d: na montagem do universo isso era ~85% do tempo.
+  const weights = Object.entries(positionWeights(pos));
+  const groups = [base.physical, base.mental, base.technical] as unknown as Array<Record<string, number>>;
+  const gkKeys = new Set(Object.keys(deriveGoalkeeper(10)));
+  const baseOf = weights.map(([k]) => { for (const g of groups) if (k in g) return g[k]!; return null; });
+  const gkBase = base.technical.goalkeeping;
+  const overallAt = (d: number): number => {
+    const gk = deriveGoalkeeper(clamp(Math.round(gkBase + d), 1, 20)) as unknown as Record<string, number>;
+    let sum = 0, tot = 0;
+    for (let i = 0; i < weights.length; i++) {
+      const [k, wt] = weights[i]!;
+      const b = baseOf[i]!;
+      const v = gkKeys.has(k) ? gk[k]! : b === null ? 1 : clamp(Math.round(b + d), 1, 20);
+      sum += v * (wt ?? 0);
+      tot += wt ?? 0;
+    }
+    return Math.round((sum / tot) * 5);
   };
-  let best = base, bestErr = Infinity;
+  let bestD: number | null = null, bestErr = Infinity;
   for (let d = -12; d <= 12; d += 0.25) { // somar d a todos os atributos sobe a força de forma monotônica
-    const a = shift(d);
-    a.goalkeeper = deriveGoalkeeper(a.technical.goalkeeping);
-    const err = Math.abs(overallFor(a, pos) - target);
-    if (err < bestErr) { best = a; bestErr = err; }
+    const err = Math.abs(overallAt(d) - target);
+    if (err < bestErr) { bestD = d; bestErr = err; }
   }
+  if (bestD === null) return base;
+  const best: Attributes = { technical: mv(base.technical, bestD), mental: mv(base.mental, bestD), physical: mv(base.physical, bestD) };
+  best.goalkeeper = deriveGoalkeeper(best.technical.goalkeeping);
   return best;
 }
 

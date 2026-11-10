@@ -19,7 +19,7 @@ import { counterOffer, getNegotiation, getTransfersOverview, makeOffer, proposeF
 import {
   activateScheme, autoLineup, deleteScheme, duplicateScheme, ensureSchemes, getTacticsOverview, saveScheme,
 } from '../database/repositories/tacticsRepository.ts';
-import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renewContract, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
+import { getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renegotiateContract, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
 import { getNews, markRead, unreadCount } from '../database/repositories/newsRepository.ts';
 import { getSocialFeed } from '../database/repositories/socialRepository.ts';
 import { turnoverDate } from '../game/career-engine/contracts.ts';
@@ -32,6 +32,7 @@ import type { CoachAttrKey } from '../shared/coachAttributes.ts';
 import { initialCoachReputation } from '../game/coach-engine/coach.ts';
 import { ensureBoard, getBoardOverview, requestBudget, respondJobOffer, spendCoachPoint } from '../database/repositories/boardRepository.ts';
 import { isEmployed } from '../database/repositories/careerRepository.ts';
+import { ensureSquadRoles } from '../database/repositories/squadRoleRepository.ts';
 import { UserError } from '../shared/errors.ts';
 import type { SqlDb } from '../database/types.ts';
 import { withTransaction } from '../database/types.ts';
@@ -106,9 +107,57 @@ export async function createCareerSave(base: string, input: NewCareerInput): Pro
   return readSummary(base, input.profileId, careerId);
 }
 
-async function withCareerDb<T>(file: string, fn: (db: SqlDb) => T): Promise<T> {
-  const db = await openDatabase(file);
-  try { return fn(db); } finally { db.close(); }
+// ---------------------------------------------------------------- conexões dos saves (mantidas abertas)
+/**
+ * Conexões abertas dos saves, para não reabrir o arquivo (e repetir migrações e verificações) a cada chamada da interface. No máximo
+ * `POOL_MAX` saves abertos (o menos usado fecha). Fechadas ao apagar o save (`closeCareerDb`) e ao sair do jogo (`closeAllCareerDbs`).
+ * `prepared`: estado (data, temporada, clube) em que as verificações de `withPreparedCareer` rodaram pela última vez.
+ */
+interface OpenSave { db: SqlDb; prepared: string | null; used: number }
+const POOL_MAX = 2;
+const pool = new Map<string, Promise<OpenSave>>();
+/** as mesmas conexões, já abertas (para fechar sem esperar promessas) */
+const live = new Map<string, OpenSave>();
+let poolTick = 0;
+const poolKey = (file: string) => path.resolve(file).toLowerCase();
+
+async function acquire(file: string): Promise<OpenSave> {
+  const key = poolKey(file);
+  let entry = pool.get(key);
+  if (!entry) {
+    entry = openDatabase(file).then((db) => { const o: OpenSave = { db, prepared: null, used: 0 }; live.set(key, o); return o; });
+    pool.set(key, entry);
+    entry.catch(() => pool.delete(key));
+    if (pool.size > POOL_MAX) {
+      const all = await Promise.all([...pool].map(async ([k, e]) => [k, await e.catch(() => null)] as const));
+      const oldest = all.filter(([k, o]) => k !== key && o).sort((a, b) => a[1]!.used - b[1]!.used)[0];
+      if (oldest) { pool.delete(oldest[0]); live.delete(oldest[0]); try { oldest[1]!.db.close(); } catch { /* já fechado */ } }
+    }
+  }
+  const open = await entry;
+  open.used = ++poolTick;
+  return open;
+}
+
+/** Fecha a conexão de um save, se estiver aberta (antes de apagar ou mover o arquivo). */
+export async function closeCareerDb(file: string): Promise<void> {
+  const key = poolKey(file);
+  const entry = pool.get(key);
+  if (!entry) return;
+  pool.delete(key);
+  live.delete(key);
+  try { (await entry).db.close(); } catch { /* já fechado ou nunca abriu */ }
+}
+/** Fecha todas as conexões abertas (saída do jogo; testes). Síncrono: roda inteiro no `before-quit`. */
+export function closeAllCareerDbs(): void {
+  pool.clear();
+  for (const o of live.values()) { try { o.db.close(); } catch { /* idem */ } }
+  live.clear();
+}
+
+async function withCareerDb<T>(file: string, fn: (db: SqlDb, open: OpenSave) => T): Promise<T> {
+  const open = await acquire(file);
+  return fn(open.db, open);
 }
 
 function summaryFromDb(db: SqlDb, profileId: string, careerId: string): CareerSummaryDto {
@@ -127,9 +176,51 @@ function summaryFromDb(db: SqlDb, profileId: string, careerId: string): CareerSu
   };
 }
 
+/** Arquivo do save (para abrir a pasta no Explorador). */
+export function careerSaveFile(base: string, profileId: string, careerId: string): string {
+  assertId(profileId, 'Perfil'); assertId(careerId, 'Carreira');
+  const file = path.join(careersDir(base, profileId), careerId, 'career.db');
+  if (!fs.existsSync(path.dirname(file))) throw new ValidationError('Save não encontrado.');
+  return fs.existsSync(file) ? file : path.dirname(file);
+}
+
+/**
+ * Apaga um save: fecha a conexão aberta (no Windows o arquivo aberto não pode ser movido) e entrega a pasta da carreira a `remove`
+ * (no jogo, a Lixeira do sistema: dá para recuperar). Nos testes, `fs.rmSync`.
+ */
+export async function deleteCareerSave(base: string, profileId: string, careerId: string, remove: (dir: string) => void | Promise<void>): Promise<true> {
+  assertId(profileId, 'Perfil'); assertId(careerId, 'Carreira');
+  const dir = path.join(careersDir(base, profileId), careerId);
+  if (!fs.existsSync(dir)) throw new ValidationError('Save não encontrado.');
+  const file = path.join(dir, 'career.db');
+  await closeCareerDb(file);
+  summaryCache.delete(poolKey(file));
+  await remove(dir);
+  return true;
+}
+
+/** Resumos da lista de carreiras, guardados pela data e pelo tamanho do arquivo do save (e do -wal): só relê o que mudou. */
+const summaryCache = new Map<string, { stamp: string; summary: CareerSummaryDto }>();
+const fileStamp = (file: string) => [file, `${file}-wal`].map((f) => { try { const st = fs.statSync(f); return `${st.size}:${st.mtimeMs}`; } catch { return '-'; } }).join('|');
+
 export async function readSummary(base: string, profileId: string, careerId: string): Promise<CareerSummaryDto> {
   assertId(profileId, 'Perfil'); assertId(careerId, 'Carreira');
-  return withCareerDb(path.join(careersDir(base, profileId), careerId, 'career.db'), (db) => summaryFromDb(db, profileId, careerId));
+  const file = path.join(careersDir(base, profileId), careerId, 'career.db');
+  if (!fs.existsSync(file)) throw new ValidationError('Save não encontrado.');
+  const key = poolKey(file);
+  // save aberto no jogo: usa a mesma conexão (vê o que ainda está no -wal)
+  const pooled = pool.get(key);
+  if (pooled) return summaryFromDb((await pooled).db, profileId, careerId);
+  const stamp = fileStamp(file);
+  const hit = summaryCache.get(key);
+  if (hit && hit.stamp === stamp) return hit.summary;
+  let db: SqlDb;
+  try { db = await openDatabase(file, { readOnly: true }); } catch { db = await openDatabase(file); }
+  try {
+    const summary = summaryFromDb(db, profileId, careerId);
+    summaryCache.set(key, { stamp, summary });
+    return summary;
+  } finally { db.close(); }
 }
 
 export async function listCareerSaves(base: string, profileId: string): Promise<CareerListDto> {
@@ -154,13 +245,8 @@ export async function openCareer(base: string, profileId: string, careerId: stri
   const dir = path.join(careersDir(base, profileId), careerId);
   const file = path.join(dir, 'career.db');
   if (!fs.existsSync(file)) throw new ValidationError('Save não encontrado.');
-  return withCareerDb(file, (db) => {
-    migrate(db);
-    ensureSeason(db, getCareerState(db).season); // cria o calendário em saves anteriores à Fase 3
-    ensureSchemes(db); // cria os esquemas táticos em saves anteriores à Fase 5
-    ensureFinance(db); // patrocínios e ponto de partida financeiro em saves anteriores à Fase 6
-    ensureYouthAcademies(db); // categorias de base em saves anteriores à Fase 8B
-    ensureBoard(db); // diretoria em saves anteriores à Fase 8D
+  return withCareerDb(file, (db, open) => {
+    prepareCareer(db, open); // migrações e o que falta em saves de fases anteriores (calendário, táticas, finanças, base, diretoria…)
     const summary = summaryFromDb(db, profileId, careerId);
     const coach = JSON.parse(String((db.prepare('SELECT coach_json FROM career WHERE id = 1').get() as { coach_json: string }).coach_json)) as Coach;
     const c = db.prepare(
@@ -241,20 +327,33 @@ async function withPreparedCareer<T>(base: string, profileId: string, careerId: 
   assertId(profileId, 'Perfil'); assertId(careerId, 'Carreira');
   const file = path.join(careersDir(base, profileId), careerId, 'career.db');
   if (!fs.existsSync(file)) throw new ValidationError('Save não encontrado.');
-  return withCareerDb(file, (db) => {
-    migrate(db);
-    ensureSeason(db, getCareerState(db).season);
-    ensureSchemes(db);
-    ensureFinance(db);
-    ensureYouthAcademies(db);
-    ensureBoard(db);
-    ensureAiCoaches(db);
-    { // saves anteriores às copas: cria as da temporada atual se a 1ª fase ainda não passou (senão, a partir da próxima temporada)
-      const cs = getCareerState(db);
-      withTransaction(db, () => createCups(db, { notBefore: cs.gameDate }));
-    }
+  return withCareerDb(file, (db, open) => {
+    prepareCareer(db, open);
     return fn(db);
   });
+}
+
+/**
+ * Migrações e verificações de saves antigos (calendário, táticas, finanças, base, diretoria, técnicos, copas). Dependem só do estado
+ * da carreira, então rodam de novo apenas quando a data, a temporada ou o clube mudam (e na 1ª vez de cada conexão).
+ */
+function prepareCareer(db: SqlDb, open: OpenSave): void {
+  if (open.prepared === null) migrate(db);
+  const now = db.prepare('SELECT game_date, season, club_id FROM career WHERE id = 1').get();
+  const stamp = now ? `${String(now.game_date)}|${String(now.season)}|${String(now.club_id ?? '')}` : '';
+  if (open.prepared === stamp) return;
+  ensureSeason(db, getCareerState(db).season);
+  ensureSchemes(db);
+  ensureFinance(db);
+  ensureYouthAcademies(db);
+  ensureBoard(db);
+  ensureAiCoaches(db);
+  ensureSquadRoles(db); // tempo de jogo: status de quem chegou ao elenco (e saves anteriores à v0.8.9)
+  { // saves anteriores às copas: cria as da temporada atual se a 1ª fase ainda não passou (senão, a partir da próxima temporada)
+    const cs = getCareerState(db);
+    withTransaction(db, () => createCups(db, { notBefore: cs.gameDate }));
+  }
+  open.prepared = stamp;
 }
 
 export const getCalendar = (base: string, profileId: string, careerId: string): Promise<CalendarDto> =>
@@ -312,7 +411,7 @@ export const listPlayerForSale = (b: string, p: string, c: string, playerId: str
 export const getSeason = (b: string, p: string, c: string): Promise<SeasonStatusDto> => withPreparedCareer(b, p, c, (db) => getSeasonStatus(db));
 export const beginNextSeason = (b: string, p: string, c: string): Promise<NewSeasonReportDto> => withPreparedCareer(b, p, c, (db) => startNextSeason(db));
 export const listContracts = (b: string, p: string, c: string): Promise<ContractRowDto[]> => withClubCareer(b, p, c, (db) => getContracts(db));
-export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withClubCareer(b, p, c, (db) => renewContract(db, input));
+export const offerRenewal = (b: string, p: string, c: string, input: RenewInput): Promise<RenewResultDto> => withClubCareer(b, p, c, (db) => renegotiateContract(db, input));
 export const rescindContract = (b: string, p: string, c: string, playerId: string): Promise<TerminateResultDto> => withClubCareer(b, p, c, (db) => terminateContract(db, playerId));
 export const markInboxRead = (b: string, p: string, c: string, id: number | null): Promise<true> => withPreparedCareer(b, p, c, (db) => { markRead(db, id); return true as const; });
 export const listNews = (b: string, p: string, c: string): Promise<NewsDto[]> => withPreparedCareer(b, p, c, (db) => getNews(db));

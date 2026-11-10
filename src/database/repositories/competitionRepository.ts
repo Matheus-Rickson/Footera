@@ -15,6 +15,7 @@ import { processMarketDay } from './transferRepository.ts';
 import { processScoutingDay } from './scoutRepository.ts';
 import { youthIntake } from './youthRepository.ts';
 import { processTrainingDay, processTrainingMonth } from './trainingRepository.ts';
+import { processPlayingTimeMonth } from './squadRoleRepository.ts';
 import { processStaffDay } from './staffRepository.ts';
 import { processConstructionDay } from './infrastructureRepository.ts';
 import { fastForwarding, processBoardDay } from './boardRepository.ts';
@@ -281,6 +282,7 @@ export function moveClock(db: SqlDb, from: string, to: string, now: Date): numbe
     if (!ff) processTrainingDay(db, d); // recuperação de condição, lesões de treino, rotina do preparador
     processConstructionDay(db, d); // obras concluídas
     processTrainingMonth(db, d);   // evolução mensal dos jogadores (dia 1º)
+    processPlayingTimeMonth(db, d); // tempo de jogo × status combinado no contrato (dia 1º, clube do usuário)
     autoTurnovers(db, d, now);     // viradas dos outros países que viram hoje (ano civil × julho)
     processMarketDay(db, d);   // propostas expiram; a IA negocia dentro das janelas
     processScoutingDay(db, d); // olheiros observam jogadores

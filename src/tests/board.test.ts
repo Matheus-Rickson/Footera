@@ -10,7 +10,7 @@ import {
 } from '../game/board-engine/board.ts';
 import { boardApprovesConstruction, coachOf, getBoardOverview, requestBudget, respondJobOffer } from '../database/repositories/boardRepository.ts';
 import { makeOffer, searchMarket } from '../database/repositories/transferRepository.ts';
-import { renewContract, startNextSeason } from '../database/repositories/seasonRepository.ts';
+import { renegotiateContract, startNextSeason } from '../database/repositories/seasonRepository.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { isEmployed } from '../database/repositories/careerRepository.ts';
@@ -102,7 +102,7 @@ test('Diretoria veta: orçamento de transferências, teto da folha e taxa fora d
   // renovação com salário absurdo
   const mine = rowToPlayer(db.prepare('SELECT * FROM players WHERE club_id = ? ORDER BY birth_date DESC LIMIT 1').get(clubId)!);
   db.prepare("UPDATE players SET contract_end = '2027-07-01' WHERE id = ?").run(mine.id);
-  const rr = renewContract(db, { playerId: mine.id, wage: Math.round(mine.marketValue * 0.05) + 100_000, years: 1 });
+  const rr = renegotiateContract(db, { playerId: mine.id, wage: Math.round(mine.marketValue * 0.05) + 100_000, years: 1 });
   assert.equal(rr.outcome, 'rejected'); assert.match(rr.message, /diretoria/);
 });
 

@@ -208,3 +208,23 @@ test('Treinador: atributos com a distribuição inicial (base 5 + 12 pontos, má
   ];
   for (const [label, attributes, msg] of bad) await assert.rejects(() => createCareerSave(base, { profileId: prof.id, clubId, coach: { ...coach, attributes: attributes as never } }), msg, label);
 });
+
+test('Saves: excluir fecha a conexão aberta e entrega a pasta para remover; abrir pasta aponta o arquivo; ids inválidos recusados', async () => {
+  const { deleteCareerSave, careerSaveFile, getTactics, closeAllCareerDbs } = await import('../services/saveService.node.ts');
+  const base = tmp();
+  try {
+    const prof = createProfile(base, 'Teste');
+    const a = await createCareerSave(base, { profileId: prof.id, clubId, coach });
+    const b = await createCareerSave(base, { profileId: prof.id, clubId, coach });
+    await getTactics(base, prof.id, a.id); // deixa a conexão do save aberta
+    assert.equal(careerSaveFile(base, prof.id, a.id), path.join(base, 'saves', prof.id, a.id, 'career.db'));
+    const removed: string[] = [];
+    await deleteCareerSave(base, prof.id, a.id, (dir) => { removed.push(dir); fs.rmSync(dir, { recursive: true }); }); // no Windows falha se o arquivo seguir aberto
+    assert.deepEqual(removed, [path.join(base, 'saves', prof.id, a.id)]);
+    assert.ok(!fs.existsSync(removed[0]!));
+    assert.deepEqual((await listCareerSaves(base, prof.id)).careers.map((c) => c.id), [b.id], 'só a outra carreira continua');
+    await assert.rejects(deleteCareerSave(base, prof.id, a.id, () => {}), /não encontrado/);
+    await assert.rejects(deleteCareerSave(base, prof.id, '../fora', () => {}), ValidationError);
+    assert.throws(() => careerSaveFile(base, '..', b.id), ValidationError);
+  } finally { closeAllCareerDbs(); fs.rmSync(base, { recursive: true, force: true }); }
+});

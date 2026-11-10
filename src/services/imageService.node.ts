@@ -59,6 +59,6 @@ export function listPackImages(packDir: string): Array<{ kind: ImageKind; id: st
 }
 
 /** versão do índice: muda sempre que uma imagem ou a ordem de pacotes muda (a tela usa para renovar o cache do navegador) */
-let version = 1;
+let version = Date.now(); // começa pela hora: URLs de sessões anteriores (em cache) nunca coincidem com as novas
 export function invalidateImages(): void { version++; }
 export function imagesVersion(): number { return version; }

@@ -3,6 +3,7 @@
  * A base fixa vem sempre primeiro; depois os pacotes ativos, na ordem. O universo resultante é o que a carreira nova usa.
  */
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { compileUniverse, type EntityOrigin } from '../game/data-pack/compile.ts';
 import { fmtIssue, PACK_FILES, PackError, parsePack, type Pack, type PackFile } from '../game/data-pack/format.ts';
@@ -11,7 +12,7 @@ import type { PackInfoDto, PacksOverviewDto } from '../shared/api.ts';
 import type { World } from '../shared/types.ts';
 import { ValidationError } from './careerService.ts';
 import { readPackDir, writePackDir } from './packService.node.ts';
-import { basePack, EMPTY_WORLD } from './universeService.node.ts';
+import { baseFingerprint, basePack, EMPTY_WORLD } from './universeService.node.ts';
 import { readZip, writeZip, ZipError } from './zip.node.ts';
 import { IMAGE_PATH, imagesVersion, invalidateImages, listPackImages, validateImage } from './imageService.node.ts';
 
@@ -19,19 +20,35 @@ export const packsDir = (dataDir: string) => path.join(dataDir, 'packs');
 const orderFile = (dataDir: string) => path.join(packsDir(dataDir), 'load-order.json');
 
 interface Scanned { folder: string; dir: string; pack: Pack | null; issues: string[]; mtime: number }
+/** Pasta de pacote sem ler os dados: só o id do manifest.json e a data de modificação mais recente dos arquivos da pasta. */
+interface Light { folder: string; dir: string; id: string | null; mtime: number }
 
-function scan(dataDir: string): Scanned[] {
+/** Leitura rápida das pastas de pacotes (não lê nem valida os arquivos de dados, que podem ter dezenas de MB). */
+function scanLight(dataDir: string): Light[] {
   const root = packsDir(dataDir);
   if (!fs.existsSync(root)) return [];
   return fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort().map((folder) => {
     const dir = path.join(root, folder);
     const mtime = Math.max(0, ...fs.readdirSync(dir).map((f) => fs.statSync(path.join(dir, f)).mtimeMs));
-    try { return { folder, dir, pack: readPackDir(dir), issues: [], mtime }; } catch (e) {
-      if (e instanceof PackError) return { folder, dir, pack: null, issues: e.issues.map(fmtIssue), mtime };
-      return { folder, dir, pack: null, issues: [(e as Error).message], mtime };
-    }
+    let id: string | null = null;
+    try {
+      const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '')) as { id?: unknown };
+      if (typeof m.id === 'string') id = m.id;
+    } catch { /* sem manifesto ou ilegível: o scan completo relata o erro */ }
+    return { folder, dir, id, mtime };
   });
 }
+
+/** Leitura e validação completa de uma pasta de pacote. */
+function parseScanned(l: Light): Scanned {
+  const { folder, dir, mtime } = l;
+  try { return { folder, dir, pack: readPackDir(dir), issues: [], mtime }; } catch (e) {
+    if (e instanceof PackError) return { folder, dir, pack: null, issues: e.issues.map(fmtIssue), mtime };
+    return { folder, dir, pack: null, issues: [(e as Error).message], mtime };
+  }
+}
+
+function scan(dataDir: string): Scanned[] { return scanLight(dataDir).map(parseScanned); }
 
 function readOrder(dataDir: string): string[] {
   try {
@@ -50,14 +67,64 @@ export type NamedOrigin = Map<string, EntityOrigin>;
 let cache: { key: string; world: World; applied: string[]; warnings: string[]; origin: NamedOrigin } | null = null;
 
 /**
+ * Identificação da versão do programa no cache em disco do universo: a montagem pode mudar entre versões, então um cache gravado por
+ * outra versão é ignorado. O processo principal informa (versão do app + data do executável); nos testes, o padrão.
+ */
+let cacheTag = 'dev';
+export function setUniverseCacheTag(tag: string): void { cacheTag = tag; cache = null; }
+const UNIVERSE_CACHE_FORMAT = 1;
+const cacheDir = (dataDir: string) => path.join(dataDir, 'cache');
+
+/** Pacotes ativos (sem ler os dados) na ordem de carga; a chave do cache muda se qualquer arquivo de um deles mudar. */
+function activeLight(dataDir: string): { order: string[]; light: Light[]; key: string } {
+  const light = scanLight(dataDir), order = readOrder(dataDir);
+  const active = order.map((id) => light.filter((l) => l.id === id).map((l) => [l.id, l.folder, l.mtime]));
+  return { order, light, key: JSON.stringify([UNIVERSE_CACHE_FORMAT, cacheTag, baseFingerprint(), active]) };
+}
+
+interface DiskUniverse { key: string; world: World; applied: string[]; warnings: string[]; origin: Array<[string, EntityOrigin]> }
+const diskFile = (dataDir: string, key: string) => path.join(cacheDir(dataDir), `universe-${createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`);
+
+function readDiskUniverse(dataDir: string, key: string): typeof cache {
+  try {
+    const raw = JSON.parse(fs.readFileSync(diskFile(dataDir, key), 'utf8')) as DiskUniverse;
+    if (raw.key !== key) return null;
+    return { key, world: raw.world, applied: raw.applied, warnings: raw.warnings, origin: new Map(raw.origin) };
+  } catch { return null; }
+}
+
+/** Grava o universo montado (arquivo único: os de outras chaves são apagados). Falha ao gravar não impede o jogo. */
+function writeDiskUniverse(dataDir: string, c: NonNullable<typeof cache>): void {
+  try {
+    const dir = cacheDir(dataDir), file = diskFile(dataDir, c.key);
+    fs.mkdirSync(dir, { recursive: true });
+    const body: DiskUniverse = { key: c.key, world: c.world, applied: c.applied, warnings: c.warnings, origin: [...c.origin] };
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(body));
+    fs.renameSync(`${file}.tmp`, file);
+    for (const f of fs.readdirSync(dir)) if (/^universe-.*\.json$/.test(f) && path.join(dir, f) !== file) fs.rmSync(path.join(dir, f), { force: true });
+  } catch { /* sem cache em disco: monta de novo na próxima sessão */ }
+}
+
+/**
  * Universo da carreira nova: base fixa + pacotes ativos. Lança ValidationError se a combinação tiver erros (a tela de pacotes mostra
- * os detalhes). Cache pela ordem e pelas datas de modificação dos arquivos.
+ * os detalhes). Cache em memória e em disco (`<dados>/cache`), pela versão do programa, pela base e pelas datas de modificação dos
+ * arquivos dos pacotes ativos: os dados dos pacotes só são lidos quando algo muda.
  */
 export function careerUniverse(dataDir: string): { world: World; applied: string[]; warnings: string[]; origin: NamedOrigin } {
-  const scanned = scan(dataDir), order = readOrder(dataDir);
-  const packs = activePacks(scanned, order);
-  const key = JSON.stringify(packs.map((p) => [p.manifest.id, p.manifest.version, scanned.find((s) => s.pack === p)!.mtime]));
+  const { order, light, key } = activeLight(dataDir);
   if (cache && cache.key === key) return cache;
+  const disk = readDiskUniverse(dataDir, key);
+  if (disk) { cache = disk; return cache; }
+  // mesma escolha de antes: para cada id da ordem, a primeira pasta (em ordem alfabética) com esse id e estrutura válida
+  const parsed = new Map<string, Scanned>();
+  const packs = order.map((id) => {
+    for (const l of light.filter((x) => x.id === id)) {
+      const s = parsed.get(l.dir) ?? parseScanned(l);
+      parsed.set(l.dir, s);
+      if (s.pack?.manifest.id === id) return s.pack;
+    }
+    return undefined;
+  }).filter((p): p is Pack => !!p);
   try {
     const r = compileUniverse(EMPTY_WORLD, [basePack(), ...packs]);
     const baseId = basePack().manifest.id;
@@ -69,11 +136,21 @@ export function careerUniverse(dataDir: string): { world: World; applied: string
       if (created || edited.length) origin.set(id, { created, edited });
     }
     cache = { key, world: r.world, applied: r.applied, warnings: r.warnings.map(fmtIssue), origin };
+    writeDiskUniverse(dataDir, cache);
     return cache;
   } catch (e) {
     if (e instanceof PackError) throw new ValidationError(`Os pacotes de dados ativos têm erros (veja em Pacotes de dados): ${fmtIssue(e.issues[0]!)}${e.issues.length > 1 ? ` e mais ${e.issues.length - 1}` : ''}.`);
     throw e;
   }
+}
+
+/** Pré-carrega o universo só se ele já estiver no cache em disco (não monta nada): a tela "Nova carreira" abre sem espera. */
+export function warmUniverse(dataDir: string): boolean {
+  const { key } = activeLight(dataDir);
+  if (cache && cache.key === key) return true;
+  const disk = readDiskUniverse(dataDir, key);
+  if (disk) cache = disk;
+  return !!disk;
 }
 
 export function listPacks(dataDir: string): PacksOverviewDto {
@@ -156,7 +233,7 @@ export function importPackZip(dataDir: string, zip: Buffer, overwrite: boolean):
 
 /** Remove um pacote do disco (e da ordem de carga). */
 export function removePack(dataDir: string, id: string): PacksOverviewDto {
-  const s = scan(dataDir).find((x) => (x.pack?.manifest.id ?? x.folder) === id);
+  const s = scanLight(dataDir).find((x) => (x.id ?? x.folder) === id);
   if (!s) throw new ValidationError('Pacote não encontrado.');
   fs.rmSync(s.dir, { recursive: true, force: true });
   invalidateImages();
@@ -175,10 +252,10 @@ export function exportPackZip(dataDir: string, id: string): Buffer {
 let imgCache: { version: number; dir: string; map: Map<string, string> } | null = null;
 export function imageIndex(dataDir: string): Map<string, string> {
   if (imgCache && imgCache.version === imagesVersion() && imgCache.dir === dataDir) return imgCache.map;
-  const scanned = scan(dataDir), order = readOrder(dataDir);
+  const light = scanLight(dataDir), order = readOrder(dataDir);
   const map = new Map<string, string>();
   for (const id of order) {
-    const s = scanned.find((x) => x.pack?.manifest.id === id);
+    const s = light.find((x) => x.id === id);
     if (s) for (const im of listPackImages(s.dir)) map.set(`${im.kind}/${im.id}`, im.file);
   }
   imgCache = { version: imagesVersion(), dir: dataDir, map };

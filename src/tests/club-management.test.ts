@@ -10,7 +10,7 @@ import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { counterOffer, getTransfersOverview, makeOffer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
-import { getContracts, renewContract, SeasonError, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
+import { getContracts, renegotiateContract, SeasonError, startNextSeason, terminateContract } from '../database/repositories/seasonRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { makePoster } from '../database/repositories/financeRepository.ts';
 import { annualEstimate, F, participationOf, tvMonthly, WAGE_CAP, wageCapFactor, type ClubEcon } from '../game/finance-engine/finance.ts';
@@ -89,7 +89,7 @@ test('Aposentadoria: ninguém se aposenta no 1º dia; quem anunciou sai no fim d
   const date = getCareerState(db).gameDate;
   db.prepare('UPDATE players SET retire_planned = 1 WHERE id = ?').run(a);
   db.prepare('UPDATE players SET retire_planned = 0, birth_date = ? WHERE id = ?').run(addYears(date, -39), b);
-  assert.throws(() => renewContract(db, { playerId: a!, wage: 10_000, years: 1 }), SeasonError, 'quem vai se aposentar não renova');
+  assert.throws(() => renegotiateContract(db, { playerId: a!, wage: 10_000, years: 1 }), SeasonError, 'quem vai se aposentar não renova');
   assert.equal(getContracts(db).find((c) => c.id === a)!.retiring, true);
   assert.equal(getContracts(db).find((c) => c.id === a)!.canRenew, false);
   const planned = db.prepare('SELECT id FROM players WHERE retire_planned = 1 AND club_id IS NOT NULL').all().map((r) => String(r.id));

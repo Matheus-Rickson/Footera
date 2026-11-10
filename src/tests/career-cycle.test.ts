@@ -7,7 +7,7 @@ import { advanceTime, getCareerState, getCompetitionTable, listCompetitions } fr
 import { simulateMatchday } from '../database/repositories/matchRepository.ts';
 import { makeOffer, searchMarket, TransferError } from '../database/repositories/transferRepository.ts';
 import {
-  getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renewContract, SeasonError, startNextSeason,
+  getContracts, getHistory, getSeasonStatus, getTrophies, isSeasonComplete, renegotiateContract, SeasonError, startNextSeason,
 } from '../database/repositories/seasonRepository.ts';
 import { getNews } from '../database/repositories/newsRepository.ts';
 import { PEAK_AGE, prizeMoney } from '../game/career-engine/development.ts';
@@ -129,7 +129,7 @@ test('Virada: contratos — o usuário perde quem não renovou; a IA renova ou l
   db.prepare("UPDATE players SET contract_end = '2027-06-30' WHERE id IN (?, ?)").run(keep.id, leave.id);
   const offer = renewalDemand({ marketValue: keep.marketValue, salary: keep.salary, ambition: keep.personality.ambition, loyalty: keep.personality.loyalty });
   const age = ageOn(keep.birthDate, '2027-07-01');
-  const r = renewContract(db, { playerId: keep.id, wage: offer, years: age >= 30 ? 1 : 2 });
+  const r = renegotiateContract(db, { playerId: keep.id, wage: offer, years: age >= 30 ? 1 : 2 });
   assert.equal(r.outcome, 'accepted', r.message);
   const expiringUser = getContracts(db).filter((c) => c.expiresThisSeason).map((c) => c.id);
   assert.ok(expiringUser.includes(leave.id) && !expiringUser.includes(keep.id));
@@ -203,23 +203,26 @@ test('Jogadores livres: aparecem no mercado sem clube, contratação sem taxa (t
 test('Renovação: validações, contraproposta, recusa por duração e aceite que estende a partir do fim atual', async () => {
   const { db, clubId } = await setup('cycle-renew');
   const other = String(db.prepare('SELECT id FROM players WHERE club_id <> ? LIMIT 1').get(clubId)!.id);
-  assert.throws(() => renewContract(db, { playerId: other, wage: 1000, years: 1 }), /seu clube/);
+  assert.throws(() => renegotiateContract(db, { playerId: other, wage: 1000, years: 1 }), /seu clube/);
   const p = rowToPlayer(db.prepare("SELECT * FROM players WHERE club_id = ? ORDER BY birth_date DESC LIMIT 1").get(clubId)!);
+  // contrato longo: renegociar vale a qualquer momento, mas o contrato não pode passar do limite da idade + 24 meses
   db.prepare("UPDATE players SET contract_end = '2030-07-01' WHERE id = ?").run(p.id);
-  assert.throws(() => renewContract(db, { playerId: p.id, wage: p.salary * 2, years: 2 }), /ainda é longo/);
+  assert.match(renegotiateContract(db, { playerId: p.id, wage: p.salary * 2, years: 5 }).message, /longo demais/);
   db.prepare("UPDATE players SET contract_end = '2027-07-01' WHERE id = ?").run(p.id);
   const demand = renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty });
-  assert.equal(renewContract(db, { playerId: p.id, wage: Math.round(demand * 0.5), years: 2 }).outcome, 'rejected');
-  const c = renewContract(db, { playerId: p.id, wage: Math.round(demand * 0.85), years: 2 });
-  assert.deepEqual([c.outcome, c.counterWage], ['counter', demand]);
-  const ok = renewContract(db, { playerId: p.id, wage: c.counterWage!, years: 2 });
+  // oferta muito baixa: ele contrapropõe no piso (85% do que quer); a 2ª oferta no mesmo patamar não baixa o pedido
+  const low = renegotiateContract(db, { playerId: p.id, wage: Math.round(demand * 0.5), years: 2 });
+  assert.deepEqual([low.outcome, low.counterWage, low.roundsLeft], ['counter', Math.round((demand * 0.85) / 100) * 100, 2]);
+  const c = renegotiateContract(db, { playerId: p.id, wage: Math.round(demand * 0.84), years: 2 });
+  assert.deepEqual([c.outcome, c.counterWage, c.roundsLeft], ['counter', low.counterWage, 1]);
+  const ok = renegotiateContract(db, { playerId: p.id, wage: c.counterWage!, years: 2 });
   assert.deepEqual([ok.outcome, ok.contractEnd], ['accepted', '2029-06-30']);
   const row = db.prepare('SELECT salary, contract_end FROM players WHERE id = ?').get(p.id)!;
-  assert.deepEqual([Number(row.salary), String(row.contract_end)], [demand, '2029-06-30']);
+  assert.deepEqual([Number(row.salary), String(row.contract_end)], [c.counterWage, '2029-06-30']);
   const old = rowToPlayer(db.prepare('SELECT * FROM players WHERE club_id = ? ORDER BY birth_date LIMIT 1').get(clubId)!);
   if (ageOn(old.birthDate, '2026-07-01') >= 34) {
     db.prepare("UPDATE players SET contract_end = '2027-07-01' WHERE id = ?").run(old.id);
-    assert.match(renewContract(db, { playerId: old.id, wage: old.salary * 3, years: 3 }).message, /no máximo 1/);
+    assert.match(renegotiateContract(db, { playerId: old.id, wage: old.salary * 3, years: 3 }).message, /no máximo 1/);
   }
   assert.ok(getNews(db).some((x) => x.kind === 'contract' && x.title.includes(p.lastName)));
 });
@@ -262,7 +265,7 @@ test('Contratos: a data exibida antes de renovar (renewBaseYear + N) é a mesma 
   db.prepare("UPDATE players SET contract_end = '2027-07-01' WHERE id = ?").run(p.id);
   const row = getContracts(db).find((c) => c.id === p.id)!;
   const demand = renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty });
-  const r = renewContract(db, { playerId: p.id, wage: demand, years: 2 });
+  const r = renegotiateContract(db, { playerId: p.id, wage: demand, years: 2 });
   assert.equal(r.contractEnd, `${row.renewBaseYear + 2}-06-30`);
   assert.equal(r.contractEnd, '2029-06-30');
 });

@@ -53,3 +53,77 @@ export const AI_RENEW_CHANCE = { core: 0.9, other: 0.55 } as const;
  * pretensão salarial pelo valor de mercado atual.
  */
 export const terminationCost = (salary: number, monthsLeft: number): number => Math.max(0, salary) * Math.max(1, monthsLeft);
+
+// ---------------------------------------------------------------- tempo de jogo (status no elenco)
+/** Status de tempo de jogo combinado com o jogador (faz parte do contrato). */
+export type SquadStatus = 'key' | 'starter' | 'rotation' | 'backup' | 'prospect';
+export const SQUAD_STATUSES: readonly SquadStatus[] = ['key', 'starter', 'rotation', 'backup', 'prospect'];
+/**
+ * Rótulo, parte dos minutos que o jogador espera jogar e peso no salário pedido. O peso vale em relação ao status atual: manter o status
+ * não muda o pedido; subir de Rotação (1,00) para Titular (1,05) pede 5% a mais; descer para Reserva (0,92), 8% a menos.
+ */
+export const STATUS_INFO: Record<SquadStatus, { label: string; expected: number; wageFactor: number }> = {
+  key: { label: 'Jogador-chave', expected: 0.85, wageFactor: 1.15 },
+  starter: { label: 'Titular', expected: 0.7, wageFactor: 1.05 },
+  rotation: { label: 'Rotação', expected: 0.4, wageFactor: 1 },
+  backup: { label: 'Reserva', expected: 0.15, wageFactor: 0.92 },
+  prospect: { label: 'Promessa', expected: 0.1, wageFactor: 0.9 },
+};
+/** Promessa só até esta idade. */
+export const PROSPECT_MAX_AGE = 21;
+export const statusRank = (s: SquadStatus): number => SQUAD_STATUSES.indexOf(s);
+
+/**
+ * Status padrão de um elenco (carreira nova ou jogador que chega): pela força, os 3 melhores são jogadores-chave, os 8 seguintes titulares,
+ * os 7 seguintes rotação; do resto, até 21 anos é promessa e os demais, reserva. Empate de força: pelo id (determinístico).
+ */
+export function defaultStatuses(squad: ReadonlyArray<{ id: string; overall: number; age: number }>): Map<string, SquadStatus> {
+  const sorted = [...squad].sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id));
+  return new Map(sorted.map((p, i) => [p.id, i < 3 ? 'key' : i < 11 ? 'starter' : i < 18 ? 'rotation' : p.age <= PROSPECT_MAX_AGE ? 'prospect' : 'backup']));
+}
+
+/** Jogos do clube, desde a última avaliação, para julgar o tempo de jogo (com menos, a avaliação fica para o mês seguinte). */
+export const PLAYING_TIME_MIN_MATCHES = 3;
+export type PlayingTimeVerdict = 'happy' | 'ok' | 'unhappy';
+/** Efeito de cada veredito na moral (0–100). */
+export const PLAYING_TIME_MORALE: Record<PlayingTimeVerdict, number> = { happy: 2, ok: 0, unhappy: -6 };
+/** Abaixo de 60% dos minutos esperados: insatisfeito; no esperado ou acima: satisfeito; entre os dois: sem efeito. */
+export function playingTimeVerdict(share: number, expected: number): PlayingTimeVerdict {
+  if (share < 0.6 * expected) return 'unhappy';
+  return share >= expected ? 'happy' : 'ok';
+}
+
+// ---------------------------------------------------------------- renegociação (a qualquer momento)
+/** Ofertas insuficientes que o jogador aceita discutir; na última ele encerra a conversa. */
+export const MAX_RENEGOTIATION_ROUNDS = 3;
+/** Dias até o jogador aceitar conversar de novo depois de encerrar. */
+export const RENEGOTIATION_LOCK_DAYS = 30;
+/** Parte da diferença entre a oferta e o que ele quer que o jogador cede na contraproposta. */
+export const COUNTER_SHARE = 0.4;
+/** A contraproposta nunca fica abaixo desta fração do que ele quer (oferta muito baixa não derruba o salário). */
+export const COUNTER_FLOOR = 0.85;
+/** Rebaixamento de status aceito: moral perdida por degrau descido. */
+export const DEMOTION_MORALE = -5;
+
+/** Salário que o jogador quer para assinar com o novo status (pedido de renovação × peso do status novo em relação ao atual). */
+export function renegotiationTarget(demand: number, current: SquadStatus, next: SquadStatus): number {
+  return Math.round((demand * STATUS_INFO[next].wageFactor) / STATUS_INFO[current].wageFactor / 100) * 100;
+}
+
+export type RenegotiationReply = { kind: 'accept' } | { kind: 'counter'; wage: number; roundsLeft: number } | { kind: 'walkout' };
+/**
+ * Resposta do jogador a uma oferta. `round` = ofertas insuficientes já feitas nesta conversa; `lastCounter` = o último pedido dele nos
+ * mesmos termos (status e temporadas), que ele sempre aceita. Oferta ≥ 97% do que ele quer: aceita. Senão contrapropõe: oferta + 40% da
+ * diferença, nunca abaixo de 85% do que ele quer nem acima do pedido anterior. Na 3ª oferta insuficiente, encerra a conversa.
+ */
+export function renegotiationReply(a: { offered: number; target: number; round: number; lastCounter: number | null }): RenegotiationReply {
+  if (a.offered >= a.target * 0.97 || (a.lastCounter !== null && a.offered >= a.lastCounter)) return { kind: 'accept' };
+  if (a.round + 1 >= MAX_RENEGOTIATION_ROUNDS) return { kind: 'walkout' };
+  let wage = Math.round(Math.max(a.offered + COUNTER_SHARE * (a.target - a.offered), COUNTER_FLOOR * a.target) / 100) * 100;
+  if (a.lastCounter !== null) wage = Math.min(wage, a.lastCounter);
+  if (wage <= a.offered) return { kind: 'accept' };
+  return { kind: 'counter', wage, roundsLeft: MAX_RENEGOTIATION_ROUNDS - (a.round + 1) };
+}
+
+/** Meses além do limite de temporadas da idade que um contrato renegociado pode ter (o que resta do atual conta). */
+export const RENEGOTIATION_EXTRA_MONTHS = 24;

@@ -6,8 +6,11 @@ import { createRng, type Rng } from '../../game/rng.ts';
 import { ageOn } from '../../shared/date.ts';
 import { prizeMoney, retirementChance, reviseEstimate } from '../../game/career-engine/development.ts';
 import {
-  AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, expiresAt, maxContractYears, renewalDecision, renewalDemand, terminationCost, turnoverDate,
+  AI_RENEW_CHANCE, aiRenewalWage, contractBaseYear, contractEndFor, DEMOTION_MORALE, expiresAt, MAX_RENEGOTIATION_ROUNDS, maxContractYears, PROSPECT_MAX_AGE,
+  RENEGOTIATION_EXTRA_MONTHS, RENEGOTIATION_LOCK_DAYS, renegotiationReply, renegotiationTarget, renewalDemand, SQUAD_STATUSES, STATUS_INFO, statusRank,
+  terminationCost, turnoverDate, type SquadStatus,
 } from '../../game/career-engine/contracts.ts';
+import { seasonPlayingTime, setSquadStatus, squadRoles, syncSquadRoles, type SquadRole } from './squadRoleRepository.ts';
 import { groupOf, SQUAD_MAX, SQUAD_MIN, squadStaysValid, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
 import type { LeagueRules, Player, Position } from '../../shared/types.ts';
 import type {
@@ -46,8 +49,6 @@ const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 
 const monthsLeft = (date: string, end: string) => Math.max(0, (Number(end.slice(0, 4)) - Number(date.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(date.slice(5, 7)));
 const squadOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FROM players WHERE club_id = ? ORDER BY id').all(clubId).map(rowToPlayer);
 
-/** Meses restantes de contrato a partir dos quais a renovação é permitida. */
-export const RENEW_WINDOW_MONTHS = 24;
 /** A IA mantém no máximo este número de jogadores depois da virada (= limite de elenco, `SQUAD_MAX`). */
 const AI_SQUAD_CAP = SQUAD_MAX;
 /** Até quantos jogadores a IA completa o elenco promovendo jovens da base (deixa espaço para o mercado e não incha a folha). */
@@ -62,22 +63,56 @@ function matchesLeftForUser(db: SqlDb): number {
 }
 export function isSeasonComplete(db: SqlDb): boolean { return matchesLeftForUser(db) === 0; }
 
-function contractRow(p: Player, date: string, turnover: string, start: SeasonStart, retiring: boolean): ContractRowDto {
+interface ContractExtras {
+  role: SquadRole | undefined; play: { minutes: number; appearances: number } | undefined; clubMatches: number; listed: boolean;
+  talk: { rounds: number; last_counter: number | null; terms: string | null; locked_until: string | null } | undefined;
+}
+/** Temporadas que dá para acrescentar: até o limite da idade, sem o contrato passar desse limite + 24 meses (o que resta do atual). */
+function maxExtraYears(p: Player, date: string, start: SeasonStart, age: number): number {
+  const maxYears = maxContractYears(age);
+  let y = 0;
+  while (y < maxYears && monthsLeft(date, renewedEnd(p.contractEnd, y + 1, start)) <= maxYears * 12 + RENEGOTIATION_EXTRA_MONTHS) y++;
+  return y;
+}
+
+function contractRow(p: Player, date: string, turnover: string, start: SeasonStart, retiring: boolean, x: ContractExtras): ContractRowDto {
   const age = ageOn(p.birthDate, date);
   const left = monthsLeft(date, p.contractEnd);
+  const status: SquadStatus = x.role?.status ?? 'rotation';
+  const locked = x.talk?.locked_until && x.talk.locked_until > date ? x.talk.locked_until : null;
+  const open = x.talk && !x.talk.locked_until ? x.talk : null;
+  const [counterStatus, counterYears] = open?.terms ? open.terms.split('|') : [null, null];
+  const seasonMinutes = x.play?.minutes ?? 0;
   return {
     id: p.id, name: nameOf(p), position: p.position, age, overall: p.overall, salary: p.salary, contractEnd: p.contractEnd,
-    monthsLeft: left, expiresThisSeason: expiresAt(p.contractEnd, turnover), canRenew: left <= RENEW_WINDOW_MONTHS && !retiring, maxYears: maxContractYears(age), renewBaseYear: contractBaseYear(p.contractEnd),
+    monthsLeft: left, expiresThisSeason: expiresAt(p.contractEnd, turnover), canRenew: !retiring && !locked, maxYears: maxContractYears(age), renewBaseYear: contractBaseYear(p.contractEnd),
     renewEnds: [1, 2, 3, 4, 5].map((y) => renewedEnd(p.contractEnd, y, start)), retiring, terminationCost: terminationCost(p.salary, left),
+    squadStatus: status, expectedShare: STATUS_INFO[status].expected,
+    seasonMinutes, appearances: x.play?.appearances ?? 0, clubMatches: x.clubMatches, minutesShare: x.clubMatches > 0 ? Math.min(1, seasonMinutes / (x.clubMatches * 90)) : null,
+    verdict: x.role?.verdict ?? null, morale: p.morale, marketValue: p.marketValue, listed: x.listed, maxExtraYears: maxExtraYears(p, date, start, age),
+    talk: {
+      roundsLeft: locked ? 0 : MAX_RENEGOTIATION_ROUNDS - Math.min(MAX_RENEGOTIATION_ROUNDS, open?.rounds ?? 0),
+      lastCounter: open?.last_counter ?? null, counterStatus: counterStatus ? counterStatus as SquadStatus : null,
+      counterYears: counterYears == null ? null : Number(counterYears), lockedUntil: locked,
+    },
   };
 }
 
 export function getContracts(db: SqlDb): ContractRowDto[] {
   const st = getCareerState(db);
   const us = userSeason(db);
+  if (!st.clubId) return [];
+  syncSquadRoles(db);
   const retiring = new Set(db.prepare('SELECT id FROM players WHERE club_id = ? AND retire_planned = 1').all(st.clubId).map((r) => S(r.id)));
-  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, us.turnover, us.start, retiring.has(p.id)))
-    .sort((a, b) => a.contractEnd.localeCompare(b.contractEnd) || b.overall - a.overall);
+  const listed = new Set(db.prepare('SELECT player_id FROM transfer_list').all().map((r) => S(r.player_id)));
+  const roles = squadRoles(db);
+  const play = seasonPlayingTime(db, st.clubId);
+  const talks = new Map(db.prepare('SELECT * FROM contract_talks').all().map((r) => [S(r.player_id), {
+    rounds: N(r.rounds), last_counter: r.last_counter == null ? null : N(r.last_counter), terms: r.terms == null ? null : S(r.terms), locked_until: r.locked_until == null ? null : S(r.locked_until),
+  }]));
+  return squadOf(db, st.clubId).map((p) => contractRow(p, st.gameDate, us.turnover, us.start, retiring.has(p.id), {
+    role: roles.get(p.id), play: play.minutes.get(p.id), clubMatches: play.clubMatches, listed: listed.has(p.id), talk: talks.get(p.id),
+  })).sort((a, b) => a.contractEnd.localeCompare(b.contractEnd) || b.overall - a.overall);
 }
 
 export function getSeasonStatus(db: SqlDb): SeasonStatusDto {
@@ -109,29 +144,76 @@ export function getSeasonStatus(db: SqlDb): SeasonStatusDto {
   };
 }
 
-// ---------------------------------------------------------------- renovação (só o usuário; a IA renova na virada)
-export function renewContract(db: SqlDb, input: RenewInput): RenewResultDto {
+// ---------------------------------------------------------------- renegociação (só o usuário; a IA renova na virada)
+/**
+ * Renegocia o contrato de um jogador do clube do usuário, a qualquer momento: salário, temporadas a acrescentar (0 = mantém o fim) e
+ * status de tempo de jogo. O jogador quer o pedido de renovação × peso do status novo em relação ao atual (`renegotiationTarget`).
+ * Oferta insuficiente: ele contrapropõe (até 3 vezes; na 3ª encerra a conversa por 30 dias). Aceitar o último pedido dele sempre fecha.
+ * A diretoria pode vetar salários fora do orçamento. Status rebaixado: a moral cai 5 por degrau.
+ */
+export function renegotiateContract(db: SqlDb, input: RenewInput): RenewResultDto {
   const st = getCareerState(db);
-  if (![input.wage, input.years].every(Number.isInteger) || input.wage <= 0 || input.years < 1 || input.years > 5) throw new SeasonError('Proposta inválida: salário inteiro positivo e de 1 a 5 temporadas.');
+  if (![input.wage, input.years].every(Number.isInteger) || input.wage <= 0 || input.years < 0 || input.years > 5) throw new SeasonError('Proposta inválida: salário inteiro positivo e de 0 a 5 temporadas a mais.');
+  if (input.status !== undefined && !SQUAD_STATUSES.includes(input.status)) throw new SeasonError('Status de tempo de jogo inválido.');
   const row = db.prepare('SELECT * FROM players WHERE id = ? AND club_id = ?').get(input.playerId, st.clubId);
-  if (!row) throw new SeasonError('Só é possível renovar contratos de jogadores do seu clube.');
+  if (!row) throw new SeasonError('Só é possível renegociar contratos de jogadores do seu clube.');
   const p = rowToPlayer(row);
   if (N(row.retire_planned) === 1) throw new SeasonError(`${nameOf(p)} anunciou que vai se aposentar ao fim da temporada: não há renovação.`);
-  if (monthsLeft(st.gameDate, p.contractEnd) > RENEW_WINDOW_MONTHS) throw new SeasonError(`O contrato de ${nameOf(p)} ainda é longo: a renovação só é possível com até ${RENEW_WINDOW_MONTHS} meses restantes.`);
   const age = ageOn(p.birthDate, st.gameDate);
+  const today = st.gameDate;
+  syncSquadRoles(db);
+  const current: SquadStatus = squadRoles(db).get(p.id)?.status ?? 'rotation';
+  const next: SquadStatus = input.status ?? current;
+  if (next === 'prospect' && age > PROSPECT_MAX_AGE) throw new SeasonError(`Promessa é só para jogadores de até ${PROSPECT_MAX_AGE} anos.`);
+  if (input.years === 0 && input.wage === p.salary && next === current) throw new SeasonError('Nada a renegociar: mude o salário, o status ou as temporadas.');
+  // conversa: bloqueio depois de encerrar
+  const talkRow = db.prepare('SELECT * FROM contract_talks WHERE player_id = ?').get(p.id);
+  if (talkRow?.locked_until != null && S(talkRow.locked_until) > today) throw new SeasonError(`${nameOf(p)} encerrou a conversa: só volta a negociar em ${br(S(talkRow.locked_until))}.`);
+  const maxYears = maxContractYears(age);
+  if (input.years > maxYears) return { outcome: 'rejected', message: `Aos ${age} anos, ${nameOf(p)} aceita assinar por no máximo ${maxYears} temporada(s).` };
+  const start = userSeason(db).start;
+  const extra = maxExtraYears(p, today, start, age);
+  if (input.years > extra) {
+    return { outcome: 'rejected', message: `O contrato ficaria longo demais: ${nameOf(p)} ainda tem ${monthsLeft(today, p.contractEnd)} meses de contrato e, aos ${age} anos, aceita no máximo ${extra} temporada(s) a mais agora.` };
+  }
+  const end = input.years > 0 ? renewedEnd(p.contractEnd, input.years, start) : p.contractEnd;
+  const fresh = !talkRow || talkRow.locked_until != null;
+  const rounds = fresh ? 0 : N(talkRow.rounds);
+  const terms = `${next}|${input.years}`;
+  const lastCounter = !fresh && talkRow.last_counter != null && S(talkRow.terms) === terms ? N(talkRow.last_counter) : null;
   const demand = Math.round(renewalDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition, loyalty: p.personality.loyalty }) * negotiationMultiplier(coachOf(db).attributes));
-  const d = renewalDecision(input.wage, input.years, demand, age);
-  if (d.kind === 'too_long') return { outcome: 'rejected', message: `Aos ${age} anos, ${nameOf(p)} aceita assinar por no máximo ${d.maxYears} temporada(s).` };
-  if (d.kind === 'reject') return { outcome: 'rejected', message: `${nameOf(p)} recusou: o salário oferecido está muito abaixo do que ele espera.` };
-  if (d.kind === 'counter') return { outcome: 'counter', counterWage: d.wage, message: `${nameOf(p)} renova se o salário for de ${fmt(d.wage)} por mês.` };
+  const target = renegotiationTarget(demand, current, next);
+  const reply = renegotiationReply({ offered: input.wage, target, round: rounds, lastCounter });
+  const saveTalk = (r: number, counter: number | null, lockedUntil: string | null) => db.prepare(`INSERT INTO contract_talks (player_id, rounds, last_counter, terms, locked_until) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(player_id) DO UPDATE SET rounds = excluded.rounds, last_counter = excluded.last_counter, terms = excluded.terms, locked_until = excluded.locked_until`).run(p.id, r, counter, terms, lockedUntil);
+  const what = `${next !== current ? ` como ${STATUS_INFO[next].label.toLowerCase()}` : ''}${input.years > 0 ? ` por mais ${input.years} temporada(s)` : ''}`;
+  if (reply.kind === 'counter') {
+    saveTalk(rounds + 1, reply.wage, null);
+    return { outcome: 'counter', counterWage: reply.wage, roundsLeft: reply.roundsLeft,
+      message: `${nameOf(p)} pede ${fmt(reply.wage)} por mês${what}. ${reply.roundsLeft === 1 ? 'Resta 1 tentativa' : `Restam ${reply.roundsLeft} tentativas`} antes de ele encerrar a conversa.` };
+  }
+  if (reply.kind === 'walkout') {
+    const lockedUntil = addDays(today, RENEGOTIATION_LOCK_DAYS);
+    saveTalk(MAX_RENEGOTIATION_ROUNDS, null, lockedUntil);
+    return { outcome: 'walkout', lockedUntil, message: `${nameOf(p)} não gostou das propostas e encerrou a conversa. Ele só volta a negociar em ${br(lockedUntil)}.` };
+  }
   const veto = boardVeto(db, { fee: 0, wage: input.wage, marketValue: p.marketValue, replacesSalary: p.salary });
   if (veto) return { outcome: 'rejected', message: veto };
-  const end = renewedEnd(p.contractEnd, input.years, userSeason(db).start);
+  const steps = Math.max(0, statusRank(next) - statusRank(current));
   withTransaction(db, () => {
     db.prepare('UPDATE players SET salary = ?, contract_end = ? WHERE id = ?').run(input.wage, end, p.id);
-    addNews(db, st.gameDate, 'contract', `Renovação: ${nameOf(p)} assina até ${br(end)}`, `${nameOf(p)} (${age} anos) renovou o contrato por ${input.years} temporada(s), até ${br(end)}.\n\nSalário: de ${fmt(p.salary)} para ${fmt(input.wage)} por mês (${input.wage >= p.salary ? '+' : '−'}${fmt(Math.abs(input.wage - p.salary))}). A nova folha já vale a partir deste mês.`);
+    if (next !== current) setSquadStatus(db, p.id, st.clubId, next, today);
+    if (steps > 0 && next !== 'prospect') db.prepare('UPDATE players SET morale = MAX(10, morale + ?) WHERE id = ?').run(DEMOTION_MORALE * steps, p.id);
+    db.prepare('DELETE FROM contract_talks WHERE player_id = ?').run(p.id);
+    const changes = [
+      input.wage !== p.salary ? `Salário: de ${fmt(p.salary)} para ${fmt(input.wage)} por mês (${input.wage >= p.salary ? '+' : '−'}${fmt(Math.abs(input.wage - p.salary))}).` : `Salário mantido em ${fmt(p.salary)} por mês.`,
+      input.years > 0 ? `Contrato: até ${br(end)} (antes ${br(p.contractEnd)}).` : `Contrato mantido até ${br(end)}.`,
+      next !== current ? `Tempo de jogo: de ${STATUS_INFO[current].label} para ${STATUS_INFO[next].label} (espera jogar cerca de ${Math.round(STATUS_INFO[next].expected * 100)}% dos minutos).` : `Tempo de jogo: ${STATUS_INFO[current].label}.`,
+    ];
+    addNews(db, today, 'contract', input.years > 0 ? `Renovação: ${nameOf(p)} assina até ${br(end)}` : `Contrato renegociado: ${nameOf(p)}`,
+      `${nameOf(p)} (${age} anos) aceitou os novos termos.\n\n${changes.join('\n')}\n\nO novo salário já vale a partir deste mês.`);
   });
-  return { outcome: 'accepted', contractEnd: end, message: `${nameOf(p)} renovou até ${br(end)} com salário de ${fmt(input.wage)} por mês.` };
+  return { outcome: 'accepted', contractEnd: end, message: `${nameOf(p)} aceitou: ${fmt(input.wage)} por mês${next !== current ? `, ${STATUS_INFO[next].label.toLowerCase()}` : ''}, contrato até ${br(end)}.` };
 }
 
 // ---------------------------------------------------------------- rescisão (só o usuário)

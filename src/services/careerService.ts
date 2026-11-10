@@ -7,6 +7,7 @@ import { ensureSchemes } from '../database/repositories/tacticsRepository.ts';
 import { ensureFinance, prevMonth } from '../database/repositories/financeRepository.ts';
 import { ensureYouthAcademies } from '../database/repositories/youthRepository.ts';
 import { ensureBoard } from '../database/repositories/boardRepository.ts';
+import { ensureSquadRoles } from '../database/repositories/squadRoleRepository.ts';
 import { userSeason } from '../database/repositories/countrySeasonRepository.ts';
 import { advanceTime, getCareerState } from '../database/repositories/competitionRepository.ts';
 import type { ContinueStepDto } from '../shared/api.ts';
@@ -66,6 +67,7 @@ export function createCareer(db: SqlDb, universe: World, coach: Coach, clubId: s
   // aposentadorias anunciadas para o fim da temporada (com simulação prévia, as do país do clube são sorteadas na virada que abre a carreira)
   planRetirementsAtCreation(db, world.startDate, preCareer ? userSeason(db).turnover : null);
   if (preCareer) fastForwardToCareerStart(db, now);
+  ensureSquadRoles(db); // tempo de jogo combinado com cada jogador do elenco (status padrão pela força)
 }
 
 /**

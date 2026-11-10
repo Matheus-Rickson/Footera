@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FolderOpen, Moon, Package, PencilRuler, Play, Plus, Power, Sun, Trophy, UserPlus } from 'lucide-react';
 import { useTheme } from './theme.ts';
 import footeraMark from './assets/footera-mark.png';
-import homeTactics from './assets/home-tactics.png';
+import homeTactics from './assets/home-tactics.webp';
 import type { AppInfo, CareerListDto, CareerOverviewDto, ProfileDto } from '../shared/api.ts';
 import { errMsg, fmtDate, fmtDateTime, unwrap } from './util.ts';
 import { NewCareer } from './screens/NewCareer.tsx';
@@ -48,7 +48,9 @@ export function App() {
     if (!id) { setCareers(null); return; }
     try { setCareers(await unwrap(window.api.listCareers(id))); } catch (e) { setCareers(null); setError(errMsg(e)); }
   }, []);
-  useEffect(() => { void refreshCareers(profileId); }, [profileId, refreshCareers, screen.name]);
+  // a lista de carreiras só aparece na tela inicial (carreira mais recente) e em "Carregar carreira": não relê os saves nas outras telas
+  const listsCareers = screen.name === 'home' || screen.name === 'load';
+  useEffect(() => { if (listsCareers) void refreshCareers(profileId); }, [profileId, refreshCareers, listsCareers]);
 
   async function addProfile() {
     setError(null); setBusy(true);
@@ -71,7 +73,7 @@ export function App() {
   if (screen.name === 'packs') return <PacksView onBack={() => setScreen({ name: 'home' })} />;
   if (screen.name === 'editor') return <EditorView onBack={() => setScreen({ name: 'home' })} />;
   if (screen.name === 'load' && profileId) {
-    return <CareerList profileId={profileId} data={careers} error={error} onBack={() => setScreen({ name: 'home' })} onOpen={openCareer} busy={busy} />;
+    return <CareerList profileId={profileId} data={careers} error={error} onBack={() => setScreen({ name: 'home' })} onOpen={openCareer} busy={busy} onChanged={() => refreshCareers(profileId)} />;
   }
   if (screen.name === 'career') {
     const { profileId: pid, id: cid } = screen.overview.summary;

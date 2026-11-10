@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { listClubs } from '../services/worldService.ts';
 import { createProfile, listProfiles } from '../services/profileService.node.ts';
 import {
-  advanceCareer, continueCareerDay, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
+  advanceCareer, careerSaveFile, closeAllCareerDbs, continueCareerDay, deleteCareerSave, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
   getBoard, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
@@ -19,8 +19,8 @@ import { UserError } from '../shared/errors.ts';
 import { ImageError, inspectImage, MAX_PHOTO_BYTES } from '../shared/photo.ts';
 import type { EditorListQuery, IpcResult, MarketFilter, OfferInput, PackImportDto, PhotoPick, RenewInput, SchemeInput } from '../shared/api.ts';
 import { setBaseUniverseDir } from '../services/universeService.node.ts';
-import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, packsDir, removePack, setLoadOrder } from '../services/packManager.node.ts';
-import { imagesVersion, listPackImages, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
+import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, packsDir, removePack, setLoadOrder, setUniverseCacheTag, warmUniverse } from '../services/packManager.node.ts';
+import { imagesVersion, listPackImages, packImageFile, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
 import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest, editorImportCsv, editorExportCsvRows } from '../services/editorService.node.ts';
 import { decodeCsv } from '../game/data-pack/csv.ts';
 
@@ -30,21 +30,29 @@ if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'f
 const dataDir = () => path.join(app.getPath('userData'), 'data');
 // base de dados fixa distribuída com o jogo (no app instalado fica dentro do app.asar; o fs do Electron lê de lá)
 setBaseUniverseDir(path.join(app.getAppPath(), 'data', 'base'));
+// cache do universo em disco vale só para esta versão do programa (a data do executável muda a cada build em desenvolvimento)
+setUniverseCacheTag(`${app.getVersion()}:${(() => { try { return fs.statSync(__filename).mtimeMs; } catch { return 0; } })()}`);
 const uuid = z.string().uuid();
 
 /** Fotos escolhidas aguardando a criação da carreira. O renderer só conhece o token, nunca o caminho. */
 const pendingPhotos = new Map<string, Uint8Array>();
 const MAX_PENDING = 8;
+/** Medição de desempenho: loga as chamadas IPC de 50 ms ou mais (em desenvolvimento ou com FOOTERA_PERF=1). */
+const PERF_LOG = process.env.FOOTERA_PERF === '1' || !app.isPackaged;
 
 function handle<I, T>(channel: string, schema: z.ZodType<I, z.ZodTypeDef, unknown>, fn: (input: I) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_event, raw: unknown): Promise<IpcResult<T>> => {
     const parsed = schema.safeParse(raw);
     if (!parsed.success) return { ok: false, error: 'Dados inválidos: ' + parsed.error.issues.map((i) => i.message).join('; ') };
+    const t0 = performance.now();
     try { return { ok: true, data: await fn(parsed.data) }; }
     catch (err) {
       if (err instanceof ValidationError || err instanceof ImageError || err instanceof UserError) return { ok: false, error: err.message };
       console.error(`[ipc:${channel}]`, err);
       return { ok: false, error: `Erro inesperado: ${err instanceof Error ? err.message : String(err)}` };
+    } finally {
+      const ms = performance.now() - t0;
+      if (PERF_LOG && ms >= 50) console.log(`[perf] ${channel} ${Math.round(ms)} ms`);
     }
   });
 }
@@ -61,6 +69,7 @@ function registerHandlers(): void {
   handle('packs:list', z.unknown(), () => listPacks(dataDir()));
   const imageKeys = () => ({ version: imagesVersion(), keys: [...imageIndex(dataDir()).keys()] });
   handle('images:keys', z.unknown(), () => imageKeys());
+  handle('images:version', z.unknown(), () => { imageIndex(dataDir()); return imagesVersion(); });
   const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues', 'coaches', 'cups']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
   const packDirFor = (id: string) => { const d = path.join(packsDir(dataDir()), id); if (!fs.existsSync(path.join(d, 'manifest.json'))) throw new ValidationError('Pacote não encontrado.'); return d; };
   const packImageKeys = (id: string) => ({ version: imagesVersion(), keys: listPackImages(packDirFor(id)).map((im) => `${im.kind}/${im.id}`) });
@@ -192,6 +201,10 @@ function registerHandlers(): void {
   handle('career:list', z.object({ profileId: uuid }), (i) => listCareerSaves(dataDir(), i.profileId));
   handle('career:open', z.object({ profileId: uuid, careerId: uuid }), (i) => openCareer(dataDir(), i.profileId, i.careerId));
   const ref = z.object({ profileId: uuid, careerId: uuid });
+  handle('career:delete', ref, (i) => deleteCareerSave(dataDir(), i.profileId, i.careerId, async (dir) => {
+    try { await shell.trashItem(dir); } catch (e) { throw new ValidationError(`Não foi possível mover o save para a Lixeira: ${e instanceof Error ? e.message : String(e)}`); }
+  }));
+  handle('career:reveal', ref, (i) => { shell.showItemInFolder(careerSaveFile(dataDir(), i.profileId, i.careerId)); return true as const; });
   handle('career:calendar', ref, (i) => getCalendar(dataDir(), i.profileId, i.careerId));
   handle('career:competitions', ref, (i) => listCompetitionsFor(dataDir(), i.profileId, i.careerId));
   handle('career:table', ref.extend({ competitionId: z.string().min(1).max(100) }), (i) => getTable(dataDir(), i.profileId, i.careerId, i.competitionId));
@@ -249,7 +262,8 @@ function registerHandlers(): void {
   handle('season:start', ref, (i) => beginNextSeason(dataDir(), i.profileId, i.careerId));
   handle('contracts:list', ref, (i) => listContracts(dataDir(), i.profileId, i.careerId));
   handle('contracts:renew', ref.extend({ input: z.object({
-    playerId: z.string().min(1).max(60), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(1).max(5),
+    playerId: z.string().min(1).max(60), wage: z.number().int().min(1).max(1e9), years: z.number().int().min(0).max(5),
+    status: z.enum(['key', 'starter', 'rotation', 'backup', 'prospect']).optional(),
   }) }), (i) => offerRenewal(dataDir(), i.profileId, i.careerId, i.input as RenewInput));
   handle('contracts:terminate', ref.extend({ playerId: z.string().min(1).max(60) }), (i) => rescindContract(dataDir(), i.profileId, i.careerId, i.playerId));
   handle('news:list', ref, (i) => listNews(dataDir(), i.profileId, i.careerId));
@@ -328,9 +342,13 @@ function createWindow(): void {
   });
   const dev = process.env.VITE_DEV_SERVER_URL;
   if (dev) void win.loadURL(dev); else void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  // depois da 1ª pintura: o universo da carreira nova vem do cache em disco (se houver), para "Nova carreira" abrir sem espera
+  win.webContents.once('did-finish-load', () => { setTimeout(() => { try { warmUniverse(dataDir()); } catch { /* monta quando pedirem */ } }, 400); });
 }
 
 // imagens dos pacotes: footera-img://img/<tipo>/<id> (só o que está no índice dos pacotes ativos ou do pacote em edição)
+const IMG_KINDS = new Set(['players', 'clubs', 'stadiums', 'leagues', 'coaches', 'cups']);
+// a URL leva a versão do índice (?v=): a imagem pode ficar em cache sem revalidar (versão nova = URL nova)
 protocol.registerSchemesAsPrivileged([{ scheme: 'footera-img', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 app.whenReady().then(() => {
@@ -339,13 +357,15 @@ app.whenReady().then(() => {
     const [, kind, id] = u.pathname.split('/');
     const pack = u.searchParams.get('pack');
     let file: string | null | undefined;
-    if (pack && /^[a-z0-9][a-z0-9_-]{0,59}$/.test(pack)) file = listPackImages(path.join(packsDir(dataDir()), pack)).find((im) => im.kind === kind && im.id === id)?.file;
+    if (pack && /^[a-z0-9][a-z0-9_-]{0,59}$/.test(pack)) file = IMG_KINDS.has(kind ?? '') && /^[a-z0-9][a-z0-9_-]{0,59}$/.test(id ?? '') ? packImageFile(path.join(packsDir(dataDir()), pack), kind as ImageKind, id!) : null;
     else file = imageIndex(dataDir()).get(`${kind}/${id}`);
     if (!file) return new Response(null, { status: 404 });
-    return new Response(fs.readFileSync(file), { headers: { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg', 'cache-control': 'no-cache' } });
+    return new Response(fs.readFileSync(file), { headers: { 'content-type': file.endsWith('.png') ? 'image/png' : 'image/jpeg', 'cache-control': 'max-age=31536000, immutable' } });
   });
   registerHandlers();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+// fecha os saves abertos (grava o -wal no arquivo principal)
+app.on('before-quit', () => closeAllCareerDbs());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

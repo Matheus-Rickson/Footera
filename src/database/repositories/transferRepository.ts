@@ -6,7 +6,7 @@ import {
   askingPrice, buyerReply, clubDecision, WELL_KNOWN, groupOf, MAX_COUNTER_ROUNDS, type PositionGroup, OFFER_VALID_DAYS, playerDecision, playerInterest, sellerWillingness, SQUAD_MAX, SQUAD_MIN, squadStaysValid, wageDemand, windowStatus,
 } from '../../game/transfer-engine/transfer.ts';
 import { addDays, ageOn } from '../../shared/date.ts';
-import type { Player } from '../../shared/types.ts';
+import type { Player, Position } from '../../shared/types.ts';
 import { nationName } from '../../shared/nations.ts';
 import type {
   CounterOfferResultDto, FeeResultDto, IncomingOfferDto, MarketFilter, MarketPageDto, MarketPlayerDto, MyPlayerDto, NegotiationDto, OfferInput, OfferResultDto, TransferLogDto, TransfersOverviewDto,
@@ -108,21 +108,26 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   if (f.nationalities?.length) { where.push(`p.nationality IN (${f.nationalities.map(() => '?').join(',')})`); args.push(...f.nationalities); }
   if (f.foot) { where.push('p.foot = ?'); args.push(f.foot); }
   if (f.contractEndsBy) { where.push('(p.club_id IS NULL OR p.contract_end <= ?)'); const t = userSeason(db).turnover; args.push(addDays(f.contractEndsBy === 'season' ? t : `${Number(t.slice(0, 4)) + 1}${t.slice(4)}`, -1)); }
-  const rows = db.prepare(`SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
-  const wanted = f.positions?.length ? new Set(f.positions) : null;
-  const matches: Array<{ r: Record<string, unknown>; id: string }> = [];
+  // filtra só com as colunas necessárias (dezenas de milhares de linhas) e lê o jogador completo apenas para a página pedida
+  const rows = db.prepare(`SELECT p.id, p.position, p.secondary_positions_json, p.birth_date FROM players p WHERE ${where.join(' AND ')} ORDER BY p.market_value DESC, p.id`).all(...args);
+  const wanted = f.positions?.length ? new Set<string>(f.positions) : null;
+  const matches: string[] = [];
   for (const r of rows) {
-    const p = rowToPlayer(r), age = ageOn(p.birthDate, st.gameDate);
-    if (f.position && (f.position === 'GK' || f.position === 'DEF' || f.position === 'MID' || f.position === 'ATT' ? groupOf(p.position) !== f.position : p.position !== f.position)) continue;
-    if (wanted && !wanted.has(p.position) && (f.naturalOnly || !p.secondaryPositions.some((s) => wanted.has(s)))) continue;
-    if (f.minAge !== undefined && age < f.minAge) continue;
-    if (f.maxAge !== undefined && age > f.maxAge) continue;
-    if (f.shortlistedOnly && !shortlisted.has(p.id)) continue;
-    if (f.knownOnly && (know.get(p.id) ?? 0) < WELL_KNOWN) continue;
-    matches.push({ r, id: p.id });
+    const id = S(r.id), position = S(r.position) as Position;
+    if (f.position && (f.position === 'GK' || f.position === 'DEF' || f.position === 'MID' || f.position === 'ATT' ? groupOf(position) !== f.position : position !== f.position)) continue;
+    if (wanted && !wanted.has(position) && (f.naturalOnly || !(JSON.parse(S(r.secondary_positions_json)) as string[]).some((s) => wanted.has(s)))) continue;
+    if (f.minAge !== undefined || f.maxAge !== undefined) {
+      const age = ageOn(S(r.birth_date), st.gameDate);
+      if (f.minAge !== undefined && age < f.minAge) continue;
+      if (f.maxAge !== undefined && age > f.maxAge) continue;
+    }
+    if (f.shortlistedOnly && !shortlisted.has(id)) continue;
+    if (f.knownOnly && (know.get(id) ?? 0) < WELL_KNOWN) continue;
+    matches.push(id);
   }
   const offset = Math.max(0, Math.floor(f.offset ?? 0)), limit = Math.min(500, Math.max(1, Math.floor(f.limit ?? 100)));
-  const players = matches.slice(offset, offset + limit).map(({ r, id }) => toScoutedDto(db, r, st.gameDate, know.get(id) ?? 0, shortlisted.has(id)));
+  const full = db.prepare('SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?');
+  const players = matches.slice(offset, offset + limit).map((id) => toScoutedDto(db, full.get(id)!, st.gameDate, know.get(id) ?? 0, shortlisted.has(id)));
   return { total: matches.length, offset, players, nationalities };
 }
 
