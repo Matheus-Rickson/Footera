@@ -742,6 +742,58 @@ Sem novas funcionalidades de jogo.
   sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.
 
 ## Fase 9 — Base de dados editável (branch `fase-9-base-de-dados`; detalhes em `docs/DATABASE.md`)
+- **v0.8.12 — treino por sessões, comissão (físico e goleiros), condição recalibrada e ritmo de jogo (12/11/2026; commit "v0.8.11 + v0.8.12"):** pedido do usuário
+  (treino "levemente mais complexo", preparador físico e de goleiros no treino, condição errada: ~87% depois de 90 minutos). Decisões do usuário:
+  semana com sessões, ~65–75% depois de 90 minutos e ~95% em 3 dias, todas as funções da comissão, avisos de risco no Departamento médico.
+  Detalhes e números em `docs/TRAINING_STAFF.md` ("Sessões semanais, condição e ritmo de jogo") e `docs/MATCH_ENGINE.md`.
+  - **Funcional e testado:** perda de condição no jogo pela fadiga acumulada (`8 × min/90 + 1,41 × fadiga^0,8`); fadiga inicial de quem entra
+    cansado; escolha da escalação poupa cansados (`selectionCondition`); recuperação não linear (sessão, preparador, médico, idade, recuperação física);
+    grade semanal (6 sessões + jogo), modelos, ajuste automático aos jogos, intensidade; evolução mensal pela grade × semana Equilibrada (sem
+    inflação: Equilibrada normal = 1 exato); sessões de goleiro e ganho pelo treinador de goleiros (0,80–1,10); ritmo de jogo (+12 por 90', queda
+    parado até o piso de 60, −3 por dia lesionado, efeito 0,92–1,00 no rendimento); carga de jogos (média de 7 dias) no risco de lesão de treino;
+    preparador delegado monta modelo e intensidade; relatórios semanais do preparador e do treinador de goleiros (só contratados); "Em risco" com
+    motivos e recomendação. Migração 034. Testes: `training-sessions.test.ts` (13) e ajustes em `match-engine`, `match-persistence`,
+    `training-staff` e `board` (o teste da avaliação da temporada passou a conferir a regra — demitido se, e só se, não cumpriu e a confiança
+    ficou na zona de demissão — em vez de supor que "não cumpriu" sempre demite). Suíte 366/366; typecheck ok.
+  - **Desempenho:** a primeira versão regravava condição, carga e ritmo dos ~18 mil jogadores de clubes completos todo dia (1 dia 150 → 375 ms).
+    Refeito com gravação preguiçosa (valor + data; `fitnessState.ts`), carga só dos jogos, IA sem carga de sessão na condição e índices da
+    migração 034. Medido no save do usuário já migrado (N = 7) × v0.8.11: 1 dia 150 → 153 ms; 7 dias 2,1 → 1,13 s; próxima rodada 325 → 271 ms.
+  - **Estabilidade** (save do usuário, 120 dias, 538 clubes completos): 90 minutos → P10/mediana/P90 64 / 69,2 / 75,6% (antes 80 / 82,5 / 85);
+    lesões por clube 10,16 (antes 10,17); evolução média +0,225 (igual).
+  - **Mutação:** 14/14 nas regras da gravação preguiçosa; 20/25 na lista inicial da 0.8.12 (2 trechos mudaram e têm mutantes equivalentes na
+    lista nova, todos mortos; 3 sobreviventes equivalentes: risco na folga multiplicado por 0, teto do lesionado reaplicado no fim do dia,
+    guarda repetida do relatório).
+  - **Verificado pelo usuário (12/11/2026):** telas e mecânicas do treino ("as telas e mecânicas funcionaram": abas Semana e Goleiros, grade,
+    modelos, intensidade).
+  - **Abertura lenta do app em `npm run dev` (pedido do usuário, 12/11/2026):** medido com marcos novos no processo principal (`[perf] abertura:`,
+    só em desenvolvimento ou com `FOOTERA_PERF=1`): o Electron fica pronto em ~30 ms, mas a página levava **15,3 s** até o DOM (tela vazia sem
+    resposta). Perfil de CPU do Vite: 12,4 s registrando observadores de arquivo na pasta inteira do projeto — `release/` (instaladores
+    descompactados) tem ~21 mil arquivos. `vite.config.ts`: `server.watch.ignored` para as pastas que não são código do renderer e
+    `optimizeDeps.entries: ['index.html']`. Depois: DOM pronto em **2,1 s**. O app instalado não usa o Vite (não tinha esse atraso). Abrir o save
+    medido à parte: 30–370 ms; migração 034 num save antigo, 273 ms (uma vez).
+  - **Comissão técnica e Departamento médico refeitos (pedido do usuário):** no padrão da Infraestrutura/Treino. Comissão: resumo (custo mensal,
+    funções ocupadas, qualidade média), um card por função com ícone, qualidade em barras, situação (contratado/vaga aberta), o profissional
+    (salário, contrato, nacionalidade), os efeitos com a qualidade atual (`effects` no DTO, as mesmas fórmulas do treino — teste), demissão com
+    confirmação e a multa máxima, candidatos do mês ordenados pela qualidade; técnicos sem clube com bandeira. Médico: resumo (médico,
+    departamento, tempo de lesão, próximo treino), Lesionados (foto/iniciais, lesão, dias para voltar em faixa de cor) e Em risco (condição e
+    ritmo em barras, carga, motivos em etiquetas, recomendação do preparador, risco de amanhã), sem rolagem da página; regras no botão "?".
+    Textos dos efeitos do preparador e do treinador de goleiros atualizados para as regras da 0.8.12. Telas NÃO verificadas no Electron.
+  - **Não executado / não verificado:** Departamento médico, Comissão técnica (refeitos) e e-mails semanais no Electron; temporada inteira e
+    viradas com o código novo no save do usuário; o fim de temporada com demissão pela avaliação não tem mais um caso forçado no teste (o
+    resultado depende da temporada simulada).
+- **v0.8.11 — desempenho do banco e do motor (10/11/2026; commit "v0.8.11 + v0.8.12"):** pedido do usuário (análise, implementação e medição). Detalhes,
+  decisões e números em `docs/PERFORMANCE.md`.
+  - **Funcional e testado:** consultas preparadas reaproveitadas (LRU por conexão); PRAGMAs dos saves (synchronous NORMAL, cache 32 MB, temp em
+    memória, busy_timeout); migração 033 (índice das classificações); lista de observação com `CROSS JOIN`; força sem objeto achatado; elencos
+    leves na contratação de livres da IA; mercado em cache até a próxima escrita. Medido no save do usuário (mesmo script antes/depois, N = 7):
+    avançar 1 dia 245 → 150 ms, 7 dias 3,7 → 2,1 s, próxima rodada 748 → 325 ms, mercado 95 → 7 ms (69 ms com filtro novo), temporada 84 → 44 ms.
+    Hash do estado depois de 120 dias simulados idêntico ao do código anterior. `db-performance.test.ts` (7); mutação 10/13 (3 sobreviventes só
+    de desempenho, sem efeito no resultado: ordem de leitura do grupo de goleiro, que nenhum peso usa; página na chave do cache; `JOIN` × `CROSS JOIN`).
+    `npm run bench` (`scripts/bench.ts`).
+  - **Avaliado e não feito (medido):** `PRAGMA optimize`/`ANALYZE` (ganho de 1–3 ms nas telas, mas muda planos e pode quebrar o determinismo);
+    índice parcial de condição física (piorou); índice por valor de mercado (não usado); `mmap_size`; cache de classificações/estatísticas
+    (já respondem em 0,3–4 ms); Worker Threads.
+  - **Não executado:** medição da renderização no Electron e do tempo de abertura do app; temporada inteira no save do usuário com o código novo.
 - **v0.8.10 — Finanças, Diretoria, Sala de troféus e Histórico da carreira com licenças (10/11/2026; sem commit):** pedido do usuário em 4 itens;
   decisões: licenças com teto de reputação + exigência, cursos por tempo + pré-requisitos (sem custo), patrocínios com propostas + contraproposta +
   bônus, troféus do jogo + histórico editável. Migrações 029–032.

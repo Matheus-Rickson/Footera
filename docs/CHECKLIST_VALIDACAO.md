@@ -389,6 +389,20 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Licenças: começar num clube da 1ª divisão → e-mail de matrícula na PRO (carência) e licença A; matricular-se quando o botão aparecer.
 - [ ] Atributos do treinador: botão + no Histórico da carreira (saiu da Diretoria).
 
+## 13z5. Treino por sessões e condição (v0.8.12)
+- [ ] Treinamento → Semana: 7 dias com cores por sessão; o dia de jogo mostra o adversário; o dia seguinte aparece como Recuperação e a véspera como Pré-jogo.
+- [ ] Trocar a sessão de um dia: a grade vira "personalizada"; um modelo pronto reescreve a semana; desligar "Ajustar aos jogos" mostra a grade pura.
+- [ ] Delegar ao preparador físico: a grade fica só leitura ("Montada por …"); na segunda-feira ele troca modelo e intensidade conforme os jogos.
+- [ ] Jogo de 90 minutos: o titular termina perto de 65–75% (ficha e jogo ao vivo); 3 dias depois volta a ~95%.
+- [ ] Jogadores: colunas Ritmo e Carga com o "?"; paginação; a tela cabe em 1920×1080 sem barra de rolagem.
+- [ ] Goleiros: cartão de cada goleiro com a sessão e os atributos; sem treinador de goleiros aparece o aviso de 87,5%.
+- [ ] Caixa de entrada (segunda-feira, com os profissionais contratados): relatório físico e relatório dos goleiros.
+- [ ] Departamento médico → Em risco: motivos (condição, carga, ritmo, veterano) e a recomendação do preparador.
+- [ ] Semana com 2 jogos: a IA e a "melhor escalação" deixam cansados no banco.
+- [ ] `npm run dev`: a janela mostra o menu principal em ~2 s (antes ~15 s com a tela vazia).
+- [ ] Comissão técnica (refeita): resumo no topo; um card por função com qualidade em barras, situação, efeitos e candidatos do mês; demitir pede confirmação e mostra a multa máxima.
+- [ ] Departamento médico (refeito): resumo no topo; Lesionados com dias para voltar; Em risco com barras de condição e ritmo, carga, motivos e recomendação; cabe em 1920×1080 sem rolagem.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

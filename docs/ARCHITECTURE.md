@@ -3,7 +3,7 @@
 ## Camadas
 - `src/shared` — tipos de domínio, datas, contrato da API (`api.ts`). Sem dependências.
 - `src/game/*` — regras de negócio puras e determinísticas (RNG com semente). Um módulo por motor.
-- `src/database` — interface `SqlDb` mínima, migrações versionadas, repositórios. Compatível com `node:sqlite` e `better-sqlite3`.
+- `src/database` — interface `SqlDb` mínima, migrações versionadas, repositórios. Compatível com `node:sqlite` e `better-sqlite3`. `openDatabase` aplica os PRAGMAs dos saves e devolve a conexão com cache de consultas preparadas; `writeMemo.ts` = cache de leitura válido até a próxima escrita (ver `docs/PERFORMANCE.md`).
 - `src/services` — casos de uso (ex.: `createCareer`). Orquestram motores + banco; é a única porta de entrada para a UI.
 - `src/main` / `src/preload` — Electron: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
   CSP no HTML, navegação externa bloqueada. Cada canal IPC valida a entrada com Zod e devolve `{ok, data|error}`.

@@ -7,6 +7,8 @@ import {
   qualityFactor, recoveryFactor, STAFF_CONTRACT_YEARS, STAFF_ROLES, STAFF_SEVERANCE_MONTHS, staffCandidates, UNSTAFFED_QUALITY, DEFAULT_DEPT_LEVEL, type FacilityKind, type StaffRole,
 } from '../../game/training-engine/training.ts';
 import type { StaffOverviewDto } from '../../shared/api.ts';
+import { RECOVERY, sharpnessDecay } from '../../game/training-engine/condition.ts';
+import { gkCoachFactor } from '../../game/training-engine/sessions.ts';
 import { getCareerState } from './careerRepository.ts';
 import { makePoster } from './financeRepository.ts';
 import { addNews } from './newsRepository.ts';
@@ -30,8 +32,8 @@ export const ROLE_LABEL: Record<StaffRole, string> = { assistant: 'Auxiliar téc
 /** O que cada função da comissão faz no jogo (texto das mensagens). */
 export const ROLE_EFFECT: Record<StaffRole, string> = {
   assistant: 'O auxiliar técnico acelera a evolução técnica e mental dos jogadores de linha e o aprendizado das funções táticas.',
-  fitness: 'O preparador físico acelera a evolução física, freia o declínio dos veteranos, reduz lesões no treino e pode assumir a rotina de treino (delegar).',
-  goalkeeping: 'O treinador de goleiros acelera a evolução dos goleiros.',
+  fitness: 'O preparador físico acelera a evolução física e a recuperação da condição, segura o ritmo de jogo de quem está parado, freia o declínio dos veteranos, reduz lesões no treino, manda o relatório físico semanal e pode assumir a rotina de treino (delegar).',
+  goalkeeping: 'O treinador de goleiros escolhe a sessão de cada goleiro, acelera a evolução deles e manda o relatório semanal dos goleiros.',
   doctor: 'O médico encurta o tempo de recuperação das lesões.',
 };
 
@@ -55,19 +57,38 @@ export function getStaffOverview(db: SqlDb): StaffOverviewDto {
   const byRole = new Map(hired.map((r) => [S(r.role) as StaffRole, r]));
   const candidates = staffCandidates(seedOf(db), st.gameDate.slice(0, 7), COUNTRY_TEMPLATES, economyOf(db, st.clubId)).filter((c) => !hired.some((h) => S(h.id) === c.id));
   const f = facilitiesOf(db, st.clubId);
+  const pct = (x: number) => `${x >= 1 ? '+' : ''}${Math.round((x - 1) * 100)}%`;
   const effect = (role: StaffRole, q: number): string => {
-    const pct = (x: number) => `${x >= 1 ? '+' : ''}${Math.round((x - 1) * 100)}%`;
     if (role === 'assistant') return `Evolução técnica e mental dos jogadores de linha: ${pct(qualityFactor(q))}`;
-    if (role === 'fitness') return `Evolução física ${pct(qualityFactor(q))}; recuperação +${(q / 20 * 1.5).toFixed(1)}/dia; menos lesões no treino; pode assumir a rotina de treino`;
-    if (role === 'goalkeeping') return `Evolução dos goleiros: ${pct(qualityFactor(q))}`;
+    if (role === 'fitness') return `Evolução física ${pct(qualityFactor(q))}; recuperação mais rápida; segura o ritmo de jogo; menos lesões no treino; pode assumir a rotina de treino`;
+    if (role === 'goalkeeping') return `Evolução dos goleiros: ${pct(gkCoachFactor(q))}`;
     return `Tempo de lesão: ${pct(recoveryFactor(q, f.medical))} (com o departamento médico nível ${f.medical})`;
+  };
+  /** efeitos com a qualidade atual da função (as mesmas fórmulas do treino, docs/TRAINING_STAFF.md) */
+  const effects = (role: StaffRole, q: number): Array<{ label: string; value: string }> => {
+    if (role === 'assistant') return [
+      { label: 'Evolução técnica e mental', value: pct(qualityFactor(q)) },
+      { label: 'Aprendizado das funções táticas', value: pct(qualityFactor(q)) },
+    ];
+    if (role === 'fitness') return [
+      { label: 'Evolução física', value: pct(qualityFactor(q)) },
+      { label: 'Recuperação da condição', value: `+${Math.round(((RECOVERY.fitness * q) / 20 / RECOVERY.base) * 100)}%` },
+      { label: 'Queda do ritmo parado', value: `${sharpnessDecay(q).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} por dia` },
+      { label: 'Risco de lesão no treino', value: pct(1.15 - (0.3 * q) / 20) },
+      { label: 'Declínio físico dos veteranos', value: pct(1.1 - (0.2 * q) / 20) },
+    ];
+    if (role === 'goalkeeping') return [{ label: 'Evolução dos goleiros', value: pct(gkCoachFactor(q)) }, { label: 'Sessão de goleiros', value: byRole.has('goalkeeping') ? 'escolhida por ele (a do ponto mais fraco)' : 'todas as áreas' }];
+    return [
+      { label: 'Tempo de lesão', value: pct(recoveryFactor(q, f.medical)) },
+      { label: 'Departamento médico', value: `nível ${f.medical}` },
+    ];
   };
   return {
     roles: STAFF_ROLES.map((role) => {
       const r = byRole.get(role);
       const q = r ? N(r.ability) : UNSTAFFED_QUALITY;
       return {
-        role, label: ROLE_LABEL[role], effect: effect(role, q),
+        role, label: ROLE_LABEL[role], effect: effect(role, q), effects: effects(role, q), quality: q,
         member: r ? { id: S(r.id), name: `${S(r.first_name)} ${S(r.last_name)}`, nationality: S(r.nationality), ability: N(r.ability), salary: N(r.salary), contractEnd: S(r.contract_end) } : null,
         candidates: candidates.filter((c) => c.role === role).map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, nationality: c.nationality, ability: c.ability, salary: c.salary })),
       };

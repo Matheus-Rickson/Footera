@@ -7,6 +7,7 @@ export interface MatchPlayer {
   attributes: Attributes;
   /** 0..100 (prontidão física no início da partida) */
   condition: number; morale: number; form: number;
+  /** ritmo de jogo 0..100 (v0.8.12); ausente = 100 */ sharpness?: number;
   /** domínio aprendido de cada função (id → 0–100); ausente = domínio inicial pelo perfil */ roleFamiliarity?: Record<string, number>;
 }
 
@@ -116,6 +117,7 @@ export interface PlayerReport {
   goals: number; assists: number; shots: number; shotsOnTarget: number; passes: number; passesCompleted: number;
   keyPasses: number; tackles: number; interceptions: number; fouls: number; yellow: number; red: number;
   saves: number; goalsConceded: number; xg: number; injuredDays: number;
+  /** fadiga acumulada no jogo (sem a inicial); define a condição pós-jogo (`conditionAfter`) */ fatigue: number;
   /** função exercida (a última, se mudou durante o jogo) */ role?: string;
 }
 

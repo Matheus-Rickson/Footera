@@ -20,11 +20,14 @@ export const FOCUS_KEYS: Record<Focus, readonly string[]> = {
   goalkeeping: ['reflexes', 'oneOnOne', 'handling', 'aerial', 'rushingOut', 'kicking', 'positioning', 'agility'],
 };
 
-/** Efeitos da intensidade: crescimento, recuperação diária de condição (pontos) e risco de lesão no treino. */
-export const INTENSITY: Record<Intensity, { growth: number; recovery: number; injury: number }> = {
-  light: { growth: 0.88, recovery: 7.5, injury: 0.6 },
-  normal: { growth: 1, recovery: 6, injury: 1 },
-  hard: { growth: 1.14, recovery: 4, injury: 1.7 },
+/**
+ * Efeitos da intensidade sobre as sessões da semana (v0.8.12): crescimento, carga (custo de condição de cada sessão) e risco de lesão no
+ * treino. Antes da v0.8.12 a intensidade dava uma recuperação fixa por dia (7,5 / 6 / 4 pontos).
+ */
+export const INTENSITY: Record<Intensity, { growth: number; load: number; injury: number }> = {
+  light: { growth: 0.88, load: 0.6, injury: 0.6 },
+  normal: { growth: 1, load: 1, injury: 1 },
+  hard: { growth: 1.14, load: 1.4, injury: 1.7 },
 };
 
 /** Profissional (1..20) ou instalação (1..20) → multiplicador de crescimento: 0,90 a 1,10. */
@@ -53,15 +56,31 @@ export function bestFocus(position: Position, attributes: Attributes, age: numbe
 }
 
 /** Intensidade da semana escolhida pelo preparador: alivia com o elenco cansado ou semana cheia; puxa quando não há jogos e todos estão inteiros. */
-export function chooseIntensity(avgCondition: number, matchesNext7Days: number): Intensity {
-  if (avgCondition < 82 || matchesNext7Days >= 2) return 'light';
-  if (matchesNext7Days === 0 && avgCondition >= 95) return 'hard';
+export function chooseIntensity(avgCondition: number, matchesNext7Days: number, avgAcuteLoad = 0): Intensity {
+  if (avgCondition < 82 || matchesNext7Days >= 2 || avgAcuteLoad > ACUTE_SAFE + 5) return 'light';
+  if (matchesNext7Days === 0 && avgCondition >= 92) return 'hard';
   return 'normal';
 }
+/** Modelo de semana escolhido pelo preparador físico (delegado): pré-temporada sem jogos, recuperação com elenco cansado, 2 jogos, ou equilibrada. */
+export function chooseTemplate(avgCondition: number, matchesNext7Days: number, avgAcuteLoad: number): 'balanced' | 'preseason' | 'double' | 'recovery' {
+  if (matchesNext7Days >= 2) return 'double';
+  if (avgCondition < 82 || avgAcuteLoad > ACUTE_SAFE + 5) return 'recovery';
+  if (matchesNext7Days === 0) return 'preseason';
+  return 'balanced';
+}
 
-/** Chance diária de lesão no treino. Cansaço dobra o risco; o preparador físico reduz (prevenção). */
-export function trainingInjuryChance(condition: number, intensity: Intensity, fitnessQuality: number): number {
-  return 0.0004 * INTENSITY[intensity].injury * (condition < 70 ? 2 : 1) * (1.15 - (0.3 * clamp(fitnessQuality, 0, 20)) / 20);
+/**
+ * Carga de jogos a partir da qual o risco de lesão cresce: um jogo por semana fica entre ~6 e ~16; dois jogos por semana chegam a ~25.
+ * (A carga conta os jogos — 90 minutos = 10 —, não as sessões: as sessões pesam pelo próprio risco e pela intensidade.)
+ */
+export const ACUTE_SAFE = 20;
+/**
+ * Chance diária de lesão no treino. `sessionInjury` = risco da sessão do dia × intensidade (0 em folga, recuperação e dia de jogo).
+ * Cansaço dobra o risco; carga aguda acima de `ACUTE_SAFE` aumenta; o preparador físico reduz (prevenção). A base subiu de 0,04% para
+ * 0,055% na v0.8.12 porque folgas, recuperações e dias de jogo deixaram de ter risco (a semana padrão rende o mesmo total de antes).
+ */
+export function trainingInjuryChance(condition: number, sessionInjury: number, fitnessQuality: number, acuteLoad = 0): number {
+  return 0.00055 * sessionInjury * (condition < 70 ? 2 : 1) * (1 + Math.max(0, acuteLoad - ACUTE_SAFE) / 15) * (1.15 - (0.3 * clamp(fitnessQuality, 0, 20)) / 20);
 }
 
 /** Multiplicador do tempo de lesão: médico e departamento médico encurtam (0,85 a 1,15). */

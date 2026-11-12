@@ -1,6 +1,6 @@
 import type { Methodology, Player, Position } from '../../shared/types.ts';
 import { FORMATIONS, getFormation, type Formation } from './formations.ts';
-import { effective, readiness } from './roles.ts';
+import { effective, readiness, selectionValue } from './roles.ts';
 import { overallFor } from '../world/overall.ts';
 import type { LineupSlot, MatchPlayer, TeamSheet, TeamTactics } from './types.ts';
 
@@ -9,6 +9,7 @@ export function toMatchPlayer(p: Player): MatchPlayer {
     id: p.id, name: `${p.firstName} ${p.lastName}`, position: p.position, secondaryPositions: p.secondaryPositions,
     attributes: p.attributes, condition: p.condition, morale: p.morale, form: p.form,
     ...(p.roleFamiliarity ? { roleFamiliarity: p.roleFamiliarity } : {}),
+    ...(p.sharpness != null ? { sharpness: p.sharpness } : {}),
   };
 }
 
@@ -25,11 +26,11 @@ export function assignLineup(players: readonly MatchPlayer[], formation: Formati
     let best: MatchPlayer | null = null, bestV = -1;
     for (const id of free) {
       const p = byId.get(id)!;
-      const v = effective(p, s.pos) + (p.position === s.pos ? 3 : 0);
+      const v = selectionValue(p, s.pos) + (p.position === s.pos ? 3 : 0);
       if (v > bestV) { bestV = v; best = p; }
     }
     if (!best) throw new Error('Jogadores insuficientes para a formação.');
-    free.delete(best.id); chosen.set(i, best); score += effective(best, s.pos);
+    free.delete(best.id); chosen.set(i, best); score += selectionValue(best, s.pos);
   }
   return { lineup: formation.slots.map((s, i) => ({ slot: s.pos, x: s.x, y: s.y, player: chosen.get(i)! })), score };
 }
@@ -56,7 +57,7 @@ export function assignLineupPreferred(players: readonly MatchPlayer[], formation
     let best: MatchPlayer | null = null, bestV = -1;
     for (const p of players) {
       if (used.has(p.id)) continue;
-      const v = effective(p, pos) + (p.position === pos ? 3 : 0);
+      const v = selectionValue(p, pos) + (p.position === pos ? 3 : 0);
       if (v > bestV) { bestV = v; best = p; }
     }
     if (!best) throw new Error('Jogadores insuficientes para a formação.');
@@ -80,7 +81,7 @@ const group = (pos: Position): 'GK' | 'DEF' | 'MID' | 'ATT' =>
 /** Banco de 7: 1 goleiro, 2 defensores, 2 meias, 2 atacantes (completando com os melhores restantes). */
 export function pickBench(players: readonly MatchPlayer[], lineup: readonly LineupSlot[]): MatchPlayer[] {
   const used = new Set(lineup.map((l) => l.player.id));
-  const rest = players.filter((p) => !used.has(p.id)).sort((a, b) => effective(b, b.position) - effective(a, a.position));
+  const rest = players.filter((p) => !used.has(p.id)).sort((a, b) => selectionValue(b, b.position) - selectionValue(a, a.position));
   const want: Array<['GK' | 'DEF' | 'MID' | 'ATT', number]> = [['GK', 1], ['DEF', 2], ['MID', 2], ['ATT', 2]];
   const bench: MatchPlayer[] = [];
   for (const [g, n] of want) bench.push(...rest.filter((p) => group(p.position) === g && !bench.includes(p)).slice(0, n));

@@ -540,20 +540,41 @@ export interface YouthOverviewDto {
 export type Intensity = 'light' | 'normal' | 'hard';
 export type TrainingFocus = 'balanced' | 'finishing' | 'creation' | 'defense' | 'physical' | 'technical' | 'goalkeeping';
 export type StaffRole = 'assistant' | 'fitness' | 'goalkeeping' | 'doctor';
+/** Sessão de treino do dia (v0.8.12): "match" é automática nos dias de jogo. */
+export type TrainingSession = 'physical' | 'technical' | 'tactical' | 'prematch' | 'recovery' | 'rest' | 'match';
+export type TrainingTemplate = 'balanced' | 'preseason' | 'tactical' | 'double' | 'recovery';
+export type GkSessionDto = 'reflexes' | 'aerial' | 'distribution';
 export interface TrainingOverviewDto {
   intensity: Intensity; delegated: boolean; hasFitnessCoach: boolean; focuses: TrainingFocus[];
-  intensityEffects: Record<Intensity, { growth: number; recovery: number; injury: number }>;
-  players: Array<{ id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; condition: number; focus: TrainingFocus; suggestedFocus: TrainingFocus; seasonChange: number; injuredUntil: string | null }>;
+  /** crescimento, multiplicador de carga das sessões e de risco de lesão no treino */
+  intensityEffects: Record<Intensity, { growth: number; load: number; injury: number }>;
+  fitnessCoach: string | null; gkCoach: { name: string; ability: number } | null;
+  /** ganho dos goleiros pelo treinador de goleiros (0,80–1,10; sem ninguém = 0,875) */ gkFactor: number;
+  template: TrainingTemplate | 'custom'; autoAdjust: boolean;
+  templates: Array<{ id: TrainingTemplate; label: string }>;
+  sessions: Array<{ id: TrainingSession; label: string; load: number; rate: number; growth: { physical: number; technical: number; mental: number }; sharp: number; role: number }>;
+  gkSessions: Array<{ id: GkSessionDto; label: string; keys: string[] }>;
+  /** próximos 7 dias: sessão da grade (planned) e a efetiva, já ajustada aos jogos (session); carga já com a intensidade */
+  week: Array<{ date: string; dow: number; planned: TrainingSession; session: TrainingSession; opponent: string | null; home: boolean | null; load: number }>;
+  weekLoad: number;
+  players: Array<{ id: string; name: string; position: Position; age: number; overall: number; potentialEstimated: number; condition: number;
+    /** ritmo de jogo 0–100 */ sharpness: number; /** carga aguda (média móvel de 7 dias; 90 minutos ≈ 10) */ acuteLoad: number;
+    focus: TrainingFocus; suggestedFocus: TrainingFocus; gkSession: GkSessionDto | null; suggestedGkSession: GkSessionDto | null;
+    gkAttributes: Record<string, number> | null; gkMonthChange: Record<string, number> | null;
+    seasonChange: number; injuredUntil: string | null }>;
 }
 export interface StaffMemberDto { id: string; name: string; nationality: string; ability: number; salary: number; contractEnd: string }
 export interface StaffOverviewDto {
   monthlyCost: number; unstaffedQuality: number;
-  roles: Array<{ role: StaffRole; label: string; effect: string; member: StaffMemberDto | null; candidates: Array<{ id: string; name: string; nationality: string; ability: number; salary: number }> }>;
+  roles: Array<{ role: StaffRole; label: string; effect: string;
+    /** efeitos com a qualidade atual (contratado ou, sem ninguém, a qualidade padrão) */ effects: Array<{ label: string; value: string }>; quality: number; member: StaffMemberDto | null; candidates: Array<{ id: string; name: string; nationality: string; ability: number; salary: number }> }>;
 }
 export interface MedicalOverviewDto {
   doctor: { name: string; ability: number } | null; medicalLevel: number; recoveryFactor: number; intensity: Intensity;
+  /** sessão do próximo dia de treino (base do risco diário) */ nextSession: string; fitnessCoach: string | null;
   injured: Array<{ id: string; name: string; position: Position; until: string; daysLeft: number; note: string }>;
-  atRisk: Array<{ id: string; name: string; position: Position; condition: number; dailyRisk: number }>;
+  /** jogadores com algum motivo de risco (condição, carga, ritmo, idade), com a recomendação do preparador físico quando houver */
+  atRisk: Array<{ id: string; name: string; position: Position; condition: number; sharpness: number; acuteLoad: number; dailyRisk: number; reasons: string[]; advice: string | null }>;
 }
 export type FacilityKind = 'training' | 'youth' | 'medical' | 'stadium' | 'scouting' | 'recruitment';
 /** Linha de um card da Infraestrutura (valor já formatado; tone colore). */
@@ -752,6 +773,10 @@ export interface GameApi {
   setDelegated(profileId: string, careerId: string, on: boolean): Promise<IpcResult<true>>;
   setFocus(profileId: string, careerId: string, playerId: string, focus: TrainingFocus): Promise<IpcResult<true>>;
   /** função tática treinada no mês (null = nenhuma) */ setRoleFocus(profileId: string, careerId: string, playerId: string, roleId: string | null): Promise<IpcResult<true>>;
+  /** sessão de um dia da grade semanal (0 = domingo) */ setWeekSession(profileId: string, careerId: string, dow: number, session: TrainingSession): Promise<IpcResult<true>>;
+  applyTrainingTemplate(profileId: string, careerId: string, template: TrainingTemplate): Promise<IpcResult<true>>;
+  setTrainingAutoAdjust(profileId: string, careerId: string, on: boolean): Promise<IpcResult<true>>;
+  /** sessão de goleiros (null = a do treinador de goleiros) */ setGkSession(profileId: string, careerId: string, playerId: string, session: GkSessionDto | null): Promise<IpcResult<true>>;
   getStaff(profileId: string, careerId: string): Promise<IpcResult<StaffOverviewDto>>;
   hireStaff(profileId: string, careerId: string, candidateId: string): Promise<IpcResult<true>>;
   fireStaff(profileId: string, careerId: string, staffId: string): Promise<IpcResult<number>>;

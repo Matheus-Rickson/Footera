@@ -14,13 +14,15 @@ Cada fase: (1) decide quem tem a bola pelo controle de meio-campo; (2) registra 
 estilo de saída, pressão adversária, clima e gramado); (3) sorteia um desfecho: falta, impedimento, chance de gol ou nada.
 
 Nada é decidido só pela diferença de força. Entram: atributos individuais **na função em que jogam** (`overallFor` + penalidade por posição
-não natural), condição física, moral, forma, **fadiga acumulada no jogo** (depende de resistência, tempo, pressão e calor), entrosamento,
+não natural), condição física, ritmo de jogo, moral, forma, **fadiga acumulada no jogo** (depende de resistência, tempo, pressão e calor; quem entra cansado já começa
+com fadiga, `startFatigue`), entrosamento,
 mando de campo, tática (mentalidade, ritmo, linha defensiva, pressão, saída de bola, amplitude), placar (urgência no fim do jogo),
 cartões vermelhos e lesões (o time joga com menos gente), substituições da IA e "forma do dia" (±8%, evento aleatório controlado).
 
 **Linha do tempo (`opts.timeline`, só nas partidas do usuário):** ao fim de cada minuto o motor guarda estatísticas acumuladas, fases de posse e,
 por jogador, a nota parcial (`rateReport`, a mesma fórmula da nota final, com os minutos jogados até ali) e a condição (`conditionAfter`, a mesma
-fórmula que grava a condição pós-jogo). Só lê o estado: não sorteia nada, então o resultado é idêntico com ou sem registro (há teste).
+fórmula que grava a condição pós-jogo; desde a v0.8.12 ela usa a fadiga acumulada no jogo, `PlayerReport.fatigue`, e 90 minutos com a tática padrão terminam
+perto de 70% — calibração em `docs/TRAINING_STAFF.md`). Só lê o estado: não sorteia nada, então o resultado é idêntico com ou sem registro (há teste).
 O campo animado da tela de acompanhamento é uma representação desses dados: o motor não tem coordenadas de jogadores.
 
 **Técnico ao vivo (`opts.control` e `opts.interventions`):** sob controle, o time do técnico não faz substituições automáticas (nem por lesão) até o

@@ -93,9 +93,13 @@ test('Regras puras: melhor foco, intensidade do preparador, risco de lesão, rec
   }
   assert.equal(chooseIntensity(75, 0), 'light'); assert.equal(chooseIntensity(96, 2), 'light');
   assert.equal(chooseIntensity(97, 0), 'hard'); assert.equal(chooseIntensity(90, 1), 'normal');
-  assert.ok(trainingInjuryChance(90, 'hard', 5) > trainingInjuryChance(90, 'normal', 5) && trainingInjuryChance(90, 'normal', 5) > trainingInjuryChance(90, 'light', 5));
-  assert.equal(trainingInjuryChance(60, 'normal', 5), 2 * trainingInjuryChance(90, 'normal', 5));
-  assert.ok(trainingInjuryChance(90, 'normal', 20) < trainingInjuryChance(90, 'normal', 1), 'preparador previne');
+  const inj = (i: keyof typeof INTENSITY) => INTENSITY[i].injury;
+  assert.ok(trainingInjuryChance(90, inj('hard'), 5) > trainingInjuryChance(90, inj('normal'), 5) && trainingInjuryChance(90, inj('normal'), 5) > trainingInjuryChance(90, inj('light'), 5));
+  assert.equal(trainingInjuryChance(60, 1, 5), 2 * trainingInjuryChance(90, 1, 5));
+  assert.ok(trainingInjuryChance(90, 1, 20) < trainingInjuryChance(90, 1, 1), 'preparador previne');
+  assert.equal(trainingInjuryChance(90, 0, 5), 0, 'folga, recuperação e dia de jogo: sem risco de treino');
+  assert.equal(trainingInjuryChance(90, 1, 5, 20), trainingInjuryChance(90, 1, 5), 'carga de jogos normal não muda o risco');
+  assert.ok(Math.abs(trainingInjuryChance(90, 1, 5, 35) - 2 * trainingInjuryChance(90, 1, 5)) < 1e-12, 'carga 15 acima do limite dobra o risco');
   assert.equal(recoveryFactor(0, 0), 1.15); assert.ok(Math.abs(recoveryFactor(20, 20) - 0.85) < 1e-9);
   for (const k of ['training', 'youth', 'medical', 'stadium'] as const) assert.ok(upgradeCost(k, 10, 1) > upgradeCost(k, 5, 1) && upgradeDays(k, 10) > upgradeDays(k, 5));
   assert.ok(upgradeCost('stadium', 5, 1) > upgradeCost('training', 5, 1));

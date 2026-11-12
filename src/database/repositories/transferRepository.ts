@@ -18,6 +18,7 @@ import { boardVeto, coachOf, getBoardOverview, recordTransferForBoard } from './
 import { negotiationMultiplier } from '../../game/coach-engine/coach.ts';
 import { contractEndIn } from '../../game/career-engine/calendar.ts';
 import { makePoster, nationEconomy, wageFloorOf, type Poster } from './financeRepository.ts';
+import { memoUntilWrite } from '../writeMemo.ts';
 import { fairSalary } from '../../game/finance-engine/finance.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { FULL_CLUBS } from './simLevelRepository.ts';
@@ -36,6 +37,13 @@ const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 
 const monthsLeft = (date: string, end: string) => Math.max(0, (Number(end.slice(0, 4)) - Number(date.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(date.slice(5, 7)));
 const clubRow = (db: SqlDb, id: string) => db.prepare('SELECT id, name, reputation, balance, country_id FROM clubs WHERE id = ?').get(id)!;
 const squadOf = (db: SqlDb, clubId: string): Player[] => db.prepare('SELECT * FROM players WHERE club_id = ?').all(clubId).map(rowToPlayer);
+/**
+ * Elenco só com o que a IA usa para decidir contratações de livres (posição, força, salário): sem `SELECT *` nem montar o jogador (atributos em
+ * JSON). Era a maior parte do tempo do mercado diário: o elenco de centenas de clubes era lido por inteiro a cada dia de janela.
+ */
+type LiteSquadPlayer = { id: string; position: Player['position']; overall: number; salary: number };
+const liteSquadOf = (db: SqlDb, clubId: string): LiteSquadPlayer[] => db.prepare('SELECT id, position, overall, salary FROM players WHERE club_id = ?').all(clubId)
+  .map((r) => ({ id: S(r.id), position: S(r.position) as Player['position'], overall: N(r.overall), salary: N(r.salary) }));
 const keyIds = (squad: Player[]) => new Set([...squad].sort((a, b) => b.overall - a.overall).slice(0, 3).map((p) => p.id));
 
 function priceOf(db: SqlDb, p: Player, date: string): number {
@@ -101,6 +109,17 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
   const st = getCareerState(db);
   const know = knowledgeMap(db);
   const shortlisted = new Set(db.prepare('SELECT player_id FROM scout_shortlist').all().map((r) => S(r.player_id)));
+  // a lista filtrada (sem a página) fica em cache até a próxima escrita no save: "carregar mais" e a mesma busca repetida não refazem a varredura
+  const { offset: _o, limit: _l, ...filterKey } = f;
+  const { matches, nationalities } = memoUntilWrite(db, `market:${st.clubId}:${st.gameDate}:${JSON.stringify(filterKey)}`, () => marketMatches(db, f, st, know, shortlisted));
+  const offset = Math.max(0, Math.floor(f.offset ?? 0)), limit = Math.min(500, Math.max(1, Math.floor(f.limit ?? 100)));
+  const full = db.prepare('SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?');
+  const players = matches.slice(offset, offset + limit).map((id) => toScoutedDto(db, full.get(id)!, st.gameDate, know.get(id) ?? 0, shortlisted.has(id)));
+  return { total: matches.length, offset, players, nationalities };
+}
+
+/** Ids dos jogadores que passam nos filtros (ordem: valor de mercado, id) e os países presentes no mercado. */
+function marketMatches(db: SqlDb, f: MarketFilter, st: { clubId: string; gameDate: string }, know: Map<string, number>, shortlisted: Set<string>): { matches: string[]; nationalities: MarketPageDto['nationalities'] } {
   const where = ['p.retired = 0', 'p.youth_club_id IS NULL', f.freeOnly ? 'p.club_id IS NULL' : f.clubOnly ? 'p.club_id IS NOT NULL AND p.club_id <> ?' : '(p.club_id IS NULL OR p.club_id <> ?)'];
   const args: unknown[] = f.freeOnly ? [] : [st.clubId];
   // países presentes no mercado (antes dos demais filtros, para o filtro de nacionalidade não sumir com as opções)
@@ -129,10 +148,7 @@ export function searchMarketPage(db: SqlDb, f: MarketFilter): MarketPageDto {
     if (f.knownOnly && (know.get(id) ?? 0) < WELL_KNOWN) continue;
     matches.push(id);
   }
-  const offset = Math.max(0, Math.floor(f.offset ?? 0)), limit = Math.min(500, Math.max(1, Math.floor(f.limit ?? 100)));
-  const full = db.prepare('SELECT p.*, c.name AS club_name, c.reputation AS club_reputation FROM players p LEFT JOIN clubs c ON c.id = p.club_id WHERE p.id = ?');
-  const players = matches.slice(offset, offset + limit).map((id) => toScoutedDto(db, full.get(id)!, st.gameDate, know.get(id) ?? 0, shortlisted.has(id)));
-  return { total: matches.length, offset, players, nationalities };
+  return { matches, nationalities };
 }
 
 /** Validações comuns da proposta (sem taxa/salário): devolve o jogador, o clube do usuário e o estado da carreira. */
@@ -364,7 +380,7 @@ export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string
   for (const c of db.prepare(`SELECT id, reputation FROM clubs WHERE id <> ?${fill ? '' : ` AND id IN ${FULL_CLUBS}`} ORDER BY rowid`).all(userClub)) {
     if (onlyClubs && !onlyClubs.has(S(c.id))) continue;
     if (!fill && !rng.chance(0.15)) continue;
-    const squad = squadOf(db, S(c.id));
+    const squad = liteSquadOf(db, S(c.id));
     const ceiling = Math.max(40, ...squad.map((p) => p.overall)) + 3; // não contrata livres muito acima do próprio nível
     const budget = 1.5 * (squad.reduce((s, p) => s + p.salary, 0) / Math.max(1, squad.length)); // nem salários fora da realidade da folha
     const floor = wageFloorOf(db, S(c.id));
@@ -377,7 +393,7 @@ export function aiSignFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string
       taken.add(p.id);
       const wage = demandOf(p);
       executeTransfer(db, post, { player: p, toClubId: S(c.id), fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
-      squad.push({ ...p, clubId: S(c.id) });
+      squad.push({ id: p.id, position: p.position, overall: p.overall, salary: p.salary }); // como antes: o salário em memória é o do jogador antes da assinatura
     }
   }
   signStrongFreeAgents(db, post, rng.fork('strong'), date, userClub, fill, pool.filter((x) => !taken.has(x.id)), onlyClubs);
@@ -401,8 +417,8 @@ function signStrongFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, u
   if (!strong.length) return;
   const clubs = db.prepare(`SELECT id, reputation FROM clubs WHERE id <> ?${fill ? '' : ` AND id IN ${FULL_CLUBS}`} ORDER BY reputation DESC, rowid`).all(userClub)
     .filter((c) => !onlyClubs || onlyClubs.has(S(c.id)));
-  const squads = new Map<string, Player[]>();
-  const squadFor = (id: string) => { let s = squads.get(id); if (!s) { s = squadOf(db, id).sort((a, b) => b.overall - a.overall); squads.set(id, s); } return s; };
+  const squads = new Map<string, LiteSquadPlayer[]>();
+  const squadFor = (id: string) => { let s = squads.get(id); if (!s) { s = liteSquadOf(db, id).sort((a, b) => b.overall - a.overall); squads.set(id, s); } return s; };
   for (const p of strong) {
     if (!rng.chance(fill ? STRONG_FREE_CHANCE.fill : STRONG_FREE_CHANCE.daily)) continue;
     for (const c of clubs) {
@@ -412,7 +428,7 @@ function signStrongFreeAgents(db: SqlDb, post: Poster, rng: Rng, date: string, u
       const wage = wageDemand({ marketValue: p.marketValue, salary: p.salary, ambition: p.personality.ambition }, N(c.reputation), N(c.reputation), wageFloorOf(db, id));
       if (wage > 3 * (squad.reduce((s, x) => s + x.salary, 0) / squad.length)) continue;
       executeTransfer(db, post, { player: p, toClubId: id, fee: 0, wage, years: ageOn(p.birthDate, date) >= 32 ? 1 : rng.int(1, 3), date, kind: 'ai' });
-      squad.push({ ...p, clubId: id }); squad.sort((a, b) => b.overall - a.overall);
+      squad.push({ id: p.id, position: p.position, overall: p.overall, salary: p.salary }); // como antes: o salário em memória é o do jogador antes da assinatura squad.sort((a, b) => b.overall - a.overall);
       break;
     }
   }

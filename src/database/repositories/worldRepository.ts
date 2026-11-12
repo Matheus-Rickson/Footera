@@ -91,7 +91,8 @@ export function loadWorld(db: SqlDb): World {
     ...(r.state != null ? { state: s(r.state), ...(r.state_division != null ? { stateDivision: n(r.state_division) as 1 | 2 } : {}) } : {}),
     ...(r.honours_json != null ? { honours: JSON.parse(s(r.honours_json)) as Club['honours'] } : {}),
   }));
-  const players: Player[] = db.prepare('SELECT * FROM players ORDER BY rowid').all().map(rowToPlayer);
+  // o ritmo de jogo é estado da carreira (v0.8.12), não do universo
+  const players: Player[] = db.prepare('SELECT * FROM players ORDER BY rowid').all().map((r) => { const { sharpness: _s, ...p } = rowToPlayer(r); return p; });
   // copas e supercopas gravadas (saves anteriores ao editor de copas não têm: ficam de fora, e a criação usa as padrão)
   const hasCups = db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'cup_formats'").get();
   const cups = hasCups ? db.prepare('SELECT format_json FROM cup_formats ORDER BY rowid').all().map((r) => JSON.parse(s(r.format_json)) as WorldCup) : [];
@@ -108,5 +109,6 @@ export function rowToPlayer(r: Record<string, unknown>): Player {
     potentialEstimated: n(r.potential_estimated), potentialHidden: n(r.potential_hidden), condition: n(r.condition_pct),
     fatigue: n(r.fatigue), morale: n(r.morale), form: n(r.form), marketValue: n(r.market_value), salary: n(r.salary),
     contractEnd: s(r.contract_end), overall: n(r.overall),
+    ...(r.sharpness != null ? { sharpness: n(r.sharpness) } : {}),
   };
 }

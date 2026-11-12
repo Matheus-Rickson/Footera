@@ -1,6 +1,6 @@
 {
   "name": "football-manager-simulator",
-  "version": "0.8.10",
+  "version": "0.8.12",
   "description": "Jogo de gerenciamento de futebol offline (Electron + React + TypeScript + SQLite)",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --disable-warning=ExperimentalWarning --test \"src/tests/**/*.test.ts\"",
+    "bench": "node --expose-gc --disable-warning=ExperimentalWarning scripts/bench.ts --writes",
     "package": "npm run build && electron-builder --win --x64",
     "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
     "pack": "node --disable-warning=ExperimentalWarning scripts/pack.ts"

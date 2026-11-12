@@ -1,4 +1,5 @@
 import type { SqlDb } from '../types.ts';
+import { effSharp, sharpRateOf } from './fitnessState.ts';
 import type { Player } from '../../shared/types.ts';
 import { rowToPlayer } from './worldRepository.ts';
 import { withFamiliarity } from './roleRepository.ts';
@@ -11,7 +12,13 @@ export interface Squad { players: Player[]; status: Map<string, Status>; availab
 
 /** `cupSuspensions`: numa partida de copa, as suspensões que valem são as da copa (as da liga não contam nela, e vice-versa). */
 export function loadSquad(db: SqlDb, clubId: string, date: string, cupSuspensions?: ReadonlyMap<string, number>): Squad {
-  const players = withFamiliarity(db, db.prepare('SELECT * FROM players WHERE club_id = ?').all(clubId).map(rowToPlayer));
+  // ritmo de jogo do dia (preguiçoso: gravado + data, fitnessState.ts)
+  const rate = sharpRateOf(db, clubId);
+  const players = withFamiliarity(db, db.prepare('SELECT * FROM players WHERE club_id = ?').all(clubId).map((r) => {
+    const p = rowToPlayer(r);
+    if (r.sharpness != null) p.sharpness = effSharp(r, date, rate);
+    return p;
+  }));
   const status = new Map<string, Status>();
   for (const r of db.prepare('SELECT ps.* FROM player_status ps JOIN players p ON p.id = ps.player_id WHERE p.club_id = ?').all(clubId)) {
     status.set(S(r.player_id), { injuryUntil: r.injury_until == null ? null : S(r.injury_until), suspension: N(r.suspension_matches), yellows: N(r.yellow_cards) });

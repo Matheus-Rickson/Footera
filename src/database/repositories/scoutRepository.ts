@@ -367,7 +367,8 @@ export function processScoutingDay(db: SqlDb, date: string): void {
   }
   weeklyDigests(db, date);
   if (!idle.size) return;
-  const shortlist = db.prepare(`SELECT s.player_id FROM scout_shortlist s JOIN players p ON p.id = s.player_id
+  // CROSS JOIN: a lista (poucas linhas) comanda a busca; com JOIN o SQLite percorria todos os jogadores pelo índice da base (docs/PERFORMANCE.md)
+  const shortlist = db.prepare(`SELECT s.player_id FROM scout_shortlist s CROSS JOIN players p ON p.id = s.player_id
     WHERE p.retired = 0 AND p.youth_club_id IS NULL AND (p.club_id IS NULL OR p.club_id <> ?) ORDER BY s.added_on, s.player_id`).all(st.clubId).map((x) => S(x.player_id));
   for (const sid of idle) {
     const open = shortlist.filter((p) => (know.get(p) ?? 0) < 100);

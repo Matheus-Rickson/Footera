@@ -135,7 +135,7 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
         </div>
       </nav>}
 
-      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview' || view === 'board' || view === 'trophies' || view === 'history' || view === 'finance') ? 'content content-fit' : 'content'}>
+      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview' || view === 'board' || view === 'trophies' || view === 'history' || view === 'finance' || view === 'training' || view === 'medical') ? 'content content-fit' : 'content'}>
         {!match && <header className="topbar">
           <div className="row">
             <h1>{TITLES[view]}</h1>

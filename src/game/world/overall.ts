@@ -32,14 +32,20 @@ export function flattenAttributes(a: Attributes): Record<string, number> {
 
 export function positionWeights(pos: Position): Weights { return WEIGHTS[pos]; }
 
-/** Overall na escala 1..100 para a posição indicada. */
+/** Pesos de cada posição como lista (mesma ordem de `Object.entries`), montada uma vez: o cálculo roda milhares de vezes por rodada. */
+const WEIGHT_LIST = Object.fromEntries(Object.entries(WEIGHTS).map(([pos, w]) => [pos, Object.entries(w).map(([k, wt]) => [k, wt ?? 0] as const)])) as unknown as Record<Position, ReadonlyArray<readonly [string, number]>>;
+type Group = Record<string, number | undefined> | undefined;
+
+/**
+ * Overall na escala 1..100 para a posição indicada. Mesmo resultado de somar sobre `flattenAttributes` (os grupos posteriores prevalecem,
+ * como no espalhamento), sem montar o objeto achatado a cada chamada (era ~20% do tempo de um dia avançado).
+ */
 export function overallFor(a: Attributes, pos: Position): number {
-  const flat = flattenAttributes(a);
-  const w = WEIGHTS[pos];
+  const t = a.technical as unknown as Group, m = a.mental as unknown as Group, ph = a.physical as unknown as Group, gk = a.goalkeeper as unknown as Group;
   let sum = 0, tot = 0;
-  for (const [k, wt] of Object.entries(w)) {
-    sum += (flat[k] ?? 1) * (wt ?? 0);
-    tot += wt ?? 0;
+  for (const [k, wt] of WEIGHT_LIST[pos]) {
+    sum += (gk?.[k] ?? ph?.[k] ?? m?.[k] ?? t?.[k] ?? 1) * wt;
+    tot += wt;
   }
   return Math.round((sum / tot) * 5); // 1..20 -> 5..100
 }

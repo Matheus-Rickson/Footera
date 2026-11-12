@@ -11,7 +11,7 @@ import {
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, financeLedger, sponsorNegotiate, sponsorAccept, sponsorTerminate, sponsorSearch, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
   getBoard, coachCareer, enrollLicenseFor, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
-  getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
+  getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, setTrainingWeekSession, applyTrainingTemplate, setTrainingAutoAdjust, setTrainingGkSession, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, createScoutTaskFor, previewScoutTaskFor, removeScoutTaskFor, scoutTaskPlayersFor, scoutedPlayersFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
 import { ValidationError } from '../services/careerService.ts';
@@ -39,6 +39,9 @@ const pendingPhotos = new Map<string, Uint8Array>();
 const MAX_PENDING = 8;
 /** Medição de desempenho: loga as chamadas IPC de 50 ms ou mais (em desenvolvimento ou com FOOTERA_PERF=1). */
 const PERF_LOG = process.env.FOOTERA_PERF === '1' || !app.isPackaged;
+const T0 = performance.now();
+/** marcos da abertura do app (mesmo critério do log de IPC) */
+const mark = (what: string) => { if (PERF_LOG) console.log(`[perf] abertura: ${what} em ${Math.round(performance.now() - T0)} ms`); };
 
 function handle<I, T>(channel: string, schema: z.ZodType<I, z.ZodTypeDef, unknown>, fn: (input: I) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_event, raw: unknown): Promise<IpcResult<T>> => {
@@ -312,6 +315,12 @@ function registerHandlers(): void {
     (i) => setTrainingFocus(dataDir(), i.profileId, i.careerId, i.playerId, i.focus));
   handle('training:roleFocus', ref.extend({ playerId: id60, roleId: z.string().min(1).max(40).nullable() }),
     (i) => setTrainingRoleFocus(dataDir(), i.profileId, i.careerId, i.playerId, i.roleId));
+  handle('training:weekSession', ref.extend({ dow: z.number().int().min(0).max(6), session: z.enum(['physical', 'technical', 'tactical', 'prematch', 'recovery', 'rest']) }),
+    (i) => setTrainingWeekSession(dataDir(), i.profileId, i.careerId, i.dow, i.session));
+  handle('training:template', ref.extend({ template: z.enum(['balanced', 'preseason', 'tactical', 'double', 'recovery']) }), (i) => applyTrainingTemplate(dataDir(), i.profileId, i.careerId, i.template));
+  handle('training:autoAdjust', ref.extend({ on: z.boolean() }), (i) => setTrainingAutoAdjust(dataDir(), i.profileId, i.careerId, i.on));
+  handle('training:gkSession', ref.extend({ playerId: id60, session: z.enum(['reflexes', 'aerial', 'distribution']).nullable() }),
+    (i) => setTrainingGkSession(dataDir(), i.profileId, i.careerId, i.playerId, i.session));
   handle('staff:get', ref, (i) => getStaff(dataDir(), i.profileId, i.careerId));
   handle('staff:hire', ref.extend({ candidateId: id60 }), (i) => hireStaffFor(dataDir(), i.profileId, i.careerId, i.candidateId));
   handle('staff:fire', ref.extend({ staffId: id60 }), (i) => fireStaffFor(dataDir(), i.profileId, i.careerId, i.staffId));
@@ -352,7 +361,11 @@ function createWindow(): void {
   const dev = process.env.VITE_DEV_SERVER_URL;
   if (dev) void win.loadURL(dev); else void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   // depois da 1ª pintura: o universo da carreira nova vem do cache em disco (se houver), para "Nova carreira" abrir sem espera
-  win.webContents.once('did-finish-load', () => { setTimeout(() => { try { warmUniverse(dataDir()); } catch { /* monta quando pedirem */ } }, 400); });
+  win.webContents.once('dom-ready', () => mark('DOM pronto'));
+  win.webContents.once('did-finish-load', () => {
+    mark('página carregada');
+    setTimeout(() => { const t = performance.now(); try { warmUniverse(dataDir()); } catch { /* monta quando pedirem */ } mark(`universe em cache (${Math.round(performance.now() - t)} ms)`); }, 400);
+  });
 }
 
 // imagens dos pacotes: footera-img://img/<tipo>/<id> (só o que está no índice dos pacotes ativos ou do pacote em edição)
@@ -361,6 +374,7 @@ const IMG_KINDS = new Set(['players', 'clubs', 'stadiums', 'leagues', 'coaches',
 protocol.registerSchemesAsPrivileged([{ scheme: 'footera-img', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 app.whenReady().then(() => {
+  mark('Electron pronto');
   protocol.handle('footera-img', (req) => {
     const u = new URL(req.url);
     const [, kind, id] = u.pathname.split('/');

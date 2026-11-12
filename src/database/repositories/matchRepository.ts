@@ -3,6 +3,9 @@ import { POS_NAME } from '../../shared/positions.ts';
 import { withTransaction } from '../types.ts';
 import { createRng, clamp } from '../../game/rng.ts';
 import { conditionAfter, simulateMatch } from '../../game/match-engine/engine.ts';
+import { sharpnessAfterMatch } from '../../game/training-engine/condition.ts';
+import { effAcute, effSharp, sharpRateOf } from './fitnessState.ts';
+import { MATCH_LOAD } from '../../game/training-engine/sessions.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
 import { formationLabel } from '../../game/match-engine/formations.ts';
@@ -148,7 +151,12 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   const redKind = new Map(out.events.filter((e) => e.type === 'red_card').map((e) => [e.player!, e.detail === 'second_yellow' ? 1 : 2]));
   const upStatus = db.prepare(`INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?,?,?,?,?)
     ON CONFLICT(player_id) DO UPDATE SET injury_until = excluded.injury_until, injury_note = excluded.injury_note, suspension_matches = excluded.suspension_matches, yellow_cards = excluded.yellow_cards`);
-  const upPlayer = db.prepare('UPDATE players SET condition_pct = ?, form = ?, morale = ? WHERE id = ?');
+  // ritmo de jogo e carga aguda (v0.8.12): jogar dá ritmo (+12 por 90 minutos) e soma à carga dos últimos dias
+  // (valores preguiçosos: o do dia sai da fórmula a partir do gravado; o jogo grava o novo valor com a data — fitnessState.ts)
+  const upPlayer = db.prepare(`UPDATE players SET condition_pct = ?, form = ?, morale = ?, sharpness = ?, sharp_on = ?, acute_load = ?, acute_on = ?,
+    last_played = CASE WHEN ? > 0 THEN ? ELSE last_played END WHERE id = ?`);
+  const fitRow = db.prepare('SELECT sharpness, sharp_on, last_played, acute_load, acute_on FROM players WHERE id = ?');
+  const rates = new Map([[f.homeId, sharpRateOf(db, f.homeId)], [f.awayId, sharpRateOf(db, f.awayId)]]);
   const upStats = db.prepare(`INSERT INTO player_season_stats (player_id, competition_id, club_id, appearances, minutes, goals, assists, yellow_cards, red_cards, rating_sum, clean_sheets)
     VALUES (?,?,?,1,?,?,?,?,?,?,?) ON CONFLICT(player_id, competition_id) DO UPDATE SET appearances = appearances + 1, minutes = minutes + excluded.minutes,
     goals = goals + excluded.goals, assists = assists + excluded.assists, yellow_cards = yellow_cards + excluded.yellow_cards, red_cards = red_cards + excluded.red_cards, rating_sum = rating_sum + excluded.rating_sum,
@@ -159,9 +167,12 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
     const p = byId.get(r.id)!;
     const sq = r.team === 0 ? home : away, clubId = r.team === 0 ? f.homeId : f.awayId;
     const result = (r.team === 0 ? out.homeGoals - out.awayGoals : out.awayGoals - out.homeGoals);
-    upPlayer.run(conditionAfter(p.condition, p.attributes.physical.stamina, r.minutes, out.conditions.weather),
+    const fr = fitRow.get(p.id)!;
+    upPlayer.run(conditionAfter(p.condition, r.fatigue ?? 0, r.minutes),
       Math.round(clamp(0.7 * p.form + 0.3 * (50 + (r.rating - 6) * 15), 0, 100) * 10) / 10,
-      clamp(p.morale + (result > 0 ? 3 : result < 0 ? -3 : 0), 10, 100), p.id);
+      clamp(p.morale + (result > 0 ? 3 : result < 0 ? -3 : 0), 10, 100),
+      sharpnessAfterMatch(effSharp(fr, f.date, rates.get(clubId)!), r.minutes), f.date,
+      Math.round((effAcute(fr, f.date) + (MATCH_LOAD * r.minutes) / 90) * 10) / 10, f.date, r.minutes, f.date, p.id);
     const conceded = r.team === 0 ? out.awayGoals : out.homeGoals;
     // jogo sem sofrer gol: o goleiro que ficou ao menos 60 minutos no gol
     upStats.run(p.id, f.competitionId, clubId, r.minutes, r.goals, r.assists, r.yellow, r.red, r.rating, r.slot === 'GK' && r.minutes >= 60 && conceded === 0 ? 1 : 0);

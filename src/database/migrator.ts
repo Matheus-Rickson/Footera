@@ -32,6 +32,8 @@ import { migration029 } from './migrations/029_sponsor_offers.ts';
 import { migration030 } from './migrations/030_board_objectives.ts';
 import { migration031 } from './migrations/031_club_honours.ts';
 import { migration032 } from './migrations/032_coach_licenses.ts';
+import { migration033 } from './migrations/033_performance_indexes.ts';
+import { migration034 } from './migrations/034_training_sessions.ts';
 
 export interface Migration {
   version: number; name: string; sql: string;
@@ -42,7 +44,7 @@ export interface Migration {
   rebuildsTables?: boolean;
 }
 
-export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018, migration019, migration020, migration021, migration022, migration023, migration024, migration025, migration026, migration027, migration028, migration029, migration030, migration031, migration032];
+export const MIGRATIONS: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008, migration009, migration010, migration011, migration012, migration013, migration014, migration015, migration016, migration017, migration018, migration019, migration020, migration021, migration022, migration023, migration024, migration025, migration026, migration027, migration028, migration029, migration030, migration031, migration032, migration033, migration034];
 
 export function currentVersion(db: SqlDb): number {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');

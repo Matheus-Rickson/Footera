@@ -58,7 +58,7 @@ export function soft(x: number, mid: number, lo: number, hi: number): number {
 
 type Side = 0 | 1;
 interface Live {
-  p: MatchPlayer; slot: Position; x: number; y: number; fatigue: number; yellow: number; out: boolean; rep: PlayerReport;
+  p: MatchPlayer; slot: Position; x: number; y: number; fatigue: number; /** fadiga com que entrou */ f0: number; yellow: number; out: boolean; rep: PlayerReport;
   /** função exercida, multiplicador de rendimento nela e peso de zona (perfil da posição inclinado pela função, mesmo total) */
   role: RoleDef; roleK: number; zone: { att: number; mid: number; def: number };
 }
@@ -133,12 +133,19 @@ const emptyStats = (): TeamStats => ({
 
 const a20 = (v: number) => v / 20;
 
-/** Condição física depois de `minutes` em campo (a mesma fórmula grava a condição no fim do jogo). */
-export function conditionAfter(condition: number, stamina: number, minutes: number, weather: MatchConditions['weather']): number {
-  const sta = stamina / 20;
-  const loss = (minutes / 90) * (12 + (1 - sta) * 10) + (weather === 'heat' ? 2 * (minutes / 90) : 0);
-  return Math.round(clamp(condition - loss, 30, 100) * 10) / 10;
+/**
+ * Condição física depois de `minutes` em campo (a mesma fórmula grava a condição no fim do jogo, v0.8.12): um custo fixo por minuto
+ * mais a fadiga acumulada no jogo (`fatigueGained`, que já depende de resistência, recuperação física, ritmo, pressão, calor, posição
+ * e função). Calibrado para ~70% depois de 90 minutos com a tática padrão (antes: ~87%, só pela resistência).
+ */
+export const COND = { perMinute: 8 / 90, fatigueK: 1.41, fatigueExp: 0.8, floor: 30, startFrom: 95, startK: 0.6 };
+export function conditionAfter(condition: number, fatigueGained: number, minutes: number): number {
+  // a fadiga pesa de forma sublinear: pressão alta e calor cansam mais, sem levar todo mundo ao piso (fadiga ~31 em 90' padrão → −30)
+  const loss = COND.perMinute * minutes + COND.fatigueK * Math.pow(Math.max(fatigueGained, 0), COND.fatigueExp);
+  return Math.round(clamp(condition - loss, COND.floor, 100) * 10) / 10;
 }
+/** Fadiga com que o jogador entra em campo: quem chega cansado começa o jogo já rendendo menos (v0.8.12). */
+export const startFatigue = (condition: number): number => Math.max(0, COND.startFrom - condition) * COND.startK;
 
 /** Nota do jogador (3..10) com o placar e os minutos informados: usada no fim do jogo e, parcial, a cada minuto. */
 export function rateReport(r: PlayerReport, minutes: number, ownGoals: number, oppGoals: number): number {
@@ -159,7 +166,7 @@ function newReport(p: MatchPlayer, team: Side, slot: Position, starter: boolean,
   return {
     id: p.id, name: p.name, team, slot, position: p.position, starter, minutes: 0, subbedInAt: starter ? null : at, subbedOutAt: null, rating: 6,
     goals: 0, assists: 0, shots: 0, shotsOnTarget: 0, passes: 0, passesCompleted: 0, keyPasses: 0, tackles: 0, interceptions: 0, fouls: 0,
-    yellow: 0, red: 0, saves: 0, goalsConceded: 0, xg: 0, injuredDays: 0,
+    yellow: 0, red: 0, saves: 0, goalsConceded: 0, xg: 0, injuredDays: 0, fatigue: 0,
   };
 }
 
@@ -177,7 +184,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
 
   const mk = (sheet: TeamSheet, idx: Side): TeamState => {
     const all = sheet.lineup.map((l) => {
-      const live = { p: { ...l.player }, slot: l.slot, x: l.x, y: l.y, fatigue: 0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0) } as Live;
+      const f0 = startFatigue(l.player.condition);
+      const live = { p: { ...l.player }, slot: l.slot, x: l.x, y: l.y, fatigue: f0, f0, yellow: 0, out: false, rep: newReport(l.player, idx, l.slot, true, 0) } as Live;
       setRole(live, l.role);
       return live;
     });
@@ -204,6 +212,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   };
 
   const fatigueMul = (l: Live) => 1 - 0.0035 * l.fatigue;
+  /** fadiga ganha no jogo (sem a inicial), com uma casa: a mesma que vai para o relatório e grava a condição */
+  const gained = (l: Live) => Math.round((l.fatigue - l.f0) * 10) / 10;
 
   // ---------- ratings ----------
   const refresh = (t: TeamState, o: TeamState): void => {
@@ -278,7 +288,8 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
     removeFromPitch(t, out);
     t.bench = t.bench.filter((b) => b.id !== inP.id);
     t.subsUsed++;
-    const live = { p: inP, slot, x: out.x, y: out.y, fatigue: 0, yellow: 0, out: false, rep: newReport(inP, t.idx, slot, false, m) } as Live;
+    const f0 = startFatigue(inP.condition);
+    const live = { p: inP, slot, x: out.x, y: out.y, fatigue: f0, f0, yellow: 0, out: false, rep: newReport(inP, t.idx, slot, false, m) } as Live;
     setRole(live, roleId);
     t.active.push(live); t.all.push(live);
     emit('substitution', t.idx, { player: inP.id, player2: out.p.id, detail });
@@ -612,7 +623,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   function suggestion(t: TeamState, l: Live, b: MatchPlayer, slot: Position, kind: SubSuggestion['kind'], injuryDays = 0): SubSuggestion {
     const o = T[1 - t.idx as Side], lead = t.goals - o.goals;
     const mins = clamp(clock.minute - (l.rep.subbedInAt ?? 0), 0, 120);
-    const cond = Math.round(conditionAfter(l.p.condition, l.p.attributes.physical.stamina, mins, conditions.weather));
+    const cond = Math.round(conditionAfter(l.p.condition, gained(l), mins));
     const rating = rateReport(l.rep, mins, t.goals, o.goals).toFixed(1).replace('.', ',');
     const pos = (p: Position) => POS_NAME[p].toLowerCase();
     const reason = kind === 'goalkeeper' ? `Ficamos sem goleiro e ${l.p.name} foi para o gol improvisado. Sugiro tirá-lo e colocar o goleiro ${b.name}.`
@@ -706,7 +717,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       const p: number[] = [];
       for (const l of t.all) {
         const from = l.rep.subbedInAt ?? 0, mins = clamp((l.rep.subbedOutAt ?? clock.minute) - from, 0, 120);
-        p.push(Math.round(rateReport(l.rep, mins, t.goals, o.goals) * 10), Math.round(conditionAfter(l.p.condition, l.p.attributes.physical.stamina, mins, conditions.weather) * 10));
+        p.push(Math.round(rateReport(l.rep, mins, t.goals, o.goals) * 10), Math.round(conditionAfter(l.p.condition, gained(l), mins) * 10));
       }
       return { s: TICK_STATS.map((k) => (k === 'xg' ? Math.round(t.stats.xg * 100) : t.stats[k])), p };
     };
@@ -799,6 +810,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
   for (const t of T) for (const l of t.all) {
     const from = l.rep.subbedInAt ?? 0, to = l.rep.subbedOutAt ?? endMinute;
     l.rep.minutes = clamp(to - from, 0, 120);
+    l.rep.fatigue = gained(l);
   }
   const reports: PlayerReport[] = [];
   for (const t of T) {

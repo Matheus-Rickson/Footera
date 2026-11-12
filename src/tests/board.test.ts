@@ -6,7 +6,7 @@ import { generateWorld } from '../game/world/generator.ts';
 import { advanceTime, getCareerState, moveClock } from '../database/repositories/competitionRepository.ts';
 import { withTransaction, type SqlDb } from '../database/types.ts';
 import {
-  aiSackChance, eligibleForCoach, evaluateSeason, expectedPosition, matchDelta, monthlyDelta, objectiveFor, seasonBudgets, vetoReason,
+  aiSackChance, CONFIDENCE, eligibleForCoach, evaluateSeason, expectedPosition, matchDelta, monthlyDelta, objectiveFor, seasonBudgets, vetoReason,
 } from '../game/board-engine/board.ts';
 import { boardApprovesConstruction, coachOf, getBoardOverview, requestBudget, respondJobOffer } from '../database/repositories/boardRepository.ts';
 import { makeOffer, searchMarket } from '../database/repositories/transferRepository.ts';
@@ -192,7 +192,13 @@ test('Virada sem clube funciona; com clube, a avaliação mexe na reputação e 
   assert.ok(r2.board);
   // a avaliação dá pontos de atributo ao treinador: 1 pela temporada (+1 objetivo, +1 título, +1 acesso)
   assert.ok((coachOf(b.db).attributePoints ?? 0) >= pts0 + 1, 'pontos de atributo na avaliação');
-  if (!r2.board!.met) { assert.equal(r2.board!.sacked, true); assert.equal(isEmployed(b.db), false); assert.ok(coachOf(b.db).reputation < rep0); }
+  // regra da avaliação: demitido se, e só se, não cumpriu o objetivo principal e a confiança final (20 + o saldo dos objetivos) ficou na
+  // zona de demissão — objetivos extras cumpridos (copa, folha, caixa) podem salvar o emprego
+  if (r2.board!.sacked) { assert.equal(r2.board!.met, false); assert.equal(isEmployed(b.db), false); assert.ok(coachOf(b.db).reputation < rep0); }
+  else {
+    assert.equal(isEmployed(b.db), true);
+    if (!r2.board!.met) assert.ok(Number(b.db.prepare('SELECT confidence FROM board_state').get()!.confidence) > CONFIDENCE.sack + 5, 'não cumpriu, mas os extras seguraram a confiança acima da zona de demissão');
+  }
   assertBooksBalance(b.db, b.initial);
 });
 function db_fire(db: SqlDb) { db.prepare('UPDATE board_state SET confidence = 5, matches = 6').run(); clockTo(db, '2026-07-02'); assert.equal(isEmployed(db), false); }

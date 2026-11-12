@@ -228,7 +228,7 @@ test('Linha do tempo: só observa (resultado idêntico), cobre cada minuto e ter
       ps.forEach((p, j) => {
         assert.equal(last.p[s][2 * j], Math.round(p.rating * 10), `nota final de ${p.name}`);
         const mp = byId.get(p.id)!;
-        assert.equal(last.p[s][2 * j + 1], Math.round(conditionAfter(mp.condition, mp.attributes.physical.stamina, p.minutes, live.conditions.weather) * 10), 'condição final');
+        assert.equal(last.p[s][2 * j + 1], Math.round(conditionAfter(mp.condition, p.fatigue, p.minutes) * 10), 'condição final');
       });
     }
     assert.equal(rateReport(live.players[0]!, live.players[0]!.minutes, live.homeGoals, live.awayGoals), live.players[0]!.rating);

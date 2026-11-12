@@ -77,25 +77,42 @@ test('Consequências: condição física, forma, estatísticas da temporada e en
     assert.ok(Number(p.condition_pct) < 100, 'quem jogou perdeu condição');
     assert.ok(Number(r.minutes) > 0);
   }
-  // quem não jogou e não está lesionado (lesões de treino limitam a condição) segue descansado
+  // quem não jogou e não está lesionado (lesões de treino limitam a condição) segue inteiro: só a carga dos treinos (v0.8.12: ~94% de equilíbrio)
   const unused = db.prepare(`SELECT COUNT(*) AS n FROM players p WHERE p.club_id = ? AND p.id NOT IN (SELECT player_id FROM player_season_stats)
     AND p.id NOT IN (SELECT player_id FROM player_status WHERE injury_until > '2026-08-01')`).get(clubId)!;
-  const rested = db.prepare(`SELECT COUNT(*) AS n FROM players p WHERE p.club_id = ? AND p.condition_pct = 100 AND p.id NOT IN (SELECT player_id FROM player_season_stats)`).get(clubId)!;
+  const rested = db.prepare(`SELECT COUNT(*) AS n FROM players p WHERE p.club_id = ? AND p.condition_pct >= 90 AND p.id NOT IN (SELECT player_id FROM player_season_stats)
+    AND p.id NOT IN (SELECT player_id FROM player_status WHERE injury_until > '2026-08-01')`).get(clubId)!;
   assert.ok(Number(unused.n) >= 8 && Number(rested.n) === Number(unused.n), 'quem não jogou segue descansado');
+  // ritmo de jogo e carga (v0.8.12): quem jogou ganha ritmo proporcional aos minutos e fica com a data do jogo
+  for (const r of played) {
+    const p = db.prepare('SELECT sharpness, last_played, acute_load FROM players WHERE id = ?').get(r.player_id)!;
+    assert.ok(p.last_played != null && Number(p.acute_load) > 0, 'última partida e carga gravadas');
+    assert.ok(Number(p.sharpness) > 60, `ritmo depois do jogo: ${p.sharpness} (a pré-temporada leva ao piso de 60; jogar soma)`);
+  }
+  assert.equal(n(db, `SELECT COUNT(*) AS n FROM players WHERE club_id = '${clubId}' AND last_played IS NOT NULL AND id NOT IN (SELECT player_id FROM player_season_stats)`), 0, 'quem não jogou não tem data de jogo');
+  const fullGame = db.prepare(`SELECT AVG(p.condition_pct) AS c FROM players p JOIN player_season_stats s ON s.player_id = p.id WHERE p.club_id = ? AND s.minutes >= 90`).get(clubId)!;
+  assert.ok(Number(fullGame.c) > 58 && Number(fullGame.c) < 80, `90 minutos: condição média ${Number(fullGame.c).toFixed(1)}% (antes ~87%)`);
   const goalsInMatches = n(db, 'SELECT SUM(home_goals + away_goals) AS n FROM fixtures WHERE status = ?', 'played');
   assert.equal(n(db, 'SELECT SUM(goals) AS n FROM player_season_stats'), goalsInMatches, 'gols dos jogadores = gols das partidas');
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM club_state'), 32);
   const lineup = JSON.parse(String(db.prepare('SELECT last_lineup_json FROM club_state WHERE club_id = ?').get(clubId)!.last_lineup_json)) as string[];
   assert.equal(lineup.length, 11);
-  // recuperação diária (não lesionados): +6 por dia nos clubes da IA; no seu clube, 6 + preparador físico (sem preparador = qualidade 5 → +0,375), limitada a 100
+  // recuperação diária (não lesionados, v0.8.12): fração do que falta para 100% menos a carga da sessão — saindo de ~60-70%, 2 dias
+  // devolvem boa parte (antes: +6 fixo por dia); detalhes e calibração em training-sessions.test.ts
   const healthy = `p.id NOT IN (SELECT player_id FROM player_status WHERE injury_until > '2026-08-01')`; // sem lesão em nenhum dos dias avançados
   const ai0 = db.prepare(`SELECT id, condition_pct FROM players p WHERE club_id <> ? AND ${healthy} ORDER BY condition_pct, id LIMIT 1`).get(clubId)!;
   const me0 = db.prepare(`SELECT id, condition_pct FROM players p WHERE club_id = ? AND ${healthy} ORDER BY condition_pct, id LIMIT 1`).get(clubId)!;
   advanceTime(db, 'day'); advanceTime(db, 'day');
   const cond = (id: unknown) => Number(db.prepare('SELECT condition_pct AS n FROM players WHERE id = ?').get(id)!.n);
-  assert.ok(Math.abs(cond(ai0.id) - Math.min(100, Number(ai0.condition_pct) + 12)) < 0.001, `recuperação IA: ${ai0.condition_pct} -> ${cond(ai0.id)}`);
-  assert.ok(Math.abs(cond(me0.id) - Math.min(100, Number(me0.condition_pct) + 2 * 6.375)) < 0.001, `recuperação usuário: ${me0.condition_pct} -> ${cond(me0.id)}`);
+  for (const [who, p0] of [['IA', ai0], ['usuário', me0]] as const) {
+    const c0 = Number(p0.condition_pct), c2 = cond(p0.id);
+    assert.ok(c2 - c0 >= 0.45 * (100 - c0) && c2 <= 97, `recuperação ${who}: ${c0} -> ${c2}`);
+  }
   assert.equal(n(db, 'SELECT COUNT(*) AS n FROM players WHERE condition_pct > 100'), 0);
+  // carga de jogos: o segundo jogo soma ao que restou do primeiro (90 minutos = 10)
+  advanceTime(db, 'nextMatchday'); simulateMatchday(db);
+  assert.ok(n(db, `SELECT COUNT(*) AS n FROM players p WHERE p.acute_load > 11 AND p.id IN (SELECT player_id FROM player_season_stats WHERE appearances = 2 AND minutes >= 180)`) > 0,
+    'dois jogos completos: carga acima de um jogo só');
 });
 
 test('Relatórios: completo para o clube do usuário, compacto para os demais; comentários nascem dos eventos', async () => {

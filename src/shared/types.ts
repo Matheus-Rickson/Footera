@@ -61,6 +61,8 @@ export interface Player {
   /** 0..100 */
   condition: number;
   fatigue: number;
+  /** ritmo de jogo 0..100 (v0.8.12; carregado do save) */
+  sharpness?: number;
   morale: number;
   form: number;
   marketValue: number;
