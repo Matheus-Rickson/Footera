@@ -4,6 +4,8 @@ import type { BoardTopicDto, ClubProfileDto, ConversationsDto, PlayerTopicDto, T
 import { ensureAiCoaches, getAiCoachDetail, getClubInfo, listUnemployedCoaches } from '../database/repositories/aiCoachRepository.ts';
 import { createCups, getCupBracket } from '../database/repositories/cupRepository.ts';
 import { getStagedView } from '../database/repositories/formatRepository.ts';
+import { ensureContinentals, getConmebolRanking, sweepContinentalClashes } from '../database/repositories/continentalRepository.ts';
+import type { ConmebolRankingDto } from '../shared/api.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -361,6 +363,8 @@ function prepareCareer(db: SqlDb, open: OpenSave): void {
     const cs = getCareerState(db);
     withTransaction(db, () => createCups(db, { notBefore: cs.gameDate }));
   }
+  // saves anteriores aos continentais (v0.8.13): cria a Libertadores e a Sul-Americana da temporada se ainda não passou a 1ª data
+  withTransaction(db, () => { if (ensureContinentals(db)) sweepContinentalClashes(db); });
   open.prepared = stamp;
 }
 
@@ -464,6 +468,7 @@ export const startUpgradeFor = (b: string, p: string, c: string, k: FacilityKind
 
 export const cupBracket = (b: string, p: string, c: string, competitionId: string): Promise<CupBracketDto> => withPreparedCareer(b, p, c, (db) => getCupBracket(db, competitionId));
 export const stagedView = (b: string, p: string, c: string, competitionId: string): Promise<StagedViewDto> => withPreparedCareer(b, p, c, (db) => getStagedView(db, competitionId));
+export const conmebolRankingFor = (b: string, p: string, c: string): Promise<ConmebolRankingDto> => withPreparedCareer(b, p, c, (db) => getConmebolRanking(db));
 export const getBoard = (b: string, p: string, c: string): Promise<BoardOverviewDto> => withPreparedCareer(b, p, c, (db) => getBoardOverview(db));
 export const clubInfo = (b: string, p: string, c: string, clubId: string): Promise<ClubInfoDto> => withPreparedCareer(b, p, c, (db) => getClubInfo(db, clubId));
 export const clubProfile = (b: string, p: string, c: string, clubId: string): Promise<ClubProfileDto> => withPreparedCareer(b, p, c, (db) => getClubProfile(db, clubId));

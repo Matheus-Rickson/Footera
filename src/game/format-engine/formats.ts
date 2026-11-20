@@ -3,6 +3,7 @@
  * `source` diz se cada parte vem do regulamento oficial (REG), de fonte secundária (SEC) ou foi adaptada por falta de fonte (ADAPT).
  */
 import type { FormatDef, KnockoutStage, LeagueStage, Ref, Stage, Tiebreaker } from './engine.ts';
+import { conmebolFormat } from '../continental-engine/formats.ts';
 
 const TB: Tiebreaker[] = ['points', 'wins', 'goalDiff', 'goalsFor', 'headToHead'];
 const seeds = (n: number): Ref[] => Array.from({ length: n }, (_, i) => ({ seed: i }));
@@ -375,6 +376,8 @@ export function leagueFormat(leagueId: string, clubs: number): FormatDef | null 
 }
 /** Formato pelo id gravado na competição (o tamanho escolhe a versão da Série C). */
 export function formatById(id: string, clubs: number, season = 2026): FormatDef | null {
+  const conmebol = conmebolFormat(id, clubs);
+  if (conmebol) return conmebol;
   if (id === 'bra-serie-c') return leagueFormat('bra-3', clubs);
   if (id === 'bra-serie-d') return leagueFormat('bra-4', clubs);
   if (id === COPA_RUSSIA_ID) return copaDaRussia(clubs);

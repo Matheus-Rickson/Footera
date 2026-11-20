@@ -2,7 +2,7 @@ import type { SqlDb } from '../types.ts';
 import { withTransaction } from '../types.ts';
 import { createRng } from '../../game/rng.ts';
 import { DEFAULT_CALENDAR, firstMatchday, scheduleLeague } from '../../game/competition-engine/schedule.ts';
-import { leagueFormat } from '../../game/format-engine/formats.ts';
+import { formatById, leagueFormat } from '../../game/format-engine/formats.ts';
 import { brazilCalendar, createCopaDaRussia, createCopasEstaduais, createEstaduais, createFormatCompetition, createRegionais } from './formatRepository.ts';
 import { brazilLeagueDates } from '../../game/career-engine/brazilCalendar.ts';
 import { computeStandings, type MatchResult } from '../../game/competition-engine/standings.ts';
@@ -24,6 +24,7 @@ import { fastForwarding, processBoardDay } from './boardRepository.ts';
 import { processPromisesDay } from './promiseRepository.ts';
 import { processSocialDay } from './socialRepository.ts';
 import { createCups, createSupercup } from './cupRepository.ts';
+import { ensureContinentals, sweepContinentalClashes } from './continentalRepository.ts';
 import { allCountrySeasons, CURRENT_COMP, ensureCountrySeasons, userSeason, type CountrySeason } from './countrySeasonRepository.ts';
 import { autoTurnovers } from './seasonRepository.ts';
 import { CALENDAR_YEAR_LEAGUE_START, seasonLabelFor } from '../../game/career-engine/calendar.ts';
@@ -50,8 +51,12 @@ export function ensureSeason(db: SqlDb, _season?: number): { created: number } {
 /** Corpo de `ensureSeason` sem transação própria (usado pela virada, que já é atômica). `countryIds`: só esses países. */
 export function createSeason(db: SqlDb, _season?: number, countryIds?: readonly string[]): { created: number } {
   ensureCountrySeasons(db);
+  // continentais da CONMEBOL antes das copas nacionais (quando todos os países da confederação estão na mesma temporada)
+  const continental = ensureContinentals(db);
   let created = 0;
   for (const cs of allCountrySeasons(db)) if (!countryIds || countryIds.includes(cs.countryId)) created += createCountrySeason(db, cs);
+  // as fases continentais já montadas (fase 1, Recopa) vieram antes das ligas: remarca os jogos nacionais que ficaram a 1 dia ou menos delas
+  if (continental || created > 0) sweepContinentalClashes(db);
   return { created };
 }
 
@@ -109,11 +114,28 @@ export const FIXTURE_SELECT = `
          f.away_club_id, a.name AS away_name, f.status, f.home_goals, f.away_goals,
          EXISTS (SELECT 1 FROM matches m WHERE m.fixture_id = f.id) AS has_report,
          f.leg, f.neutral, json_extract(c.format_json, '$.format.name') AS cup_name,
-         (SELECT json_extract(c.format_json, '$.format.stages[' || t.stage || '].name') FROM cup_ties t WHERE t.id = f.tie_id) AS cup_stage
+         (SELECT json_extract(c.format_json, '$.format.stages[' || t.stage || '].name') FROM cup_ties t WHERE t.id = f.tie_id) AS cup_stage,
+         c.kind AS comp_kind, c.season AS comp_season, f.stage AS fx_stage, json_extract(c.format_json, '$.formatId') AS fmt_id,
+         (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.seeds'))) AS fmt_size
     FROM fixtures f
     JOIN competitions c ON c.id = f.competition_id
     JOIN clubs h ON h.id = f.home_club_id
     JOIN clubs a ON a.id = f.away_club_id`;
+
+/** Nome da fase de um jogo de formato (continentais e estaduais), pela definição do formato (memorizada). */
+const stageNames = new Map<string, Map<string, string> | null>();
+function formatStageName(formatId: string, size: number, season: number, stage: string): string | null {
+  const k = `${formatId}|${size}|${season}`;
+  if (!stageNames.has(k)) { const d = formatById(formatId, size, season); stageNames.set(k, d ? new Map(d.stages.map((x) => [x.id, x.name])) : null); }
+  return stageNames.get(k)?.get(stage) ?? null;
+}
+
+/** Jogo de continental: a "copa" do jogo (nome sem a temporada, fase, ida/volta, campo neutro), como nas copas nacionais. */
+function formatCupOf(r: Record<string, unknown>): FixtureDto['cup'] {
+  if (r.comp_kind !== 'continental' || r.fx_stage == null || r.fmt_id == null) return null;
+  const stage = formatStageName(S(r.fmt_id), N(r.fmt_size), N(r.comp_season), S(r.fx_stage)) ?? S(r.fx_stage);
+  return { name: S(r.competition_name).replace(/\s\d{4}$/, ''), stage, leg: (r.leg == null ? null : N(r.leg)) as 1 | 2 | null, neutral: N(r.neutral ?? 0) === 1 };
+}
 
 export function toFixture(r: Record<string, unknown>): FixtureDto {
   return {
@@ -122,7 +144,7 @@ export function toFixture(r: Record<string, unknown>): FixtureDto {
     status: S(r.status) as FixtureDto['status'],
     homeGoals: r.home_goals == null ? null : N(r.home_goals), awayGoals: r.away_goals == null ? null : N(r.away_goals),
     hasReport: N(r.has_report ?? 0) === 1,
-    cup: r.cup_stage == null ? null : { name: S(r.cup_name), stage: S(r.cup_stage), leg: (r.leg == null ? null : N(r.leg)) as 1 | 2 | null, neutral: N(r.neutral ?? 0) === 1 },
+    cup: r.cup_stage == null ? formatCupOf(r) : { name: S(r.cup_name), stage: S(r.cup_stage), leg: (r.leg == null ? null : N(r.leg)) as 1 | 2 | null, neutral: N(r.neutral ?? 0) === 1 },
   };
 }
 
@@ -156,6 +178,10 @@ export function listCompetitions(db: SqlDb): { userCompetitionId: string | null;
       FROM competitions c JOIN countries co ON co.id = c.country_id WHERE c.kind = 'cup' AND ${CURRENT_COMP} ORDER BY c.country_id = ? DESC, co.name, c.id`).all(myCountry)
     .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: S(r.country), tier: 0, teamCount: N(r.n), kind: 'cup' as const, supercup: r.fk === 'supercup' }));
   competitions.push(...cups);
+  // continentais (Libertadores, Sul-Americana, Recopa) da temporada da confederação
+  competitions.push(...db.prepare(`SELECT c.id, c.name, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.seeds'))) + (CASE WHEN json_extract(c.format_json, '$.libComp') IS NULL THEN 0 ELSE 12 END) AS n
+      FROM competitions c WHERE c.kind = 'continental' AND ${CURRENT_COMP} ORDER BY c.id`).all()
+    .map((r) => ({ id: S(r.id), leagueId: '', name: S(r.name), country: 'CONMEBOL', tier: 0, teamCount: N(r.n), kind: 'continental' as const, staged: true })));
   // estaduais (o do clube do usuário primeiro), na ordem das divisões
   const states = db.prepare(`SELECT c.id, c.name, co.name AS country, (SELECT COUNT(*) FROM json_each(json_extract(c.format_json, '$.seeds'))) AS n,
       EXISTS (SELECT 1 FROM fixtures f WHERE f.competition_id = c.id AND (f.home_club_id = ? OR f.away_club_id = ?)) AS mine

@@ -10,9 +10,9 @@ interface Props { profileId: string; careerId: string; refreshKey: string }
 type Tab = 'club' | 'coach' | 'champions';
 const TABS: Array<{ id: Tab; label: string }> = [{ id: 'club', label: 'Clube' }, { id: 'coach', label: 'Treinador' }, { id: 'champions', label: 'Campeões' }];
 export const TROPHY_SHELF: Record<TrophyKindDto, string> = {
-  league: 'Ligas', cup: 'Copas nacionais', supercup: 'Supercopas', state: 'Estaduais', regional: 'Copas regionais', other: 'Outros títulos',
+  league: 'Ligas', continental: 'Continentais', cup: 'Copas nacionais', supercup: 'Supercopas', state: 'Estaduais', regional: 'Copas regionais', other: 'Outros títulos',
 };
-const KIND_ORDER: TrophyKindDto[] = ['league', 'cup', 'supercup', 'state', 'regional', 'other'];
+const KIND_ORDER: TrophyKindDto[] = ['league', 'continental', 'cup', 'supercup', 'state', 'regional', 'other'];
 const TIMELINE_PAGE = 7;
 const CHAMPIONS_PAGE = 13;
 
@@ -32,6 +32,12 @@ function Cup({ kind, historicOnly, size = 64 }: { kind: TrophyKindDto; historicO
     <path d="M22 6h20l-2 20c-1 7-4 11-8 11s-7-4-8-11z" fill={fill} stroke={stroke} strokeWidth="1.5" />
     <path d="M22 9c-7 0-9 4-8 8s5 6 9 6M42 9c7 0 9 4 8 8s-5 6-9 6" fill="none" stroke={stroke} strokeWidth="2.2" strokeLinecap="round" />
     <path d="M29 37h6l2 10h-10z" fill={fill} stroke={stroke} strokeWidth="1.2" /><path d="M21 47h22v10H21z" fill={fill} stroke={stroke} strokeWidth="1.2" />
+  </>);
+  else if (kind === 'continental') body = (<>
+    <circle cx="32" cy="8" r="5" fill={fill} stroke={stroke} strokeWidth="1.2" />
+    <path d="M23 13h18l-2 17c-1 6-3.5 9-7 9s-6-3-7-9z" fill={fill} stroke={stroke} strokeWidth="1.5" />
+    <path d="M23 15c-8-1-11 3-10 8s6 8 11 8M41 15c8-1 11 3 10 8s-6 8-11 8" fill="none" stroke={stroke} strokeWidth="2.6" strokeLinecap="round" />
+    <path d="M29 39h6l1.5 6h-9z" fill={fill} stroke={stroke} strokeWidth="1.2" /><path d="M20 45h24v5H20zM18 50h28v7H18z" fill={fill} stroke={stroke} strokeWidth="1.2" />
   </>);
   else if (kind === 'supercup') body = (<>
     <circle cx="32" cy="24" r="17" fill={fill} stroke={stroke} strokeWidth="1.5" /><circle cx="32" cy="24" r="11" fill="none" stroke={stroke} strokeWidth="1" opacity=".6" />

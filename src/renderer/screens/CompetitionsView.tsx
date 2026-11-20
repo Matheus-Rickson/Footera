@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, CupBracketDto, FixtureDto } from '../../shared/api.ts';
+import type { CompetitionInfoDto, CompetitionLeadersDto, CompetitionTableDto, ConmebolRankingDto, CupBracketDto, FixtureDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, TIEBREAKER_LABEL, unwrap } from '../util.ts';
 import { HelpTip } from '../help.tsx';
 import { useImages } from '../images.ts';
-import { ClubCrest } from '../flags.tsx';
+import { ClubCrest, Flag } from '../flags.tsx';
 import { ClubSheet } from '../clubSheet.tsx';
 import { StagedView } from './StagedView.tsx';
+import { TieList } from './TieList.tsx';
+
+/** opção do seletor que abre o ranking de clubes da CONMEBOL (não é uma competição) */
+const RANKING = '__conmebol_ranking';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onOpenPlayer?: (id: string) => void; onOpenMatch?: (fixtureId: string) => void; onOpenClub?: (clubId: string) => void }
 
@@ -33,11 +37,11 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
   const isCup = info?.kind === 'cup';
   // campeonato em fases: estaduais sempre na visão por fases; Séries C/D na tabela da 1ª fase, com o botão "Ver fases"
   const [phases, setPhases] = useState(false);
-  const staged = info?.kind === 'state' || (!!info?.staged && phases);
+  const staged = info?.kind === 'state' || info?.kind === 'continental' || (!!info?.staged && phases);
   useEffect(() => {
     if (!selected || !comps) return;
     let stale = false;
-    if (info?.kind === 'state') return;
+    if (info?.kind === 'state' || info?.kind === 'continental' || selected === RANKING) return;
     if (isCup) unwrap(window.api.getCupBracket(profileId, careerId, selected)).then((b) => { if (!stale) { setCup(b); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
     else unwrap(window.api.getCompetitionTable(profileId, careerId, selected)).then((t) => { if (!stale) { setTable(t); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
     return () => { stale = true; };
@@ -47,6 +51,10 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
   const picker = comps && (
     <label>Competição
       <select value={selected ?? ''} onChange={(e) => setSelected(e.target.value)}>
+        {comps.some((c) => c.kind === 'continental') && <optgroup label="Continentais (CONMEBOL)">
+          {comps.filter((c) => c.kind === 'continental').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value={RANKING}>Ranking de clubes CONMEBOL</option>
+        </optgroup>}
         <optgroup label="Ligas">{comps.filter((c) => c.kind === 'league').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         <optgroup label="Copas nacionais">{comps.filter((c) => (c.kind === 'cup' && !c.supercup) || c.scope === 'nacional').map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>
         {comps.some((c) => c.supercup) && <optgroup label="Supercopas">{comps.filter((c) => c.supercup).map((c) => <option key={c.id} value={c.id}>{c.country} — {c.name}</option>)}</optgroup>}
@@ -66,14 +74,21 @@ export function CompetitionsView({ profileId, careerId, refreshKey, onOpenPlayer
       </>
     );
   }
+  if (selected === RANKING) {
+    return (
+      <>
+        <ConmebolRanking profileId={profileId} careerId={careerId} refreshKey={refreshKey} picker={picker} img={img} onClub={setClub} />
+        {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} onOpenFull={onOpenClub} />}
+      </>
+    );
+  }
   if (isCup) {
     if (!cup || cup.id !== selected) return <p className="muted">Carregando copa…</p>;
     return (
-      <div className="cp-root">
-        <section className="card"><div className="cp-pick">{img.url('cups', cup.logoId) && <img className="cp-league-logo" src={img.url('cups', cup.logoId)!} alt={`Logo: ${cup.name}`} />}{picker}</div><CupHeader cup={cup} /></section>
-        <section className="card cp-table-card"><div className="cp-scroll"><CupStages cup={cup} img={img} onClub={setClub} /></div></section>
+      <>
+        <CupView cup={cup} picker={picker} img={img} onClub={setClub} onOpenMatch={onOpenMatch} />
         {club && <ClubSheet profileId={profileId} careerId={careerId} clubId={club} onClose={() => setClub(null)} onOpenPlayer={onOpenPlayer} onOpenFull={onOpenClub} />}
-      </div>
+      </>
     );
   }
   if (!comps || !table) return <p className="muted">Carregando competições…</p>;
@@ -244,41 +259,97 @@ function CupHeader({ cup }: { cup: CupBracketDto }) {
       <p className="muted small">
         {cup.supercup ? 'Cartões: expulsão suspende; as suspensões da supercopa valem só nela.'
           : <>Cartões: {cup.discipline.yellowLimit} amarelos suspendem por 1 jogo{cup.discipline.resetAfter ? ` (zeram ao fim da ${cup.discipline.resetAfter})` : ''}; expulsão suspende; as suspensões da copa valem só nela.</>}
-        {' '}{cup.supercup ? 'Vale só o troféu (sem prêmio em dinheiro).' : `O campeão ganha: ${cup.reward} — as competições continentais ainda não existem no jogo.`}
+        {' '}{cup.supercup ? 'Vale só o troféu (sem prêmio em dinheiro).' : `O campeão ganha: ${cup.reward}.`}
       </p>
     </div>
   );
 }
 
 /** Fases da copa com os confrontos (placar de cada jogo, agregado, pênaltis, folgas). */
-function CupStages({ cup, img, onClub }: { cup: CupBracketDto; img: ReturnType<typeof useImages>; onClub: (id: string) => void }) {
-  const name = (c: { id: string; name: string }, win: boolean) => (
-    <button className={`cp-club cp-club-btn ${win ? 'cp-cup-win' : ''}`} onClick={() => onClub(c.id)}><ClubCrest id={c.id} name={c.name} size={16} src={img.url('clubs', c.id)} />{c.name}</button>
-  );
+/**
+ * Copa nacional no mesmo formato das competições em fases: cabeçalho com o regulamento e uma aba por fase (abre na fase em disputa ou na
+ * última sorteada); cada fase mostra as datas, a regra e os confrontos (ida e volta, agregado, prorrogação, pênaltis, campo neutro, folgas).
+ */
+function CupView({ cup, picker, img, onClub, onOpenMatch }: {
+  cup: CupBracketDto; picker: ReactNode; img: ReturnType<typeof useImages>; onClub: (id: string) => void; onOpenMatch?: (fixtureId: string) => void;
+}) {
+  const current = () => {
+    const drawn = cup.stages.map((st, i) => ({ st, i })).filter((x) => x.st.drawn);
+    const open = drawn.find((x) => x.st.ties.some((t) => t.b && !t.winnerId));
+    return (open ?? drawn[drawn.length - 1])?.i ?? 0;
+  };
+  const [tab, setTab] = useState<{ cupId: string; i: number }>(() => ({ cupId: cup.id, i: current() }));
+  const idx = tab.cupId === cup.id ? Math.min(tab.i, cup.stages.length - 1) : current();
+  const st = cup.stages[idx];
+  const logo = img.url('cups', cup.logoId);
   return (
-    <div className="cp-cup">
-      {cup.stages.map((st) => (
-        <div key={st.name} className="cp-cup-stage">
-          <h3>{st.name} <span className="muted small">{st.dates.map(fmtDate).join(' e ')}</span></h3>
-          <p className="muted small">{st.rule}</p>
-          {!st.drawn ? <p className="muted small">Sorteio quando a fase anterior terminar.</p> : (
-            <table className="cp-cup-ties"><tbody>
-              {st.ties.map((t) => (
-                <tr key={t.id} className={t.mine ? 'mine' : ''}>
-                  <td>{name(t.a, t.winnerId === t.a.id && !!t.b)}</td>
-                  {t.b ? <>
-                    <td className="cp-cup-score">{t.games.map((g) => (g.homeGoals == null ? <span key={g.fixtureId} className="muted">{fmtDate(g.date)}</span>
-                      : <span key={g.fixtureId}>{g.homeId === t.a.id ? `${g.homeGoals} x ${g.awayGoals}` : `${g.awayGoals} x ${g.homeGoals}`}</span>))}</td>
-                    <td>{name(t.b, t.winnerId === t.b.id)}</td>
-                    <td className="muted small">{[t.aggregate ? `agregado ${t.aggregate[0]} x ${t.aggregate[1]}` : '', t.decidedIn === 'extra_time' ? 'na prorrogação' : '', t.shootout ? `pênaltis ${t.shootout[0]} x ${t.shootout[1]}` : '', t.games.some((g) => g.neutral) ? 'campo neutro' : ''].filter(Boolean).join(' · ')}</td>
-                  </> : <td colSpan={3} className="muted small">folga (avança direto)</td>}
-                </tr>
-              ))}
-            </tbody></table>
+    <div className="cp-root">
+      <section className="card cp-head">
+        <div className="cp-pick">{logo && <img className="cp-league-logo" src={logo} alt={`Logo: ${cup.name}`} />}{picker}</div>
+        <CupHeader cup={cup} />
+        <div className="sv-tabs" role="tablist" aria-label="Fases">
+          {cup.stages.map((s, i) => (
+            <button key={s.name} role="tab" aria-selected={i === idx} className={`sv-tab ${i === idx ? 'sv-tab-on' : ''}`}
+              disabled={!s.drawn} title={s.drawn ? '' : 'Sorteio quando a fase anterior terminar'} onClick={() => setTab({ cupId: cup.id, i })}>{s.name}</button>
+          ))}
+        </div>
+      </section>
+      <section className="card cp-table-card">
+        {st && <p className="muted small tl-stage"><strong>{st.dates.map(fmtDate).join(' e ')}</strong> · {st.rule}{st.drawn && (() => { const n = st.ties.filter((t) => t.b).length; return ` · ${n} ${n === 1 ? 'confronto' : 'confrontos'}`; })()}</p>}
+        <div className="cp-scroll">
+          {!st || !st.drawn ? <p className="muted small">Sorteio quando a fase anterior terminar.</p> : (
+            <TieList img={img} onClub={onClub} onOpenMatch={onOpenMatch} ties={st.ties.map((t) => ({
+              key: t.id, a: t.a, b: t.b, mine: t.mine, winner: t.winnerId, games: t.games,
+              notes: [t.aggregate && st.legs > 1 ? `agregado ${t.aggregate[0]} x ${t.aggregate[1]}` : '', t.decidedIn === 'extra_time' ? 'na prorrogação' : '',
+                t.shootout ? `pênaltis ${t.shootout[0]} x ${t.shootout[1]}` : '', t.games.some((g) => g.neutral) ? 'campo neutro' : ''].filter(Boolean),
+            }))} />
           )}
         </div>
-      ))}
+      </section>
     </div>
   );
 }
 
+
+/** Ranking de Clubes CONMEBOL vigente (o dos potes e do mando desta temporada): top 50 e a posição do clube do usuário. */
+function ConmebolRanking({ profileId, careerId, refreshKey, picker, img, onClub }: {
+  profileId: string; careerId: string; refreshKey: string; picker: ReactNode; img: ReturnType<typeof useImages>; onClub: (id: string) => void;
+}) {
+  const [r, setR] = useState<ConmebolRankingDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let stale = false;
+    unwrap(window.api.getConmebolRanking(profileId, careerId)).then((x) => { if (!stale) { setR(x); setError(null); } }).catch((e) => { if (!stale) setError(errMsg(e)); });
+    return () => { stale = true; };
+  }, [profileId, careerId, refreshKey]);
+  if (error) return <p className="error" role="alert">{error}</p>;
+  if (!r) return <p className="muted">Carregando ranking…</p>;
+  const pts = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  return (
+    <div className="cp-root">
+      <section className="card cp-head">
+        <div className="cp-pick">{picker}</div>
+        <p className="muted small">
+          Ranking vigente na temporada {r.season} (posição ao fim de {r.asOf}): define os potes dos sorteios e quem decide em casa na fase 3 da Libertadores.
+          {r.user ? <> · Seu clube: <strong>{r.user.position}º</strong> de {r.total} ({pts(r.user.points)} pts)</> : ' · Seu clube não é de um país da CONMEBOL.'}
+          <HelpTip text="Pontos das últimas 10 temporadas na Libertadores e na Sul-Americana (a mais recente vale 100%, a 10ª vale 10%), mais 50 pontos por título nacional da 1ª divisão com a mesma depreciação. Como o universo do jogo é fictício, cada clube começa com um ano histórico pela reputação, que perde peso a cada temporada e some em 10 anos. Detalhes em docs/CONTINENTAIS.md." />
+        </p>
+      </section>
+      <section className="card cp-table-card">
+        <div className="cp-scroll">
+          <table className="cp-std cn-rank">
+            <thead><tr><th>#</th><th>Clube</th><th>País</th><th className="center">Pontos</th></tr></thead>
+            <tbody>{r.rows.map((row) => (
+              <tr key={row.clubId} className={row.isUserClub ? 'mine' : ''}>
+                <td>{row.position}º</td>
+                <td><button className="cp-club cp-club-btn" title="Ver a ficha do clube" onClick={() => onClub(row.clubId)}><ClubCrest id={row.clubId} name={row.clubName} size={16} src={img.url('clubs', row.clubId)} />{row.clubName}</button></td>
+                <td><span className="cn-country"><Flag code={row.countryCode} size={16} title={row.country} />{row.country}</span></td>
+                <td className="center"><strong>{pts(row.points)}</strong></td>
+              </tr>))}</tbody>
+          </table>
+        </div>
+        {r.user && r.user.position > r.rows.length && <p className="muted small cp-legend">Seu clube está fora do top {r.rows.length}: {r.user.position}º, com {pts(r.user.points)} pontos.</p>}
+      </section>
+    </div>
+  );
+}

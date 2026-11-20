@@ -403,13 +403,28 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Comissão técnica (refeita): resumo no topo; um card por função com qualidade em barras, situação, efeitos e candidatos do mês; demitir pede confirmação e mostra a multa máxima.
 - [ ] Departamento médico (refeito): resumo no topo; Lesionados com dias para voltar; Em risco com barras de condição e ritmo, carga, motivos e recomendação; cabe em 1920×1080 sem rolagem.
 
+## 13z6. Continentais da CONMEBOL (v0.8.13)
+- [ ] Carreira nova num clube grande da Série A: notícia "na CONMEBOL Libertadores 2026" com a fase de entrada; datas no Calendário (terça a quinta), com "CONMEBOL Libertadores · Fase de grupos".
+- [ ] Competições → grupo "Continentais (CONMEBOL)": Libertadores e Sul-Americana com as abas por fase (Fase 1, 2, 3, grupos A–H, oitavas…); fases futuras desabilitadas.
+- [ ] Competições → "Ranking de clubes CONMEBOL": top 50 com bandeiras, posição do seu clube e o "?" com a explicação.
+- [ ] Jogo da Libertadores ao vivo e no relatório: fase, ida/volta, agregado; final com "Campo neutro".
+- [ ] Diretoria: objetivo "CONMEBOL Libertadores: chegar às quartas de final" (ou o do pote); o detalhe acompanha a fase e a eliminação.
+- [ ] Finanças → extrato: prêmios da CONMEBOL (participação na fase, jogo em casa e vitória nos grupos) em euros.
+- [ ] Ficha do clube: a campanha continental junto das copas.
+- [ ] Sala de troféus: título continental na prateleira "Continentais".
+- [ ] Notícias: sorteio dos grupos e das oitavas; "Jogo remarcado" quando um jogo da liga cai a 1 dia de um jogo continental.
+- [ ] Copa do Brasil: nenhum jogo na mesma semana de um jogo continental do seu clube.
+- [x] Copa do Brasil (Competições): abas por fase como na Libertadores (abre na fase em disputa); confrontos com data e placar de cada jogo, agregado, pênaltis e "campo neutro" na final; fases iniciais em duas colunas.
+- [ ] Final da Libertadores e da Sul-Americana: "campo neutro" abaixo do placar.
+- [ ] Save antigo aberto depois de fevereiro de 2026: sem continentais em 2026; na virada para 2027 eles aparecem (e a Recopa, a partir do 2º ano da carreira nova).
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.
 
 ---
 
-**Fora do escopo desta versão** (planejado): exportar/importar saves e backups (Fase 10), outros países e competições continentais (Fase 9).
+**Fora do escopo desta versão** (planejado): exportar/importar saves e backups (Fase 10), continentais da UEFA, CONCACAF e AFC (Fase 9).
 A tela inicial não mostra "Importar save" até a Fase 10.
 - [ ] Editor → Clubes ou Jogadores: escolher país e liga e clicar em "Exportar filtrados" gera a planilha só com os clubes da liga (ou os jogadores dos clubes dela); o aviso mostra quantas linhas; sem filtro, "Exportar" traz tudo.
 - [ ] Editor → Jogadores/Técnicos: ao clicar em Nacionalidade abre a lista com bandeira e nome de cada país (inclusive de fora do universo: Gana, Estados Unidos, Japão), com busca e setas/Enter; depois de salvar e criar uma carreira, a bandeira e o nome aparecem no Elenco, no Mercado e na ficha.

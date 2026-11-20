@@ -742,6 +742,68 @@ Sem novas funcionalidades de jogo.
   sem conhecimento, resumo do mercado exato com 100%, escala 1–20). Mutação 5/5 detectadas. Telas NÃO verificadas no Electron.
 
 ## Fase 9 — Base de dados editável (branch `fase-9-base-de-dados`; detalhes em `docs/DATABASE.md`)
+- **v0.8.13 — continentais da CONMEBOL: Libertadores, Sul-Americana e Recopa (19/11/2026; sem commit; telas NÃO verificadas no Electron):**
+  - **Pedido**: o usuário escolheu os continentais da CONMEBOL (Fase 9, etapas 3 e 4) seguindo o regulamento real. Regras, adaptações
+    (ADAPT), fontes e premiação estão em `docs/CONTINENTAIS.md`; o peso dos prêmios na receita está em `docs/FINANCE.md`.
+  - **Funcional e testado — motor** (puro):
+    - formatos `conmebol-lib`, `conmebol-sud` e `conmebol-rec`;
+    - confrontos `preset`, mandos `favorite` e `numbered`, rodadas fixas da CONMEBOL;
+    - entrantes externos (Libertadores → Sul-Americana);
+    - desempate por fair play, confronto direto aplicado uma vez, `nthBest` pelos critérios do formato;
+    - sorteios pote por pote com restrição de país;
+    - ranking CONMEBOL (10 anos, histórico, títulos nacionais e o "ano histórico" pela reputação);
+    - calendário do anexo (terça a quinta; finais no sábado);
+    - vagas por país.
+  - **Funcional e testado — banco** (migração 035, `continentalRepository.ts`):
+    - `kind = 'continental'` sem país, com `CURRENT_COMP` pela temporada da confederação;
+    - criação antes das copas nacionais; as copas evitam as semanas continentais;
+    - remarcação dos jogos de liga e estadual a 1 dia ou menos de um continental;
+    - disciplina própria (3 amarelos, zera antes das semis);
+    - premiação em dólar convertida pelo `makePoster`;
+    - final neutra sem bilheteria (correção que vale também para as finais dos estaduais e da Copa da Rússia);
+    - troféu, `continental_results` e notícias (classificação, sorteios, remarcação, título);
+    - Recopa a partir do 2º ano;
+    - saves antigos: continentais só numa temporada cujas copas foram montadas em volta deles.
+  - **Funcional e testado — sistemas**:
+    - objetivo da diretoria `conmebol` pelo pote estimado;
+    - perfil do clube;
+    - sala de troféus (prateleira "Continentais");
+    - calendário, próximo jogo e relatório com a fase, ida/volta e campo neutro;
+    - logo `cups/conmebol-*`;
+    - IPC `getConmebolRanking`.
+  - **Testes**: `continental-engine.test.ts` (8, puros) e `continental-season.test.ts` (3).
+    - O segundo cobre: criação; determinismo; temporada completa com todas as fases nas semanas do anexo; finais em 21/11 e 28/11
+      neutras e sem renda; 4 perdedores da fase 3 e 8 terceiros na Sul-Americana; zero choques; prêmios; disciplina; troféus; ranking.
+    - Também cobre a 2ª temporada (Recopa e campeão cabeça do grupo A), a migração 035 num banco v34 e as regras de save antigo
+      (copas nas semanas da CONMEBOL, véspera de 4/2, idempotência).
+  - **Testes de mutação**: 17 de 17 mortas — restrição de país (grupos e fase 2), rodadas fixas, `favorite`, `numbered`, vagas, repasse
+    da vaga, depreciação, fair play, confronto direto uma vez, meta da diretoria, bilheteria da final neutra, remarcação, prêmio por jogo
+    em casa, copas nas semanas da CONMEBOL, pote estimado e zeragem dos amarelos (esta só morreu depois de um teste novo).
+  - **Desempenho**: carreira nova no maior clube da Série A, 2 sementes, mesmo roteiro no código do último commit (worktree) × agora.
+    - Criação: 2,8 s × 2,8 s. A 1ª versão levava 4,5 s: a remarcação das fases nacionais varria `fixtures` a cada jogo novo; agora
+      compara em memória com os jogos continentais pendentes.
+    - Avançar de 01/01 a 31/03 (com as preliminares da Libertadores): 41 × 42 ms por dia (+3%).
+    - `npm run bench` no save atual do usuário (sem continentais em 2026): leituras iguais dentro do ruído. As escritas do bench não
+      avançam nesse save (jogo do usuário pendente).
+    - Suíte 378/378, typecheck e build ok.
+  - **Escrito, mas NÃO executado** (precisa do `npm run dev`): grupo "Continentais (CONMEBOL)" e "Ranking de clubes CONMEBOL" em
+    Competições; fase no calendário e na Visão geral; prateleira e taça "Continentais" na Sala de troféus. Roteiro em
+    `docs/CHECKLIST_VALIDACAO.md` (13z6).
+  - **Verificado pelo usuário (20/11/2026)**: temporada completa da Copa do Brasil, da Sul-Americana e da Libertadores. Conferidos a
+    notícia de classificação, as fases 1–3, os grupos A–H, o calendário com os jogos continentais e os campeões das duas competições.
+  - **Pedido depois da validação — Copa do Brasil no formato da Libertadores** (verificado pelo usuário em 20/11/2026: final com data,
+    placar e "campo neutro"):
+    - **Abas por fase**: abre na fase em disputa; as fases ainda não sorteadas ficam desabilitadas.
+    - **Linha de cada fase**: as datas, a regra e o número de confrontos.
+    - **Confrontos**: componente único (`TieList.tsx`), usado também pelas competições em fases (continentais, estaduais, Séries C/D).
+      Mostra data e placar de cada jogo, vencedor em negrito, agregado, prorrogação, pênaltis, campo neutro e folgas; acima de 8
+      confrontos, duas colunas.
+    - **Competições em fases**: passaram a marcar "campo neutro" (`StagedViewDto` ganhou `neutral` nos jogos).
+  - **Descobertas**:
+    - **Prêmios**: os prêmios reais em dólar são 15–18% da receita da Série A no jogo; para o campeão da Libertadores, 52–54%. As receitas
+      do jogo são 3–4 vezes menores que as reais. Decisão do usuário (20/11/2026): manter os valores oficiais por enquanto; se
+      necessário, uma nova calibração das finanças do jogo (`docs/FINANCE.md`).
+    - **Saves atuais do usuário**: os dois já passaram de fevereiro de 2026; neles os continentais começam em 2027.
 - **v0.8.12 — treino por sessões, comissão (físico e goleiros), condição recalibrada e ritmo de jogo (12/11/2026; commit "v0.8.11 + v0.8.12"):** pedido do usuário
   (treino "levemente mais complexo", preparador físico e de goleiros no treino, condição errada: ~87% depois de 90 minutos). Decisões do usuário:
   semana com sessões, ~65–75% depois de 90 minutos e ~95% em 3 dias, todas as funções da comissão, avisos de risco no Departamento médico.

@@ -18,6 +18,9 @@ import { getCareerState } from './careerRepository.ts';
 import { UserError } from '../../shared/errors.ts';
 import type { StagedViewDto } from '../../shared/api.ts';
 import { brazilStageDates, estadualPool } from '../../game/career-engine/brazilCalendar.ts';
+import { conmebolPreset, isConmebolPresetStage } from '../../game/continental-engine/preset.ts';
+import { CONMEBOL_FORMAT_IDS } from '../../game/continental-engine/formats.ts';
+import { CONMEBOL_YELLOW_LIMIT, clearClashesOfNational, conmebolParticipants, continentalFixtureDates, continentalStageBuilt, externalLists, finishContinental, payContinentalMatchday, presetContext } from './continentalRepository.ts';
 
 /** O país segue o calendário brasileiro do modelo 2026 (Brasil no ano civil). */
 export function brazilCalendar(db: SqlDb, cs: { countryId: string }): boolean {
@@ -30,13 +33,21 @@ const N = (v: unknown) => Number(v);
 const seedOf = (db: SqlDb) => S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value);
 
 /** O que a competição grava: formato, participantes na ordem de semente, data mínima da 1ª fase e dia da semana dos jogos. */
-export interface FormatMeta { formatId: string; seeds: string[]; start: string; weekday: number; intervalDays: number }
+export interface FormatMeta {
+  formatId: string; seeds: string[]; start: string; weekday: number; intervalDays: number;
+  /** continentais: posição de cada participante no ranking CONMEBOL na criação (potes, mando da fase 3) */
+  rank?: Record<string, number>;
+  /** continentais: campeões do ano anterior (cabeça do grupo A; campeão da Sul-Americana no pote 2) */
+  libChampion?: string | null; sudChampion?: string | null;
+  /** Sul-Americana: a Libertadores da mesma temporada, de onde vêm os perdedores da fase 3 e os terceiros dos grupos */
+  libComp?: string;
+}
 
 /** Jogos da tabela de liga de uma competição: os de pontos corridos e, num campeonato em fases, só os da 1ª fase. */
 export const LEAGUE_TABLE_FIXTURES = "(f.stage IS NULL OR f.stage = 'f1')";
 
 export function formatMetaOf(db: SqlDb, compId: string): FormatMeta | null {
-  const r = db.prepare("SELECT format_json FROM competitions WHERE id = ? AND kind IN ('league', 'state') AND format_json IS NOT NULL").get(compId);
+  const r = db.prepare("SELECT format_json FROM competitions WHERE id = ? AND kind IN ('league', 'state', 'continental') AND format_json IS NOT NULL").get(compId);
   return r ? (JSON.parse(S(r.format_json)) as FormatMeta) : null;
 }
 
@@ -46,7 +57,7 @@ export function formatStateOf(db: SqlDb, compId: string): { def: FormatDef; meta
   if (!meta) return null;
   const def = formatById(meta.formatId, meta.seeds.length, N(db.prepare('SELECT season FROM competitions WHERE id = ?').get(compId)!.season));
   if (!def) return null;
-  const state: FormatState = { seeds: meta.seeds, stages: {} };
+  const state: FormatState = { seeds: meta.seeds, stages: {}, ...(meta.rank ? { rank: meta.rank } : {}), ...(meta.libComp ? { external: externalLists(db, meta.libComp) } : {}) };
   for (const r of db.prepare('SELECT stage_id, groups_json, ties_json, expected FROM competition_stages WHERE competition_id = ?').all(compId)) {
     state.stages[S(r.stage_id)] = {
       ...(r.groups_json ? { groups: JSON.parse(S(r.groups_json)) as string[][] } : {}),
@@ -54,12 +65,13 @@ export function formatStateOf(db: SqlDb, compId: string): { def: FormatDef; meta
       results: [], expected: N(r.expected),
     };
   }
-  for (const f of db.prepare("SELECT stage, stage_tie, leg, home_club_id, away_club_id, home_goals, away_goals, pens_winner FROM fixtures WHERE competition_id = ? AND status = 'played' AND stage IS NOT NULL ORDER BY match_date, id").all(compId)) {
+  for (const f of db.prepare("SELECT stage, stage_tie, leg, home_club_id, away_club_id, home_goals, away_goals, pens_winner, cards_json FROM fixtures WHERE competition_id = ? AND status = 'played' AND stage IS NOT NULL ORDER BY match_date, id").all(compId)) {
     const st = state.stages[S(f.stage)];
     if (!st) continue;
     const r: FxResult = { home: S(f.home_club_id), away: S(f.away_club_id), homeGoals: N(f.home_goals), awayGoals: N(f.away_goals) };
     if (f.stage_tie != null) { r.tie = N(f.stage_tie); r.leg = (f.leg == null ? 1 : N(f.leg)) as 1 | 2; }
     if (f.pens_winner != null) r.pens = S(f.pens_winner);
+    if (f.cards_json != null) r.cards = JSON.parse(S(f.cards_json)) as NonNullable<FxResult['cards']>;
     st.results.push(r);
   }
   return { def, meta, state };
@@ -76,7 +88,11 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
     for (const id of ready) {
       const stage = stageOf(fs.def, id);
       let preset: string[][] | undefined;
-      if (stage.kind === 'league' && stage.assign === 'preset') {
+      const continental = CONMEBOL_FORMAT_IDS.includes(fs.meta.formatId);
+      if (continental && isConmebolPresetStage(fs.meta.formatId, id)) {
+        const entrants = stageEntrants(fs.def, fs.state, id)!;
+        preset = conmebolPreset(fs.meta.formatId, id, entrants, presetContext(db, fs.meta, entrants), createRng(`draw:${seedOf(db)}:${compId}:${id}`));
+      } else if (stage.kind === 'league' && stage.assign === 'preset') {
         const entrants = stageEntrants(fs.def, fs.state, id)!;
         const stateOf = new Map(db.prepare(`SELECT id, state FROM clubs WHERE id IN (${entrants.map(() => '?').join(',')})`).all(...entrants).map((r) => [S(r.id), r.state == null ? null : S(r.state)]));
         preset = regionalGroups(entrants.map((c) => ({ id: c, state: stateOf.get(c) ?? null })), stage.groups);
@@ -97,14 +113,21 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
         planned = i >= 0 && i + rounds <= pool.length ? pool.slice(i, i + rounds) : null;
       }
       const dateOf = (r: number) => (planned && planned[0]! >= notBefore ? planned[r - 1]! : addDays(first, (r - 1) * fs.meta.intervalDays));
+      // continentais: semana do anexo da CONMEBOL e, dentro dela, o dia (terça a quinta) com mais descanso para os dois clubes
+      const perFixture = continental ? continentalFixtureDates(db, fs.meta.formatId, id, N(comp.season), notBefore, b.fixtures) : null;
       const ins = db.prepare('INSERT INTO fixtures (id, competition_id, round, match_date, home_club_id, away_club_id, stage, stage_tie, leg, neutral) VALUES (?,?,?,?,?,?,?,?,?,?)');
       const perRound = new Map<number, number>();
-      for (const f of b.fixtures) {
+      const newIds: string[] = [];
+      b.fixtures.forEach((f, i) => {
         const idx = (perRound.get(f.round) ?? 0) + 1;
         perRound.set(f.round, idx);
-        ins.run(`${compId}_${id}_r${String(f.round).padStart(2, '0')}_m${idx}`, compId, offset + f.round, dateOf(f.round),
+        const fid = `${compId}_${id}_r${String(f.round).padStart(2, '0')}_m${idx}`;
+        ins.run(fid, compId, offset + f.round, perFixture ? perFixture[i]! : dateOf(f.round),
           f.home, f.away, id, f.tie ?? null, f.tie !== undefined ? (f.leg ?? 1) : null, f.neutral ? 1 : 0);
-      }
+        newIds.push(fid);
+      });
+      if (continental) continentalStageBuilt(db, compId, fs.def, id, b.stage, newIds, notBefore);
+      else clearClashesOfNational(db, newIds);
       built++;
     }
   }
@@ -115,29 +138,49 @@ function buildPending(db: SqlDb, compId: string, notBefore: string): number {
  * Cria um campeonato em fases (a 1ª fase já com os jogos): divisão nacional (`leagueId`) ou estadual (`leagueId` null, tipo 'state').
  * `seeds`: participantes do mais forte ao mais fraco.
  */
-export function createFormatCompetition(db: SqlDb, c: { compId: string; leagueId: string | null; countryId: string; season: number; name: string; def: FormatDef; seeds: string[]; start: string; weekday: number; intervalDays: number }): void {
+export function createFormatCompetition(db: SqlDb, c: { compId: string; leagueId: string | null; countryId: string | null; season: number; name: string; def: FormatDef; seeds: string[]; start: string; weekday: number; intervalDays: number;
+  /** competição de vários países (sem país, com a confederação) */ kind?: 'continental'; confederation?: string; extra?: Partial<FormatMeta> }): void {
   if (c.seeds.length !== c.def.size) throw new Error(`${c.def.name}: ${c.seeds.length} clubes para um formato de ${c.def.size}.`);
-  const meta: FormatMeta = { formatId: c.def.id, seeds: c.seeds, start: c.start, weekday: c.weekday, intervalDays: c.intervalDays };
-  db.prepare('INSERT INTO competitions (id, kind, league_id, country_id, season, name, format_json) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(c.compId, c.leagueId ? 'league' : 'state', c.leagueId, c.countryId, c.season, c.name, JSON.stringify(meta));
+  if (new Set(c.seeds).size !== c.seeds.length) throw new Error(`${c.def.name}: clube repetido nas sementes.`);
+  const meta: FormatMeta = { ...c.extra, formatId: c.def.id, seeds: c.seeds, start: c.start, weekday: c.weekday, intervalDays: c.intervalDays };
+  db.prepare('INSERT INTO competitions (id, kind, league_id, country_id, season, name, format_json, confederation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(c.compId, c.kind ?? (c.leagueId ? 'league' : 'state'), c.leagueId, c.countryId, c.season, c.name, JSON.stringify(meta), c.confederation ?? null);
   buildPending(db, c.compId, c.start);
 }
 
 /** Depois de uma rodada: monta as fases que ficaram definidas (jogos a partir de 4 dias depois) e encerra os campeonatos concluídos. */
 export function advanceFormats(db: SqlDb, date: string): void {
-  for (const r of db.prepare("SELECT id FROM competitions WHERE kind IN ('league', 'state') AND format_json IS NOT NULL AND status <> 'finished'").all()) {
+  payContinentalMatchday(db, date);
+  for (const r of db.prepare("SELECT id, kind FROM competitions WHERE kind IN ('league', 'state', 'continental') AND format_json IS NOT NULL AND status <> 'finished'").all()) {
     const id = S(r.id);
     const fs = formatStateOf(db, id);
     if (!fs) continue;
-    if (formatComplete(fs.def, fs.state)) { db.prepare("UPDATE competitions SET status = 'finished' WHERE id = ?").run(id); finishEstadual(db, id, fs, date); continue; }
+    if (formatComplete(fs.def, fs.state)) {
+      db.prepare("UPDATE competitions SET status = 'finished' WHERE id = ?").run(id);
+      if (S(r.kind) === 'continental') finishContinental(db, id, fs, date); else finishEstadual(db, id, fs, date);
+      continue;
+    }
     if (buildableStages(fs.def, fs.state).length) buildPending(db, id, addDays(date, 4));
   }
 }
 
 /** Regra do jogo de mata-mata de um campeonato em fases: desempate no jogo decisivo (null = pontos corridos ou jogo de ida). */
-export function formatFixtureRule(db: SqlDb, fixtureId: string): { decider: MatchDecider | undefined; neutral: boolean; stageName: string; leg: 1 | 2 | null } | null {
-  const f = db.prepare('SELECT competition_id, stage, stage_tie, leg, neutral FROM fixtures WHERE id = ? AND stage IS NOT NULL').get(fixtureId);
+export function formatFixtureRule(db: SqlDb, fixtureId: string): { decider: MatchDecider | undefined; neutral: boolean; stageName: string; leg: 1 | 2 | null;
+  /** continentais: cartões e suspensões só nesta competição (`cup_discipline`), com o limite de amarelos do regulamento */ discipline?: { competitionId: string; yellowLimit: number } } | null {
+  const f = db.prepare('SELECT f.competition_id, f.stage, f.stage_tie, f.leg, f.neutral, c.kind, c.season, c.format_json FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.id = ? AND f.stage IS NOT NULL').get(fixtureId);
   if (!f) return null;
+  if (S(f.kind) === 'continental') {
+    const discipline = { competitionId: S(f.competition_id), yellowLimit: CONMEBOL_YELLOW_LIMIT };
+    if (f.stage_tie == null) { // fase de grupos: sem desempate, só a disciplina e o nome da fase
+      const m = JSON.parse(S(f.format_json)) as FormatMeta;
+      const def = formatById(m.formatId, m.seeds.length, N(f.season));
+      return { decider: undefined, neutral: false, stageName: def ? stageOf(def, S(f.stage)).name : S(f.stage), leg: null, discipline };
+    }
+    const fs = formatStateOf(db, S(f.competition_id));
+    if (!fs) return null;
+    const leg = (f.leg == null ? 1 : N(f.leg)) as 1 | 2;
+    return { decider: deciderFor(fs.def, fs.state, S(f.stage), N(f.stage_tie), leg) ?? undefined, neutral: N(f.neutral) === 1, stageName: stageOf(fs.def, S(f.stage)).name, leg: f.leg == null ? null : leg, discipline };
+  }
   const meta = f.stage_tie == null ? formatMetaOf(db, S(f.competition_id)) : null;
   if (f.stage_tie == null && meta?.formatId !== COPA_RUSSIA_ID) return null; // pontos corridos: só a fase de grupos da Copa da Rússia tem pênaltis
   const fs = formatStateOf(db, S(f.competition_id));
@@ -331,11 +374,11 @@ export function getStagedView(db: SqlDb, compId: string): StagedViewDto {
   const nameOf = (id: string) => { let n = names.get(id); if (n === undefined) { n = S(db.prepare('SELECT name FROM clubs WHERE id = ?').get(id)?.name ?? '?'); names.set(id, n); } return n; };
   const club = (id: string | null) => (id ? { id, name: nameOf(id) } : null);
   const out = outcomes(fs.def, fs.state);
-  const fixtures = db.prepare(`SELECT f.id, f.stage, f.stage_tie, f.leg, f.match_date, f.home_club_id, f.home_goals, f.away_goals, f.status,
+  const fixtures = db.prepare(`SELECT f.id, f.stage, f.stage_tie, f.leg, f.match_date, f.home_club_id, f.home_goals, f.away_goals, f.status, f.neutral,
       EXISTS (SELECT 1 FROM matches m WHERE m.fixture_id = f.id) AS rep FROM fixtures f WHERE f.competition_id = ? AND f.stage_tie IS NOT NULL ORDER BY f.match_date, f.leg`).all(compId);
   const letter = (i: number) => String.fromCharCode(65 + i);
   return {
-    id: compId, name: S(c.name), kind: S(c.kind) === 'state' ? 'state' : 'league', status: S(c.status) as StagedViewDto['status'], regulation: fs.def.regulation, source: { ...fs.def.source },
+    id: compId, name: S(c.name), kind: S(c.kind) === 'state' ? 'state' : S(c.kind) === 'continental' ? 'continental' : 'league', status: S(c.status) as StagedViewDto['status'], regulation: fs.def.regulation, source: { ...fs.def.source },
     champion: club(out.champion), titles: out.titles.map((t) => ({ name: t.name, club: club(t.club) })),
     promoted: out.promoted.map((id) => club(id)!), relegated: out.relegated.map((id) => club(id)!),
     stages: fs.def.stages.map((stage) => {
@@ -358,7 +401,7 @@ export function getStagedView(db: SqlDb, compId: string): StagedViewDto {
         const pens = st.results.find((r) => r.tie === i && r.pens)?.pens ?? null;
         return {
           a: club(tie.a)!, b: club(tie.b)!, involvesUser: tie.a === user || tie.b === user,
-          games: games.map((g) => ({ fixtureId: S(g.id), date: S(g.match_date), homeId: S(g.home_club_id), homeGoals: g.home_goals == null ? null : N(g.home_goals), awayGoals: g.away_goals == null ? null : N(g.away_goals), hasReport: N(g.rep) === 1 })),
+          games: games.map((g) => ({ fixtureId: S(g.id), date: S(g.match_date), homeId: S(g.home_club_id), homeGoals: g.home_goals == null ? null : N(g.home_goals), awayGoals: g.away_goals == null ? null : N(g.away_goals), hasReport: N(g.rep) === 1, neutral: N(g.neutral) === 1 })),
           aggregate: played.length ? [ga, gb] as [number, number] : null, winner: o?.winner ?? null, pens,
         };
       }) };
@@ -440,10 +483,13 @@ export function regionalPool(db: SqlDb, countryId: string, season: number): stri
 }
 
 /**
- * Clubes "em competições Conmebol", que não jogam as regionais (ADAPT: o jogo ainda não tem continentais): os da Série A que terminaram a
- * temporada anterior entre os 12 primeiros; na primeira temporada, os 12 de maior reputação da Série A.
+ * Clubes "em competições Conmebol", que não jogam as regionais: os classificados para a Libertadores e a Sul-Americana da temporada. Sem as
+ * continentais (universo sem os países da CONMEBOL, saves antigos): os da Série A que terminaram a temporada anterior entre os 12 primeiros;
+ * na primeira temporada, os 12 de maior reputação da Série A (ADAPT).
  */
 function conmebolClubs(db: SqlDb, countryId: string, season: number): Set<string> {
+  const real = conmebolParticipants(db, countryId, season);
+  if (real) return real;
   const prev = db.prepare(`SELECT r.club_id FROM season_results r JOIN competitions c ON c.id = r.competition_id JOIN leagues l ON l.id = c.league_id
     WHERE c.country_id = ? AND l.tier = 1 AND l.active = 1 AND r.season = ? AND r.position <= 12`).all(countryId, season - 1).map((r) => S(r.club_id));
   if (prev.length) return new Set(prev);

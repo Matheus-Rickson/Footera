@@ -5,14 +5,21 @@
 import type { SqlDb } from '../types.ts';
 import { seasonBounds, seasonLabelFor, type SeasonStart } from '../../game/career-engine/calendar.ts';
 import { seasonYearOf } from '../../game/career-engine/contracts.ts';
+import { CONMEBOL_COUNTRY_CODES } from '../../game/continental-engine/slots.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 
 export interface CountrySeason { countryId: string; season: number; starts: string; turnover: string; transition: boolean; start: SeasonStart; label: string }
 
-/** Competição da temporada corrente do seu país (fragmento SQL; a tabela de competições precisa do apelido `c`). */
-export const CURRENT_COMP = '(c.season = (SELECT cs.season FROM country_seasons cs WHERE cs.country_id = c.country_id))';
+const CONMEBOL_SQL = CONMEBOL_COUNTRY_CODES.map((c) => `'${c}'`).join(', ');
+
+/**
+ * Competição da temporada corrente (fragmento SQL; a tabela de competições precisa do apelido `c`): a do país (`country_seasons`); continental (sem país), a maior temporada entre os países da confederação
+ * (os países da CONMEBOL jogam no ano civil; quando o primeiro vira, a edição nova passa a ser a atual).
+ */
+export const CURRENT_COMP = `(c.season = CASE WHEN c.country_id IS NULL THEN (SELECT MAX(cs.season) FROM country_seasons cs JOIN countries co ON co.id = cs.country_id
+  WHERE co.code IN (${CONMEBOL_SQL})) ELSE (SELECT cs.season FROM country_seasons cs WHERE cs.country_id = c.country_id) END)`;
 
 const rowTo = (r: Record<string, unknown>): CountrySeason => {
   const start = S(r.season_start) as SeasonStart, transition = N(r.transition) === 1;

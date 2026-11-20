@@ -10,7 +10,7 @@ import {
   advanceCareer, careerSaveFile, closeAllCareerDbs, continueCareerDay, deleteCareerSave, createCareerSave, getLeaders, getCalendar, getReport, getRound, getTable, listCareerSaves, listCompetitionsFor, openCareer,
   simulateCareerMatchday, previewCareerLiveMatch, finishCareerLiveMatch, getFinance, financeLedger, sponsorNegotiate, sponsorAccept, sponsorTerminate, sponsorSearch, getTransfers, searchTransferMarket, sendTransferOffer, getTransferNegotiation, proposeTransferFee, answerTransferOffer, answerWithCounterOffer, rescindContract, listPlayerForSale, getTactics, saveTacticScheme, duplicateTacticScheme, deleteTacticScheme, activateTacticScheme, getAutoLineup,
   getSeason, beginNextSeason, listContracts, offerRenewal, listNews, socialFeed, markInboxRead, careerHistory, trophyRoom,
-  getBoard, coachCareer, enrollLicenseFor, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView,
+  getBoard, coachCareer, enrollLicenseFor, answerJobOffer, askBudget, spendCoachPointFor, clubInfo, clubProfile, conversations, playerTalk, boardTalk, aiCoachInfo, unemployedCoaches, cupBracket, stagedView, conmebolRankingFor,
   getTraining, setTrainingIntensity, setTrainingDelegated, setTrainingFocus, setTrainingRoleFocus, setTrainingWeekSession, applyTrainingTemplate, setTrainingAutoAdjust, setTrainingGkSession, getStaff, hireStaffFor, fireStaffFor, getMedical, getInfrastructure, startUpgradeFor,
   playerProfile, getScouting, hireScoutFor, fireScoutFor, createScoutTaskFor, previewScoutTaskFor, removeScoutTaskFor, scoutTaskPlayersFor, scoutedPlayersFor, shortlistFor, getYouth, promoteYouthFor, releaseYouthFor,
 } from '../services/saveService.node.ts';
@@ -330,6 +330,7 @@ function registerHandlers(): void {
   handle('board:get', ref, (i) => getBoard(dataDir(), i.profileId, i.careerId));
   handle('cup:bracket', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => cupBracket(dataDir(), i.profileId, i.careerId, i.competitionId));
   handle('staged:view', ref.extend({ competitionId: z.string().min(1).max(120) }), (i) => stagedView(dataDir(), i.profileId, i.careerId, i.competitionId));
+  handle('conmebol:ranking', ref, (i) => conmebolRankingFor(dataDir(), i.profileId, i.careerId));
   handle('club:info', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubInfo(dataDir(), i.profileId, i.careerId, i.clubId));
   handle('club:profile', ref.extend({ clubId: z.string().min(1).max(80) }), (i) => clubProfile(dataDir(), i.profileId, i.careerId, i.clubId));
   handle('talk:list', ref, (i) => conversations(dataDir(), i.profileId, i.careerId));

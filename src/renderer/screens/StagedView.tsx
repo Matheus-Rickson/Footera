@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Trophy } from 'lucide-react';
 import type { StagedViewDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, unwrap } from '../util.ts';
+import { errMsg, unwrap } from '../util.ts';
+import { TieList } from './TieList.tsx';
 import { ClubCrest } from '../flags.tsx';
 import type { useImages } from '../images.ts';
 
@@ -70,24 +71,11 @@ export function StagedView({ profileId, careerId, competitionId, refreshKey, pic
               ))}
             </div>
           ) : (
-            <ul className="sv-ties">
-              {stage.ties.map((t, i) => (
-                <li key={i} className={`sv-tie ${t.involvesUser ? 'mine' : ''}`}>
-                  <span className={`sv-side ${t.winner === t.a.id ? 'sv-win' : ''}`}>{clubBtn(t.a)}</span>
-                  <span className="sv-score">
-                    {t.games.map((g) => {
-                      const aHome = g.homeId === t.a.id;
-                      const sa = aHome ? g.homeGoals : g.awayGoals, sb = aHome ? g.awayGoals : g.homeGoals;
-                      const label = sa == null ? fmtDate(g.date).slice(0, 5) : `${sa} x ${sb}`;
-                      return g.hasReport && onOpenMatch ? <button key={g.fixtureId} className="cp-club-btn sv-game" title="Ver o relatório" onClick={() => onOpenMatch(g.fixtureId)}>{label}</button> : <span key={g.fixtureId} className="sv-game">{label}</span>;
-                    })}
-                    {t.aggregate && stage.legs > 1 && <em className="muted small">agregado {t.aggregate[0]} x {t.aggregate[1]}</em>}
-                    {t.pens && <em className="muted small">pênaltis: {t.pens === t.a.id ? t.a.name : t.b.name}</em>}
-                  </span>
-                  <span className={`sv-side sv-side-b ${t.winner === t.b.id ? 'sv-win' : ''}`}>{clubBtn(t.b)}</span>
-                </li>
-              ))}
-            </ul>
+            <TieList img={img} onClub={onClub} onOpenMatch={onOpenMatch} ties={stage.ties.map((t, i) => ({
+              key: String(i), a: t.a, b: t.b, mine: t.involvesUser, winner: t.winner, games: t.games,
+              notes: [t.aggregate && stage.legs > 1 ? `agregado ${t.aggregate[0]} x ${t.aggregate[1]}` : '', t.pens ? `pênaltis: ${t.pens === t.a.id ? t.a.name : t.b.name}` : '',
+                t.games.some((g) => g.neutral) ? 'campo neutro' : ''].filter(Boolean),
+            }))} />
           )}
         </div>
       </section>

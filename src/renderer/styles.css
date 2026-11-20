@@ -1194,11 +1194,6 @@ button.cs-coach:hover:not(:disabled) { background: var(--surface-3); border-colo
 /* copas nacionais (Competições) */
 .cp-cup-head { display: grid; gap: 4px; margin-top: 8px; }
 .cp-cup-champ { color: var(--primary-text); font-weight: 600; }
-.cp-cup { display: grid; gap: 18px; }
-.cp-cup-stage h3 { margin: 0 0 2px; font-size: .95rem; display: flex; gap: 8px; align-items: baseline; }
-.cp-cup-ties td { padding: 4px 8px; }
-.cp-cup-score { text-align: center; white-space: nowrap; font-weight: 600; display: flex; gap: 10px; justify-content: center; }
-button.cp-cup-win { font-weight: 700; }
 /* calendário: jogo de copa (nome da copa, fase e faixa dourada à esquerda) */
 .cl-day.cl-cup { border-left: 3px solid var(--warning); }
 .cl-day.cl-cup .cl-meta { color: var(--warning-text); }
@@ -2086,3 +2081,14 @@ li.tf-by-user { outline: 1px solid var(--primary); }
   .md > .md-grid { grid-template-columns: 1fr; }
   .md .md-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Ranking de clubes CONMEBOL (Competições) */
+.cn-rank td:first-child { width: 2.5rem; }
+.cn-country { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Confrontos de mata-mata (copas e competições em fases) */
+.sv-ties.tl-two { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
+.tl-game { display: flex; gap: 8px; align-items: baseline; }
+.tl-date { font-style: normal; font-size: .72rem; font-weight: 500; color: var(--text-muted); }
+.tl-notes { text-align: center; }
+.tl-stage { margin: 0 0 10px; }

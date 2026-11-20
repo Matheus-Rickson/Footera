@@ -5,6 +5,9 @@ import { ageOn } from '../../shared/date.ts';
 import { getClubInfo } from './aiCoachRepository.ts';
 import { FIXTURE_SELECT, getCareerState, getCompetitionTable, toFixture } from './competitionRepository.ts';
 import { CURRENT_COMP } from './countrySeasonRepository.ts';
+import { formatStateOf } from './formatRepository.ts';
+import { clubStageIn } from './continentalRepository.ts';
+import { stageOf } from '../../game/format-engine/engine.ts';
 
 const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
@@ -35,6 +38,14 @@ export function getClubProfile(db: SqlDb, clubId: string): ClubProfileDto {
       const status: ClubProfileDto['cups'][number]['status'] = champion ? 'champion' : last.winner == null ? 'alive' : S(last.winner) === clubId ? 'alive' : 'eliminated';
       return { competitionId: S(c.id), name: S(c.name), stage: last.stage_name == null ? '' : S(last.stage_name), status };
     });
+  // continentais da temporada (Libertadores, Sul-Americana, Recopa) em que o clube jogou ou vai jogar
+  for (const c of db.prepare(`SELECT c.id, c.name FROM competitions c WHERE c.kind = 'continental' AND ${CURRENT_COMP}
+      AND EXISTS (SELECT 1 FROM fixtures f WHERE f.competition_id = c.id AND (f.home_club_id = ? OR f.away_club_id = ?)) ORDER BY c.id`).all(clubId, clubId)) {
+    const fs = formatStateOf(db, S(c.id));
+    if (!fs) continue;
+    const r = clubStageIn(fs.def, fs.state, clubId);
+    cups.unshift({ competitionId: S(c.id), name: S(c.name), stage: r.last ? stageOf(fs.def, r.last.id).name : '', status: r.champion ? 'champion' : r.eliminated ? 'eliminated' : 'alive' });
+  }
   const fx = (where: string, order: string) => db.prepare(`${FIXTURE_SELECT} WHERE (f.home_club_id = ? OR f.away_club_id = ?) AND ${where} ORDER BY ${order} LIMIT 5`).all(clubId, clubId).map(toFixture);
   const recent = fx("f.status = 'played'", 'f.match_date DESC, f.id DESC').reverse();
   const upcoming = fx("f.status = 'scheduled'", 'f.match_date, f.id');

@@ -17,6 +17,8 @@ import type { Poster } from './financeRepository.ts';
 import type { CupBracketDto } from '../../shared/api.ts';
 import { addNews } from './newsRepository.ts';
 import { paySponsorBonuses } from './sponsorRepository.ts';
+import { CONMEBOL_COUNTRY_CODES } from '../../game/continental-engine/slots.ts';
+import { conmebolWeeks } from '../../game/continental-engine/calendar.ts';
 import { getCareerState } from './careerRepository.ts';
 import { countrySeason } from './countrySeasonRepository.ts';
 import { seasonLabelFor, yearInSeason } from '../../game/career-engine/calendar.ts';
@@ -99,6 +101,8 @@ export function createCups(db: SqlDb, opts: { countryId?: string; notBefore?: st
         if (!est || est.division === 2) continue; // segundas divisões (A2 de SP e RJ): clubes que não entram na Copa do Brasil pelo estadual
         for (const d of estadualPool(season, S(e.f)).slice(0, formatRounds(est.format(season)))) avoid.add(d);
       }
+      // países da CONMEBOL: as semanas da Libertadores e da Sul-Americana (quartas-feiras do anexo e as finais), mesmo antes de as competições existirem
+      if (CONMEBOL_COUNTRY_CODES.includes(S(co.code))) for (const d of conmebolWeeks(season)) avoid.add(d);
       dates = cupDates(format, season, avoid, start);
     } catch { continue; } // formato que não fecha com os clubes do universo (pacote): o país fica sem copa nesta temporada
     if (notBefore && dates[0]![0]! < notBefore) continue;

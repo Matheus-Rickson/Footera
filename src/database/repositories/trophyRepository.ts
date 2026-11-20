@@ -16,7 +16,7 @@ const S = (v: unknown) => String(v);
 const N = (v: unknown) => Number(v);
 
 /** Ordem das prateleiras. */
-export const TROPHY_KIND_ORDER: TrophyKindDto[] = ['league', 'cup', 'supercup', 'state', 'regional', 'other'];
+export const TROPHY_KIND_ORDER: TrophyKindDto[] = ['league', 'continental', 'cup', 'supercup', 'state', 'regional', 'other'];
 
 const LABEL_RE = /\s+(\d{4}(?:\/\d{2,4})?)\s*$/;
 /** Rótulo da temporada tirado do nome da competição ("Premier League 2026/27" → "2026/27"; ano civil → "2026"). */
@@ -36,6 +36,10 @@ export function classifyCompetition(c: CompRow): Classified {
     return { key: S(c.league_id), name: c.league_name != null ? S(c.league_name) : base, kind: 'league', tier: c.tier == null ? null : N(c.tier), logo: { kind: 'leagues', id: S(c.league_id) }, label };
   }
   const fmt = c.format_json == null ? null : (JSON.parse(S(c.format_json)) as { format?: { id?: string; kind?: string; name?: string }; formatId?: string });
+  if (c.kind === 'continental') { // Libertadores, Sul-Americana, Recopa: a taça é a do formato (conmebol-lib…)
+    const key = fmt?.formatId ?? S(c.id).replace(/_\d{4}$/, '');
+    return { key, name: base, kind: 'continental', tier: null, logo: { kind: 'cups', id: key }, label };
+  }
   if (c.kind === 'cup') {
     const fid = fmt?.format?.id;
     const key = fid ?? S(c.id).replace(/_\d{4}$/, '');

@@ -66,6 +66,11 @@ interface StoredReport {
 interface FixtureRow { id: string; competitionId: string; competitionName: string; round: number; date: string; homeId: string; awayId: string; homeName: string; awayName: string; cup?: ReturnType<typeof cupFixtureRule>;
   /** mata-mata de campeonato em fases (Séries C/D, estaduais): desempate do jogo decisivo; os cartões continuam os da liga */ ko?: ReturnType<typeof formatFixtureRule> }
 
+/** Disciplina por competição (cartões e suspensões só nela): copas nacionais e continentais; null = a da liga. */
+function discOf(f: FixtureRow): { competitionId: string; yellowLimit: number } | null {
+  return f.cup ? { competitionId: f.cup.competitionId, yellowLimit: f.cup.yellowLimit } : f.ko?.discipline ?? null;
+}
+
 function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasReport = true): MatchSummaryDto {
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
 }
@@ -76,7 +81,7 @@ export interface LiveOptions { interventions: LiveInterventionInput[]; controlUn
 
 /** Monta os dois times (escalação, táticas) exatamente como na simulação definitiva. Só lê o banco. */
 function prepareFixture(db: SqlDb, f: FixtureRow, ctx: Ctx) {
-  const cupId = f.cup?.competitionId;
+  const cupId = discOf(f)?.competitionId;
   const home = loadSquad(db, f.homeId, f.date, cupId ? cupSuspensions(db, cupId, f.homeId) : undefined), away = loadSquad(db, f.awayId, f.date, cupId ? cupSuspensions(db, cupId, f.awayId) : undefined);
   const hs = clubState(db, f.homeId), as = clubState(db, f.awayId);
   const mk = (sq: Squad, id: string, name: string, st: ReturnType<typeof clubState>): TeamSheet => {
@@ -139,11 +144,15 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   applyResult(db, f.id, out.homeGoals, out.awayGoals);
   if (f.cup) recordCupResult(db, f.id, out, ctx.post);
   if (f.ko) recordFormatShootout(db, f.id, out);
+  if (f.ko?.discipline) { // continentais: cartões de cada lado (critério de fair play dos grupos)
+    const sum = (team: 0 | 1, k: 'yellow' | 'red') => out.players.filter((r) => r.team === team).reduce((t, r) => t + (r[k] ?? 0), 0);
+    db.prepare('UPDATE fixtures SET cards_json = ? WHERE id = ?').run(JSON.stringify({ homeRed: sum(0, 'red'), homeYellow: sum(0, 'yellow'), awayRed: sum(1, 'red'), awayYellow: sum(1, 'yellow') }), f.id);
+  }
   const report = storedOf(f, ctx, prep, out);
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
-  // campo neutro: a renda é do organizador (final da Copa do Brasil, Copa Argentina), não de um dos clubes
-  if (!f.cup?.neutral) recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
+  // campo neutro: a renda é do organizador (finais da Copa do Brasil, da Copa Argentina, dos estaduais e das continentais), não de um dos clubes
+  if (!f.cup?.neutral && !f.ko?.neutral) recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
 
   // ---- consequências nos jogadores ----
   const byId = new Map([...home.players, ...away.players].map((p) => [p.id, p]));
@@ -180,9 +189,10 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
     const st = statusOf(sq, p.id);
     const LEAGUE_YELLOWS = 5;
     let y = st.yellows, susp = st.suspension, cupSusp: { before: number; after: number; byYellow: boolean } | null = null;
-    if (f.cup) { // copa: cartões e suspensões valem só nela, com o limite do regulamento
+    const disc = discOf(f);
+    if (disc) { // copa ou continental: cartões e suspensões valem só nela, com o limite do regulamento
       const before = st.suspension;
-      const res = applyCupCards(db, f.cup.competitionId, p.id, r.yellow, r.red > 0 ? ((redKind.get(p.id) ?? 1) as 1 | 2) : 0, before > 0 && sq.suspendedOut.indexOf(p.id) < 0, f.cup.yellowLimit);
+      const res = applyCupCards(db, disc.competitionId, p.id, r.yellow, r.red > 0 ? ((redKind.get(p.id) ?? 1) as 1 | 2) : 0, before > 0 && sq.suspendedOut.indexOf(p.id) < 0, disc.yellowLimit);
       cupSusp = { before, after: res.suspension, byYellow: res.byYellow };
       const ps = db.prepare('SELECT yellow_cards, suspension_matches FROM player_status WHERE player_id = ?').get(p.id);
       y = N(ps?.yellow_cards ?? 0); susp = N(ps?.suspension_matches ?? 0);
@@ -193,10 +203,10 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
       // quem estava suspenso e jogou (escalação de emergência) cumpre a suspensão
       if (st.suspension > 0 && sq.suspendedOut.indexOf(p.id) < 0) susp = Math.max(0, susp - 1);
     }
-    const leagueStatus = f.cup ? { yellows: y, suspension: susp } : st;
+    const leagueStatus = disc ? { yellows: y, suspension: susp } : st;
     const injuredDays = r.injuredDays > 0 ? Math.max(1, Math.round(r.injuredDays * medical.get(clubId)!)) : 0; // médico e departamento médico encurtam
     const injuryUntil = injuredDays > 0 ? addDays(f.date, injuredDays) : st.injuryUntil;
-    if (y !== leagueStatus.yellows || susp !== leagueStatus.suspension || injuryUntil !== st.injuryUntil || (f.cup && injuredDays > 0)) {
+    if (y !== leagueStatus.yellows || susp !== leagueStatus.suspension || injuryUntil !== st.injuryUntil || (disc && injuredDays > 0)) {
       upStatus.run(p.id, injuryUntil, injuredDays > 0 ? `Lesão (${injuredDays} dias)` : null, susp, y);
     }
     if (clubId === ctx.userClub) {
@@ -206,14 +216,15 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
         { actionLabel: 'Ajustar a escalação em Táticas' });
       const newSusp = cupSusp ? (cupSusp.after > Math.max(0, cupSusp.before - 1) ? cupSusp.after : 0) : susp > st.suspension && sq.suspendedOut.indexOf(p.id) < 0 ? susp : 0;
       if (newSusp > 0) addNews(db, f.date, 'squad', `Suspensão: ${name} cumpre ${newSusp} jogo(s)${cupSusp ? ` na ${f.competitionName}` : ''}`,
-        `${name} ${r.red > 0 ? 'foi expulso' : `atingiu o limite de cartões amarelos (${cupSusp ? f.cup!.yellowLimit : LEAGUE_YELLOWS})`} na partida contra o ${opp} e está suspenso por ${newSusp} jogo(s)${cupSusp ? ` da ${f.competitionName} (a suspensão vale só nesta copa)` : ''}.\n\nEle não pode ser escalado na(s) próxima(s) partida(s)${cupSusp ? ' desta competição' : ''}. Defina o substituto em Táticas.`,
+        `${name} ${r.red > 0 ? 'foi expulso' : `atingiu o limite de cartões amarelos (${cupSusp ? disc!.yellowLimit : LEAGUE_YELLOWS})`} na partida contra o ${opp} e está suspenso por ${newSusp} jogo(s)${cupSusp ? ` da ${f.competitionName} (a suspensão vale só nesta competição)` : ''}.\n\nEle não pode ser escalado na(s) próxima(s) partida(s)${cupSusp ? ' desta competição' : ''}. Defina o substituto em Táticas.`,
         { actionLabel: 'Ajustar a escalação em Táticas' });
     }
   }
   // a conversa no vestiário vale só durante esta partida (out.moraleDelta não é gravado)
   for (const [sq, id] of [[home, f.homeId], [away, f.awayId]] as const) {
     for (const pid of sq.suspendedOut) {
-      if (f.cup) { serveCupSuspension(db, f.cup.competitionId, pid); continue; } // cumpriu a suspensão da copa (a da liga continua)
+      const disc = discOf(f);
+      if (disc) { serveCupSuspension(db, disc.competitionId, pid); continue; } // cumpriu a suspensão da copa ou continental (a da liga continua)
       const st = statusOf(sq, pid); upStatus.run(pid, st.injuryUntil, null, Math.max(0, st.suspension - 1), st.yellows);
     }
     const sheet = id === f.homeId ? hSheet : aSheet;
@@ -311,8 +322,10 @@ function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'f
   const mom = r.manOfTheMatch ? { id: r.manOfTheMatch, name: names.get(r.manOfTheMatch) ?? '' } : null;
   // força atual só dos jogadores do clube do usuário (de outros clubes o usuário só vê estimativas)
   const userClub = getCareerState(db).clubId;
-  const comp = db.prepare("SELECT c.kind, c.league_id, json_extract(c.format_json, '$.format.id') AS fid FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.id = ?").get(meta.fixtureId);
-  const logo: MatchReportDto['logo'] = !comp ? null : comp.kind === 'cup' ? (comp.fid == null ? null : { kind: 'cups', id: S(comp.fid) }) : comp.league_id == null ? null : { kind: 'leagues', id: S(comp.league_id) };
+  const comp = db.prepare("SELECT c.kind, c.league_id, json_extract(c.format_json, '$.format.id') AS fid, json_extract(c.format_json, '$.formatId') AS fmt FROM fixtures f JOIN competitions c ON c.id = f.competition_id WHERE f.id = ?").get(meta.fixtureId);
+  // continentais: imagem "cups" com o id do formato (conmebol-lib, conmebol-sud, conmebol-rec), se o pacote tiver
+  const logo: MatchReportDto['logo'] = !comp ? null : comp.kind === 'cup' ? (comp.fid == null ? null : { kind: 'cups', id: S(comp.fid) })
+    : comp.kind === 'continental' ? (comp.fmt == null ? null : { kind: 'cups', id: S(comp.fmt) }) : comp.league_id == null ? null : { kind: 'leagues', id: S(comp.league_id) };
   const levels: Record<string, number> = {};
   for (const row of db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(userClub)) if (names.has(S(row.id))) levels[S(row.id)] = N(row.overall);
   return {

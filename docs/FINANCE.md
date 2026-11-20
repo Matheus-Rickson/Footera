@@ -132,3 +132,24 @@ estavam no piso), estrutura e estádio cobrados como num clube grande e a cota d
   receita estimada cai de € 1,62 mi para € 1,06 mi por ano. O déficit previsto passa de −€ 389 mil para −€ 479 mil por ano. Ele vem de 7 contratos
   de € 9,9–10,6 mil/mês (do pacote "1" e de contratações), que os saves não reduzem (contrato assinado).
 - O universo em cache no disco é refeito (`UNIVERSE_CACHE_FORMAT` 2).
+
+## Prêmios continentais da CONMEBOL (v0.8.13)
+- Valores reais de 2026 em dólares (anúncio de 07/04/2026, **[SEC]**; tabela em `docs/CONTINENTAIS.md`), convertidos por 1 € = US$ 1,1557.
+  **Não escalam pela economia do país** (a CONMEBOL paga o mesmo a todos). Pagos pelo `makePoster` (categoria `prize`). Entram também no
+  extrato do usuário: participação na fase, jogo em casa e vitória nos grupos, campeão e vice.
+- **Medido** (base fixa, carreira nova no maior clube da Série A, temporada 2026 inteira, 2 sementes): os prêmios continentais somam
+  **15% e 18% da receita total dos 20 clubes da Série A**. Por campanha:
+
+  | Campanha | Prêmio continental | Parte da receita do clube no ano |
+  |---|---|---|
+  | Libertadores: eliminado nas preliminares | € 0,4 mi | 2% |
+  | Sul-Americana: grupos / play-off | € 0,8–1,4 mi | 5–7% |
+  | Sul-Americana: oitavas a semifinal | € 1,8–3,2 mi | 7–15% |
+  | Libertadores: oitavas / quartas / semifinal | € 4,6–4,9 / 6,0–6,6 / 8,3 mi | 11–17% / 19–21% / 21–22% |
+  | Sul-Americana: campeão | € 12,0 mi | 33% |
+  | Libertadores: vice / campeão | € 15,0 / 29,7 mi | 40% / 52–54% |
+
+- **Fora da realidade (decidido em 20/11/2026: manter os valores oficiais por enquanto; se necessário, uma nova calibração das finanças do jogo)**: no futebol real o título da Libertadores é ~10–15% da receita anual de um clube grande do Brasil
+  (receitas de € 150–220 mi). No jogo a receita dos clubes da Série A vai de € 16 a 57 mi por ano (a calibração das Fases 6 e 9 mira a margem,
+  não o tamanho real das receitas brasileiras), então os prêmios reais em dólar pesam 3 a 4 vezes mais. Opções: manter (valores oficiais),
+  escalar os prêmios pela economia do país, ou recalibrar as receitas da Série A para cima. O usuário escolheu manter.

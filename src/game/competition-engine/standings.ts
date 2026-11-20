@@ -8,7 +8,8 @@ export interface StandingRow {
   goalsFor: number; goalsAgainst: number; goalDiff: number; points: number;
 }
 
-type Tiebreaker = LeagueRules['tiebreakers'][number];
+/** `fairPlay` (continentais CONMEBOL): menos cartões vermelhos e, depois, menos amarelos (`opts.cards`). */
+export type Tiebreaker = LeagueRules['tiebreakers'][number] | 'fairPlay';
 
 function emptyRow(teamId: string): StandingRow {
   return { teamId, position: 0, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 };
@@ -52,13 +53,19 @@ function groupBy<T>(items: readonly T[], key: (t: T) => string): T[][] {
  * Empates absolutos são resolvidos por ID da equipe, para o resultado ser determinístico.
  */
 export function computeStandings(teamIds: readonly string[], results: readonly MatchResult[], rules: Pick<LeagueRules, 'pointsWin' | 'pointsDraw'> & { tiebreakers: readonly Tiebreaker[] },
-  opts: { /** conta os jogos contra equipes de fora do conjunto */ countAll?: boolean; /** pontos de bonificação (ex.: melhor 5º começa com 1 ponto) */ bonus?: ReadonlyMap<string, number> } = {}): StandingRow[] {
+  opts: {
+    /** conta os jogos contra equipes de fora do conjunto */ countAll?: boolean;
+    /** pontos de bonificação (ex.: melhor 5º começa com 1 ponto) */ bonus?: ReadonlyMap<string, number>;
+    /** cartões de cada equipe na fase (critério `fairPlay`; quem não aparece tem zero) */ cards?: ReadonlyMap<string, { red: number; yellow: number }>;
+    /** CONMEBOL: "uma vez aplicado um critério, não se volta aos anteriores" — o confronto direto não é reaplicado ao subgrupo */ h2hOnce?: boolean;
+  } = {}): StandingRow[] {
   const table = tally(teamIds, results, rules.pointsWin, rules.pointsDraw, opts.countAll);
   for (const [id, pts] of opts.bonus ?? []) { const row = table.get(id); if (row) row.points += pts; }
   const criteria: Tiebreaker[] = rules.tiebreakers.length ? [...rules.tiebreakers] : ['points', 'goalDiff', 'goalsFor'];
 
+  const fair = (id: string) => { const k = opts.cards?.get(id); return k ? -(k.red * 10_000 + k.yellow) : 0; };
   const value = (row: StandingRow, c: Exclude<Tiebreaker, 'headToHead'>): number =>
-    c === 'points' ? row.points : c === 'wins' ? row.won : c === 'goalDiff' ? row.goalDiff : row.goalsFor;
+    c === 'points' ? row.points : c === 'wins' ? row.won : c === 'goalDiff' ? row.goalDiff : c === 'fairPlay' ? fair(row.teamId) : row.goalsFor;
 
   const rank = (ids: string[], ci: number): string[] => {
     if (ids.length <= 1) return ids;
@@ -74,7 +81,7 @@ export function computeStandings(teamIds: readonly string[], results: readonly M
       return y.points - x.points || y.goalDiff - x.goalDiff || y.goalsFor - x.goalsFor;
     });
     const groups = groupBy(sorted, (id) => { const r = mini.get(id)!; return `${r.points}|${r.goalDiff}|${r.goalsFor}`; });
-    return groups.flatMap((g) => (g.length === ids.length ? rank(g, ci + 1) : rank(g, ci)));
+    return groups.flatMap((g) => (g.length === ids.length || opts.h2hOnce ? rank(g, ci + 1) : rank(g, ci)));
   };
 
   return rank([...teamIds], 0).map((id, i) => ({ ...table.get(id)!, position: i + 1 }));

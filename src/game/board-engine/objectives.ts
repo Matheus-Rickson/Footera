@@ -4,11 +4,12 @@
  * tamanho, a fase, os objetivos extras (copa, estadual, finanças, folha, base, elenco) e o peso de cada um pela importância.
  */
 import type { Objective } from './board.ts';
+import { REACH_ORDER, type ReachStage } from '../continental-engine/ranking.ts';
 
 export type ClubSize = 'giant' | 'big' | 'medium' | 'small';
 export type ClubPhase = 'relegated' | 'promoted' | 'crisis' | 'rebuilding' | 'rising' | 'stable';
 export type Importance = 'essential' | 'important' | 'desirable';
-export type ObjectiveKind = 'league' | 'cup' | 'state' | 'finance_black' | 'payroll_cut' | 'wage_ceiling' | 'youth_promote' | 'youth_minutes' | 'squad_age';
+export type ObjectiveKind = 'league' | 'cup' | 'state' | 'conmebol' | 'finance_black' | 'payroll_cut' | 'wage_ceiling' | 'youth_promote' | 'youth_minutes' | 'squad_age';
 
 export const SIZE_LABEL: Record<ClubSize, string> = { giant: 'Gigante', big: 'Grande', medium: 'Médio', small: 'Pequeno' };
 export const PHASE_LABEL: Record<ClubPhase, string> = {
@@ -59,6 +60,11 @@ export interface ObjectiveDef { kind: ObjectiveKind; importance: Importance; lab
 export interface ObjectiveContext {
   league: { objective: Objective; target: number; label: string } | null;
   /** copa nacional da temporada: nomes das fases e fase de estreia do clube */ cup: { name: string; stages: string[]; entry: number } | null;
+  /**
+   * continental da CONMEBOL em que o clube começa a temporada: Libertadores ou Sul-Americana e o pote estimado pelo ranking entre os que
+   * entram direto nos grupos (1–4; 0 = começa nas fases preliminares)
+   */
+  conmebol?: { name: string; comp: 'lib' | 'sud'; pot: number } | null;
   /** estadual (Brasil) do clube na temporada */ state: { name: string; teams: number; relegationSlots: number } | null;
   payroll: number; wageCeiling: number; youthTarget: number; squadAge: number; tier: number;
 }
@@ -67,6 +73,21 @@ const cupTargetStage = (size: ClubSize, stages: number, entry: number): number =
   const want = size === 'giant' ? stages - 1 : size === 'big' ? stages - 2 : size === 'medium' ? stages - 3 : entry + 1;
   return Math.max(Math.min(entry + 1, stages - 1), Math.min(stages - 1, want));
 };
+
+const REACH_TEXT: Record<ReachStage, string> = {
+  prelimOut: 'disputar', groups: 'chegar à fase de grupos', po: 'passar da fase de grupos', r16: 'chegar às oitavas de final', qf: 'chegar às quartas de final',
+  sf: 'chegar às semifinais', runnerUp: 'chegar à final', champion: 'ser campeão',
+};
+
+/**
+ * Meta continental (ADAPT, docs/CONTINENTAIS.md) pelo pote estimado: Libertadores — pote 1 quartas (importante), pote 2 oitavas (importante),
+ * potes 3–4 oitavas (desejável), preliminares chegar aos grupos (importante); Sul-Americana — um nível abaixo na importância (tudo
+ * desejável), com pote 1 quartas, pote 2 oitavas, potes 3–4 passar dos grupos (play-off) e 1ª fase chegar aos grupos.
+ */
+export function conmebolTarget(comp: 'lib' | 'sud', pot: number): { reach: ReachStage; importance: Importance } {
+  if (comp === 'lib') return pot === 0 ? { reach: 'groups', importance: 'important' } : pot === 1 ? { reach: 'qf', importance: 'important' } : pot === 2 ? { reach: 'r16', importance: 'important' } : { reach: 'r16', importance: 'desirable' };
+  return { reach: pot === 0 ? 'groups' : pot === 1 ? 'qf' : pot === 2 ? 'r16' : 'po', importance: 'desirable' };
+}
 
 /** Objetivos da temporada (4 a 6): liga essencial + extras conforme o tamanho e a fase. */
 export function seasonObjectives(size: ClubSize, phase: ClubPhase, ctx: ObjectiveContext): ObjectiveDef[] {
@@ -77,6 +98,10 @@ export function seasonObjectives(size: ClubSize, phase: ClubPhase, ctx: Objectiv
     const final = t === ctx.cup.stages.length - 1;
     out.push({ kind: 'cup', importance: size === 'giant' || size === 'big' ? 'important' : 'desirable', target: { stage: t },
       label: final ? `${ctx.cup.name}: chegar à final` : `${ctx.cup.name}: chegar à ${ctx.cup.stages[t]!.toLowerCase()}` });
+  }
+  if (ctx.conmebol) {
+    const t = conmebolTarget(ctx.conmebol.comp, ctx.conmebol.pot);
+    out.push({ kind: 'conmebol', importance: t.importance, label: `${ctx.conmebol.name}: ${REACH_TEXT[t.reach]}`, target: { reach: REACH_ORDER.indexOf(t.reach) } });
   }
   if (ctx.state) {
     if (size === 'giant' || size === 'big') out.push({ kind: 'state', importance: size === 'giant' ? 'important' : 'desirable', label: `${ctx.state.name}: ser campeão`, target: { champion: 1 } });
@@ -104,6 +129,7 @@ export type ObjectiveStatus = 'pending' | 'on_track' | 'close' | 'off_track' | '
 /** Situação atual de um objetivo; `final` = fim da temporada (só cumprido ou não). `actual` = valores medidos no jogo. */
 export function objectiveStatus(o: ObjectiveDef, actual: {
   position?: number | null; played?: number; cupStage?: number | null; cupEliminated?: boolean; cupChampion?: boolean; stateChampion?: boolean; stateFinished?: boolean;
+  /** continental: índice em REACH_ORDER de até onde o clube chegou (null = ainda não estreou) e se já caiu */ reach?: number | null; reachEliminated?: boolean;
   balance?: number; payroll?: number; youthPromoted?: number; youthAppearances?: number; squadAge?: number;
 }, final: boolean): ObjectiveStatus {
   const t = o.target;
@@ -118,6 +144,11 @@ export function objectiveStatus(o: ObjectiveDef, actual: {
       if (actual.cupChampion || (actual.cupStage != null && actual.cupStage >= t.stage!)) return 'met';
       if (actual.cupEliminated) return 'missed';
       return final ? 'missed' : actual.cupStage == null ? 'pending' : 'on_track';
+    }
+    case 'conmebol': {
+      if (actual.reach != null && actual.reach >= t.reach!) return 'met';
+      if (actual.reachEliminated) return 'missed';
+      return final ? 'missed' : actual.reach == null ? 'pending' : 'on_track';
     }
     case 'state': {
       if (t.champion) { if (actual.stateChampion) return 'met'; return final || actual.stateFinished ? 'missed' : actual.position == null ? 'pending' : actual.position <= 2 ? 'on_track' : 'close'; }
@@ -140,6 +171,7 @@ export function objectiveProgress(o: ObjectiveDef, actual: Parameters<typeof obj
   switch (o.kind) {
     case 'league': case 'state': return actual.position == null ? 0 : t.champion ? (actual.stateChampion ? 1 : 0.5) : clamp01(1 - (actual.position - t.position!) / Math.max(4, t.position!));
     case 'cup': return actual.cupChampion ? 1 : clamp01(((actual.cupStage ?? -1) + 1) / (t.stage! + 1));
+    case 'conmebol': return clamp01(((actual.reach ?? -1) + 1) / (t.reach! + 1));
     case 'finance_black': return (actual.balance ?? 0) >= 0 ? 1 : 0.2;
     case 'payroll_cut': case 'wage_ceiling': return clamp01(t.payroll! / Math.max(1, actual.payroll ?? 1));
     case 'youth_promote': return clamp01((actual.youthPromoted ?? 0) / t.count!);

@@ -16,6 +16,7 @@ import { getCareerState } from './careerRepository.ts';
 import { loadClubEcon } from './financeRepository.ts';
 import { CURRENT_COMP, countrySeason } from './countrySeasonRepository.ts';
 import { formatStateOf } from './formatRepository.ts';
+import { continentalCampaign } from './continentalRepository.ts';
 import { stageTables } from '../../game/format-engine/engine.ts';
 import { fmtMoney } from '../../shared/money.ts';
 
@@ -91,9 +92,11 @@ export function buildObjectives(db: SqlDb, clubId: string, season: number, sit: 
   const st = getCareerState(db);
   const cup = nationalCup(db, clubId);
   const est = sit && sit.tier > 0 ? estadual(db, clubId) : null; // clube só de estadual: o estadual já é o objetivo de liga
+  const cont = continentalCampaign(db, clubId, season);
   const defs = seasonObjectives(size, phase, {
     league: { ...league, label: sit && sit.tier === 0 ? `Estadual: ${OBJECTIVE_LABEL[league.objective].toLowerCase()}` : OBJECTIVE_LABEL[league.objective] },
     cup: cup ? { name: cup.name, stages: cup.stages, entry: cup.entry } : null,
+    conmebol: cont ? { name: cont.name, comp: cont.comp, pot: cont.pot } : null,
     state: est ? { name: est.name, teams: est.teams, relegationSlots: est.relegationSlots } : null,
     payroll: payrollOf(db, clubId), wageCeiling: extra.wageCeiling, youthTarget: extra.youthTarget, squadAge: squadAge(db, clubId, st.gameDate), tier: sit?.tier ?? 0,
   });
@@ -121,6 +124,7 @@ function actuals(db: SqlDb, clubId: string, sit: SitLite | null) {
     if (last) { cupStage = N(last.stage); cupEliminated = last.winner != null && S(last.winner) !== clubId; }
     cupChampion = !!db.prepare('SELECT 1 AS x FROM trophies WHERE competition_id = ? AND club_id = ?').get(cup.id, clubId);
   }
+  const cont = continentalCampaign(db, clubId, st.season);
   const est = estadual(db, clubId);
   const stateChampion = est ? !!db.prepare('SELECT 1 AS x FROM trophies WHERE competition_id = ? AND club_id = ?').get(est.id, clubId) : false;
   const youthApps = N(db.prepare(`SELECT COALESCE(SUM(s.appearances), 0) AS n FROM player_season_stats s JOIN competitions c ON c.id = s.competition_id JOIN players p ON p.id = s.player_id
@@ -128,18 +132,26 @@ function actuals(db: SqlDb, clubId: string, sit: SitLite | null) {
   return {
     league: { position: sit && sit.played > 0 ? sit.position : null, played: sit?.played ?? 0 },
     cup: { cupStage, cupEliminated, cupChampion }, cupStages: cup?.stages ?? [],
+    conmebol: { reach: cont?.reach ?? null, reachEliminated: cont?.eliminated ?? false }, conmebolStage: cont ? { stage: cont.stage, champion: cont.champion } : null,
     state: { position: est?.position ?? null, played: est?.played ?? 0, stateChampion, stateFinished: est?.finished ?? false },
     balance: balanceOf(db, clubId), payroll: payrollOf(db, clubId), youthPromoted: b ? N(b.youth_promoted) : 0, youthAppearances: youthApps, squadAge: squadAge(db, clubId, st.gameDate),
   };
 }
 
 const actualFor = (kind: ObjectiveKind, a: ReturnType<typeof actuals>) =>
-  kind === 'league' ? a.league : kind === 'cup' ? a.cup : kind === 'state' ? a.state : a;
+  kind === 'league' ? a.league : kind === 'cup' ? a.cup : kind === 'conmebol' ? a.conmebol : kind === 'state' ? a.state : a;
+
+/** "Na fase de grupos" / "Eliminado nas oitavas de final" (fases no plural levam "nas"). */
+function inStage(eliminated: boolean, stage: string): string {
+  const prep = /^(oitavas|quartas|semifinais|semis)/i.test(stage) ? 'nas' : 'na';
+  return `${eliminated ? `Eliminado ${prep}` : prep === 'nas' ? 'Nas' : 'Na'} ${stage.toLowerCase()}`;
+}
 
 function detailOf(o: ObjectiveDef, a: ReturnType<typeof actuals>): string {
   switch (o.kind) {
     case 'league': return a.league.position == null ? `Meta: até ${o.target.position}º · ainda sem jogos` : `${a.league.position}º agora · meta até ${o.target.position}º`;
-    case 'cup': return a.cup.cupChampion ? 'Campeão' : a.cup.cupStage == null ? 'Estreia ainda não disputada' : `${a.cup.cupEliminated ? 'Eliminado na' : 'Na'} ${(a.cupStages[a.cup.cupStage] ?? '').toLowerCase()}`;
+    case 'cup': return a.cup.cupChampion ? 'Campeão' : a.cup.cupStage == null ? 'Estreia ainda não disputada' : inStage(a.cup.cupEliminated, a.cupStages[a.cup.cupStage] ?? '');
+    case 'conmebol': return a.conmebolStage?.champion ? 'Campeão' : !a.conmebolStage || a.conmebol.reach == null ? 'Estreia ainda não disputada' : inStage(a.conmebol.reachEliminated, a.conmebolStage.stage);
     case 'state': return a.state.stateChampion ? 'Campeão' : a.state.position == null ? 'Ainda sem jogos' : `${a.state.position}º na 1ª fase${a.state.stateFinished ? ' · encerrado' : ''}`;
     case 'finance_black': return `Caixa atual: ${fmtMoney(a.balance)}`;
     case 'payroll_cut': case 'wage_ceiling': return `Folha atual ${fmtMoney(a.payroll)} · meta até ${fmtMoney(o.target.payroll!)}`;

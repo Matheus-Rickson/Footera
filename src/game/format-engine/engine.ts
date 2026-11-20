@@ -9,12 +9,11 @@
  * classificação final. Ver docs/ESTADUAIS.md.
  */
 import type { Rng } from '../rng.ts';
-import type { LeagueRules } from '../../shared/types.ts';
-import { computeStandings, type MatchResult, type StandingRow } from '../competition-engine/standings.ts';
+import { computeStandings, type MatchResult, type StandingRow, type Tiebreaker as StandingTiebreaker } from '../competition-engine/standings.ts';
 import { generateRounds } from '../competition-engine/roundRobin.ts';
 
 export type Source = 'REG' | 'SEC' | 'ADAPT';
-export type Tiebreaker = LeagueRules['tiebreakers'][number];
+export type Tiebreaker = StandingTiebreaker;
 
 /** Referência a um clube: semente inicial ou resultado de uma fase. `pos` começa em 1; negativo conta do fim (-1 = último). */
 export type Ref =
@@ -23,7 +22,9 @@ export type Ref =
   | { stage: string; pos: number; nthBest: number }
   | { stage: string; pos: number; nthWorst: number }
   | { stage: string; winner: number }
-  | { stage: string; loser: number };
+  | { stage: string; loser: number }
+  /** clube vindo de outra competição (Libertadores → Sul-Americana): `state.external[external][idx]`, informado pelo repositório */
+  | { external: string; idx: number };
 
 export interface LeagueStage {
   kind: 'league'; id: string; name: string; entrants: Ref[];
@@ -42,17 +43,21 @@ export interface LeagueStage {
   /** empate vai direto aos pênaltis (Copa da Rússia): vitória 3, vitória nos pênaltis 2, derrota nos pênaltis 1, derrota 0 */
   drawPens?: boolean;
   side?: boolean;
+  /** rodadas fixas da CONMEBOL (grupos de 4, ida e volta; posição no grupo = pote): 4×2 e 3×1; 2×3 e 1×4; 2×1 e 4×3; 3×2 e 4×1; 1×2 e 3×4; 1×3 e 2×4 */
+  schedule?: 'conmebol';
 }
 export interface KnockoutStage {
   kind: 'knockout'; id: string; name: string;
   /** em pares consecutivos (fixed) ou em ordem de semente (seeded: 1º × último) */
   entrants: Ref[];
-  pairing: 'fixed' | 'seeded' | 'draw';
+  /** preset = confrontos informados de fora (sorteio com restrições): no par [a, b], `a` decide em casa */
+  pairing: 'fixed' | 'seeded' | 'draw' | 'preset';
   /** reordena os entrantes pela campanha somada antes de parear; `permute` aplica a ordem da chave sobre essa lista */
   byCampaign?: boolean; permute?: number[];
   legs: 1 | 2;
   /** quem manda o jogo único ou o jogo de VOLTA; underdog = o de pior semente (divisão inferior: Copa da Rússia) */
-  host: 'first' | 'campaign' | 'neutral' | 'draw' | 'underdog';
+  /** favorite = o de melhor ranking (`state.rank`); numbered = o de menor numeração (`def.numbering`) */
+  host: 'first' | 'campaign' | 'neutral' | 'draw' | 'underdog' | 'favorite' | 'numbered';
   /** empate (no jogo ou no agregado) classifica quem tem o mando: sem pênaltis */
   advantage?: boolean;
   extraTime?: boolean;
@@ -72,14 +77,27 @@ export interface FormatDef {
   titles?: Array<{ name: string; ref: Ref }>;
   promoted?: Ref[];
   relegated?: Ref[];
+  /** ordenamento da fase final (CONMEBOL: 1ºs 1–8, 2ºs 9–16…): o de menor número decide em casa (`host: 'numbered'`) e é o "Equipo A" da final neutra */
+  numbering?: Ref[];
+  /**
+   * Tabelas no padrão CONMEBOL: o confronto direto não é reaplicado ao subgrupo, `fairPlay` lê os cartões dos jogos e a ordem entre
+   * grupos (`nthBest`/`nthWorst`) usa os critérios do formato sem o confronto direto ("mesmos critérios", LIB p. 49).
+   */
+  conmebolTables?: boolean;
 }
 
 /** Resultado de um jogo da competição. Mata-mata: confronto, perna e, se empatou no agregado, quem venceu nos pênaltis. */
-export interface FxResult extends MatchResult { tie?: number; leg?: 1 | 2; pens?: string }
+export interface FxResult extends MatchResult { tie?: number; leg?: 1 | 2; pens?: string; cards?: { homeRed: number; homeYellow: number; awayRed: number; awayYellow: number } }
 /** Confronto de mata-mata: `host` manda o jogo único ou a volta. */
 export interface Tie { a: string; b: string; host: string; neutral: boolean }
 export interface StageState { groups?: string[][]; ties?: Tie[]; results: FxResult[]; expected: number }
-export interface FormatState { seeds: string[]; stages: Record<string, StageState> }
+export interface FormatState {
+  seeds: string[]; stages: Record<string, StageState>;
+  /** listas de clubes vindos de outra competição (só ficam aqui quando completas) */
+  external?: Record<string, string[]>;
+  /** posição no ranking (menor = melhor), para o mando `favorite` */
+  rank?: Record<string, number>;
+}
 export interface Fixture { round: number; home: string; away: string; tie?: number; leg?: 1 | 2; neutral?: boolean }
 
 const RULES = (def: FormatDef) => ({ pointsWin: 3, pointsDraw: 1, tiebreakers: def.tiebreakers });
@@ -100,11 +118,19 @@ export function stageTables(def: FormatDef, state: FormatState, id: string): { g
   for (const b of stage.bonus ?? []) { const c = resolveRef(def, state, b.ref); if (c) bonus.set(c, (bonus.get(c) ?? 0) + b.points); }
   // pênaltis depois do empate: +1 ponto para quem venceu a disputa (o empate já deu 1 a cada um)
   if (stage.drawPens) for (const r of st.results) if (r.homeGoals === r.awayGoals && r.pens) bonus.set(r.pens, (bonus.get(r.pens) ?? 0) + 1);
-  const opts = { countAll: true, bonus };
+  const opts = { countAll: true, bonus, ...(def.conmebolTables ? { cards: cardsOf(st.results), h2hOnce: true } : {}) };
   return {
     groups: st.groups.map((g) => computeStandings(g, st.results, RULES(def), opts)),
     overall: computeStandings(st.groups.flat(), st.results, RULES(def), opts),
   };
+}
+
+/** Cartões de cada clube nos jogos informados (critério `fairPlay`). */
+function cardsOf(results: readonly FxResult[]): Map<string, { red: number; yellow: number }> {
+  const out = new Map<string, { red: number; yellow: number }>();
+  const add = (id: string, red: number, yellow: number) => { const k = out.get(id) ?? { red: 0, yellow: 0 }; k.red += red; k.yellow += yellow; out.set(id, k); };
+  for (const r of results) if (r.cards) { add(r.home, r.cards.homeRed, r.cards.homeYellow); add(r.away, r.cards.awayRed, r.cards.awayYellow); }
+  return out;
 }
 
 /** Desfecho de um confronto (null se ainda não decidido). */
@@ -156,15 +182,32 @@ const byCampaign = (def: FormatDef, state: FormatState) => (x: string, y: string
 const at = <T>(xs: readonly T[], pos: number): T | undefined => (pos > 0 ? xs[pos - 1] : xs[xs.length + pos]);
 const rowOrder = (a: StandingRow, b: StandingRow) => b.points - a.points || b.won - a.won || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.teamId.localeCompare(b.teamId);
 
+/** Ordem entre clubes de grupos diferentes no padrão CONMEBOL: os critérios do formato sem o confronto direto, com os cartões da fase. */
+function crossOrder(def: FormatDef, state: FormatState, stageId: string): (a: StandingRow, b: StandingRow) => number {
+  const cards = cardsOf(state.stages[stageId]?.results ?? []);
+  const fair = (id: string) => { const k = cards.get(id); return k ? -(k.red * 10_000 + k.yellow) : 0; };
+  const val = (r: StandingRow, c: Tiebreaker) => (c === 'points' ? r.points : c === 'wins' ? r.won : c === 'goalDiff' ? r.goalDiff : c === 'goalsFor' ? r.goalsFor : c === 'fairPlay' ? fair(r.teamId) : 0);
+  const crit = def.tiebreakers.filter((c) => c !== 'headToHead');
+  return (a, b) => { for (const c of crit) { const d = val(b, c) - val(a, c); if (d) return d; } return a.teamId.localeCompare(b.teamId); };
+}
+
+/** Numeração da fase final (`def.numbering`): clube → número (1 = melhor); só os já definidos. */
+export function numberingOf(def: FormatDef, state: FormatState): Map<string, number> {
+  const out = new Map<string, number>();
+  (def.numbering ?? []).forEach((ref, i) => { const c = resolveRef(def, state, ref); if (c && !out.has(c)) out.set(c, i + 1); });
+  return out;
+}
+
 /** Resolve uma referência (null se a fase de origem ainda não terminou). */
 export function resolveRef(def: FormatDef, state: FormatState, ref: Ref): string | null {
   if ('seed' in ref) return state.seeds[ref.seed] ?? null;
+  if ('external' in ref) return state.external?.[ref.external]?.[ref.idx] ?? null;
   if (!stageComplete(def, state, ref.stage)) return null;
   if ('winner' in ref) return tieOutcome(def, state, ref.stage, ref.winner)?.winner ?? null;
   if ('loser' in ref) return tieOutcome(def, state, ref.stage, ref.loser)?.loser ?? null;
   const t = stageTables(def, state, ref.stage);
   if ('nthBest' in ref || 'nthWorst' in ref) {
-    const rows = t.groups.map((g) => at(g, ref.pos)).filter((r): r is StandingRow => !!r).sort(rowOrder);
+    const rows = t.groups.map((g) => at(g, ref.pos)).filter((r): r is StandingRow => !!r).sort(def.conmebolTables ? crossOrder(def, state, ref.stage) : rowOrder);
     const n = 'nthBest' in ref ? ref.nthBest : ref.nthWorst;
     return ('nthBest' in ref ? rows[n - 1] : rows[rows.length - n])?.teamId ?? null;
   }
@@ -228,7 +271,16 @@ function assignGroups(stage: LeagueStage, entrants: readonly string[], preset?: 
   return out;
 }
 
+/** Rodadas fixas da CONMEBOL (LIB p. 46; SUD p. 45): pares (mandante, visitante) pela posição no grupo, 1 a 4. */
+export const CONMEBOL_GROUP_ROUNDS: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
+  [[4, 2], [3, 1]], [[2, 3], [1, 4]], [[2, 1], [4, 3]], [[3, 2], [4, 1]], [[1, 2], [3, 4]], [[1, 3], [2, 4]],
+];
+
 function leagueFixtures(stage: LeagueStage, groups: string[][], rng: Rng): Fixture[] {
+  if (stage.schedule === 'conmebol') {
+    if (groups.some((g) => g.length !== 4)) throw new Error(`${stage.name}: as rodadas fixas da CONMEBOL exigem grupos de 4.`);
+    return CONMEBOL_GROUP_ROUNDS.flatMap((round, i) => groups.flatMap((g) => round.map(([h, a]) => ({ round: i + 1, home: g[h - 1]!, away: g[a - 1]! }))));
+  }
   const teams = groups.flat(), groupOf = new Map(groups.flatMap((g, i) => g.map((c) => [c, i] as const)));
   let single: Array<Array<[string, string]>> = [];
   const homes = new Map<string, number>();
@@ -276,12 +328,21 @@ export function buildStage(def: FormatDef, state: FormatState, id: string, rng: 
   if (stage.permute) list = stage.permute.map((i) => list[i]!);
   if (list.length % 2 !== 0) throw new Error(`${stage.name}: número ímpar de clubes.`);
   const pairs: Array<[string, string]> = [];
-  if (stage.pairing === 'seeded') for (let i = 0; i < list.length / 2; i++) pairs.push([list[i]!, list[list.length - 1 - i]!]);
+  if (stage.pairing === 'preset') {
+    const flat = (preset ?? []).flat();
+    if (!preset || preset.some((p) => p.length !== 2) || flat.length !== list.length || !list.every((c) => flat.includes(c))) throw new Error(`${stage.name}: confrontos do sorteio não batem com os entrantes.`);
+    for (const p of preset) pairs.push([p[0]!, p[1]!]);
+  } else if (stage.pairing === 'seeded') for (let i = 0; i < list.length / 2; i++) pairs.push([list[i]!, list[list.length - 1 - i]!]);
   else { const l = stage.pairing === 'draw' ? rng.shuffle(list) : list; for (let i = 0; i < l.length; i += 2) pairs.push([l[i]!, l[i + 1]!]); }
   const cmp = byCampaign(def, state);
+  const num = numberingOf(def, state);
+  const lowerNumber = (a: string, b: string) => ((num.get(b) ?? Infinity) < (num.get(a) ?? Infinity) ? b : a);
+  const rankOf = (c: string) => state.rank?.[c] ?? Infinity;
   const ties: Tie[] = pairs.map(([a, b]) => {
     const host = stage.host === 'campaign' ? (cmp(a, b) <= 0 ? a : b) : stage.host === 'draw' ? (rng.next() < 0.5 ? a : b)
-      : stage.host === 'underdog' ? (state.seeds.indexOf(b) > state.seeds.indexOf(a) ? b : a) : a;
+      : stage.host === 'underdog' ? (state.seeds.indexOf(b) > state.seeds.indexOf(a) ? b : a)
+      : stage.host === 'favorite' ? (rankOf(b) < rankOf(a) ? b : a)
+      : stage.host === 'numbered' || (stage.host === 'neutral' && def.numbering) ? lowerNumber(a, b) : a;
     return { a, b, host, neutral: stage.host === 'neutral' };
   });
   const fixtures: Fixture[] = [];
@@ -337,7 +398,8 @@ export function finalRanking(def: FormatDef, state: FormatState): string[] {
   const champion = resolveRef(def, state, def.champion);
   const finalStage = 'stage' in def.champion && 'winner' in def.champion ? def.champion : null;
   const runnerUp = finalStage ? resolveRef(def, state, { stage: finalStage.stage, loser: finalStage.winner }) : null;
-  const rest = state.seeds.filter((c) => c !== champion && c !== runnerUp).sort((x, y) => {
+  const pool = [...new Set([...state.seeds, ...Object.values(state.external ?? {}).flat()])];
+  const rest = pool.filter((c) => c !== champion && c !== runnerUp).sort((x, y) => {
     const dx = depth.get(x) ?? -1, dy = depth.get(y) ?? -1;
     if (dx !== dy) return dy - dx;
     const s = main[dx];

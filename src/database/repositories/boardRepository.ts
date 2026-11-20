@@ -92,7 +92,7 @@ function estadualSituation(db: SqlDb, clubId: string): LeagueSituation | null {
   const row = table.find((r) => r.teamId === clubId);
   const reps = db.prepare(`SELECT id, reputation FROM clubs WHERE id IN (${fs.state.seeds.map(() => '?').join(',')})`).all(...fs.state.seeds);
   const rep = N(reps.find((r) => S(r.id) === clubId)?.reputation ?? 1);
-  const rules: LeagueRules = { rounds: 1, pointsWin: 3, pointsDraw: 1, tiebreakers: fs.def.tiebreakers, promotionSlots: fs.def.promoted?.length ?? 0, relegationSlots: fs.def.relegated?.length ?? 0,
+  const rules: LeagueRules = { rounds: 1, pointsWin: 3, pointsDraw: 1, tiebreakers: fs.def.tiebreakers.filter((t): t is LeagueRules['tiebreakers'][number] => t !== 'fairPlay'), promotionSlots: fs.def.promoted?.length ?? 0, relegationSlots: fs.def.relegated?.length ?? 0,
     continentalSlots: 0, maxForeignPlayers: null, squadMin: 18, squadMax: 35 };
   return { position: row?.position ?? fs.state.seeds.indexOf(clubId) + 1, played: row?.played ?? 0, teams: fs.state.seeds.length, expected: expectedPosition(rep, reps.map((r) => N(r.reputation))), rules, tier: 0, competitionId: S(e.id) };
 }

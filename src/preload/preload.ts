@@ -107,6 +107,7 @@ const api: GameApi = {
   getBoard: (profileId, careerId) => ipcRenderer.invoke('board:get', { profileId, careerId }),
   getCupBracket: (profileId, careerId, competitionId) => ipcRenderer.invoke('cup:bracket', { profileId, careerId, competitionId }),
   getStagedView: (profileId, careerId, competitionId) => ipcRenderer.invoke('staged:view', { profileId, careerId, competitionId }),
+  getConmebolRanking: (profileId, careerId) => ipcRenderer.invoke('conmebol:ranking', { profileId, careerId }),
   getClubInfo: (profileId, careerId, clubId) => ipcRenderer.invoke('club:info', { profileId, careerId, clubId }),
   getClubProfile: (profileId, careerId, clubId) => ipcRenderer.invoke('club:profile', { profileId, careerId, clubId }),
   getConversations: (profileId, careerId) => ipcRenderer.invoke('talk:list', { profileId, careerId }),

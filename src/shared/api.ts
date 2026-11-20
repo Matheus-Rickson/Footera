@@ -107,19 +107,25 @@ export interface FixtureDto {
   /** partida de copa: nome da copa (sem a temporada), fase, jogo de ida/volta (null = jogo único) e campo neutro; null = liga */
   cup: { name: string; stage: string; leg: 1 | 2 | null; neutral: boolean } | null;
 }
-export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa e estadual: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' | 'state'; /** copa que é supercopa */ supercup?: boolean;
+export interface CompetitionInfoDto { id: string; leagueId: string; name: string; country: string; tier: number; teamCount: number; /** copa e estadual: leagueId = '' e tier = 0 */ kind: 'league' | 'cup' | 'state' | 'continental'; /** copa que é supercopa */ supercup?: boolean;
   /** disputado em fases (Séries C/D, estaduais): tem a visão por fases */ staged?: boolean;
   /** competição sem liga: estadual, copa regional, copa estadual do 2º semestre ou copa nacional em fases (Copa da Rússia) */ scope?: 'estadual' | 'regional' | 'copa' | 'nacional' }
+/** Ranking de Clubes CONMEBOL vigente (o usado nos potes e no mando da temporada): ao fim de `asOf`, derivado dos continentais, dos títulos nacionais e do ano histórico. */
+export interface ConmebolRankingDto {
+  asOf: number; season: number; total: number;
+  rows: Array<{ position: number; clubId: string; clubName: string; countryCode: string; country: string; points: number; isUserClub: boolean }>;
+  /** posição do clube do usuário (null se não é de um país da CONMEBOL) */ user: { position: number; points: number } | null;
+}
 /** Campeonato em fases (Séries C/D, estaduais): cada fase com as tabelas dos grupos ou os confrontos. */
 export interface StagedViewDto {
-  id: string; name: string; kind: 'league' | 'state'; status: 'scheduled' | 'in_progress' | 'finished'; regulation: string;
+  id: string; name: string; kind: 'league' | 'state' | 'continental'; status: 'scheduled' | 'in_progress' | 'finished'; regulation: string;
   source: { structure: string; tiebreak: string; national: string };
   champion: { id: string; name: string } | null; titles: Array<{ name: string; club: { id: string; name: string } | null }>;
   promoted: Array<{ id: string; name: string }>; relegated: Array<{ id: string; name: string }>;
   stages: Array<{
     id: string; name: string; kind: 'league' | 'knockout'; side: boolean; built: boolean; legs: number;
     groups: Array<{ name: string; rows: Array<{ position: number; clubId: string; clubName: string; played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; goalDiff: number; points: number; isUserClub: boolean }> }>;
-    ties: Array<{ a: { id: string; name: string }; b: { id: string; name: string }; games: Array<{ fixtureId: string; date: string; homeId: string; homeGoals: number | null; awayGoals: number | null; hasReport: boolean }>;
+    ties: Array<{ a: { id: string; name: string }; b: { id: string; name: string }; games: Array<{ fixtureId: string; date: string; homeId: string; homeGoals: number | null; awayGoals: number | null; hasReport: boolean; neutral: boolean }>;
       aggregate: [number, number] | null; winner: string | null; pens: string | null; involvesUser: boolean }>;
   }>;
 }
@@ -437,7 +443,7 @@ export interface HistoryRowDto {
   outcome: 'champion' | 'promoted' | 'relegated' | null; prize: number;
 }
 /** Sala de troféus (v0.8.10): prateleiras por tipo de competição. */
-export type TrophyKindDto = 'league' | 'cup' | 'supercup' | 'state' | 'regional' | 'other';
+export type TrophyKindDto = 'league' | 'continental' | 'cup' | 'supercup' | 'state' | 'regional' | 'other';
 export interface TrophyLogoDto { kind: 'leagues' | 'cups'; id: string }
 /** Taça de uma competição: títulos no jogo (`wins`, mais recente primeiro) + históricos do pacote de dados ("antes da carreira"). */
 export interface TrophyCaseDto {
@@ -710,6 +716,7 @@ export interface GameApi {
   getCompetitionLeaders(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CompetitionLeadersDto>>;
   getCupBracket(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<CupBracketDto>>;
   getStagedView(profileId: string, careerId: string, competitionId: string): Promise<IpcResult<StagedViewDto>>;
+  getConmebolRanking(profileId: string, careerId: string): Promise<IpcResult<ConmebolRankingDto>>;
   advance(profileId: string, careerId: string, mode: AdvanceMode): Promise<IpcResult<AdvanceResultDto>>;
   continueDay(profileId: string, careerId: string): Promise<IpcResult<ContinueStepDto>>;
   getTransfers(profileId: string, careerId: string): Promise<IpcResult<TransfersOverviewDto>>;

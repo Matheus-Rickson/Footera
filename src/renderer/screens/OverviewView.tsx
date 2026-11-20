@@ -90,7 +90,7 @@ function CoachCard({ overview }: { overview: CareerOverviewDto }) {
         <div className="ov-coach-club">
           <span className="cp-club"><ClubCrest id={club.id} name={club.name} size={18} src={img.url('clubs', club.id)} /><strong>{club.name}</strong></span>
           <span className="muted small">{club.league} · caixa <span className={club.balance < 0 ? 'neg' : ''}>{fmtMoney(club.balance)}</span> · {squad.length} jogadores</span>
-          {next && <span className="small ov-next"><CalendarDays size={13} aria-hidden="true" />Próximo jogo: {next.homeId === club.id ? `× ${next.awayName} (casa)` : `× ${next.homeName} (fora)`} · {fmtWeekday(next.date)} {fmtDate(next.date)}</span>}
+          {next && <span className="small ov-next"><CalendarDays size={13} aria-hidden="true" />Próximo jogo: {next.homeId === club.id ? `× ${next.awayName}` : `× ${next.homeName}`} ({next.cup?.neutral ? 'campo neutro' : next.homeId === club.id ? 'casa' : 'fora'}){next.cup ? ` · ${next.cup.name}, ${next.cup.stage.toLowerCase()}${next.cup.leg ? ` (${next.cup.leg === 1 ? 'ida' : 'volta'})` : ''}` : ''} · {fmtWeekday(next.date)} {fmtDate(next.date)}</span>}
         </div>
       ) : <p className="muted small">Sem clube no momento.</p>}
     </section>
