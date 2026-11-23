@@ -1,0 +1,49 @@
+/* Laboratório: só classes lab-* (o resto vem de tokens/base/ui do jogo). */
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); }
+.lab { display: flex; flex-direction: column; height: 100%; color: var(--text); }
+.lab-top { display: flex; align-items: center; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.lab-brand { font-family: var(--font-display); font-size: 1.25rem; letter-spacing: .06em; text-transform: uppercase; }
+.lab-brand span { color: var(--primary-text); margin-left: 6px; }
+.lab-top-actions { margin-left: auto; display: flex; gap: 8px; }
+.lab-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
+.lab-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; }
+.lab-side > .lab-hist { flex: 1 0 auto; }
+.lab-main { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding-right: 2px; }
+.lab-main > *, .lab-side > * { flex: none; }
+.lab-list { display: grid; gap: 6px; }
+button.lab-item { display: grid; gap: 2px; text-align: left; justify-items: start; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--font-body); font-size: .9rem; font-weight: 400; letter-spacing: 0; text-transform: none; min-height: 0; }
+button.lab-item b { font-weight: 700; }
+button.lab-item span { color: var(--text-muted); font-size: .8rem; }
+button.lab-item:hover:not(:disabled) { background: var(--surface-3); }
+button.lab-item.lab-on { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+.lab-desc { margin: 0 0 10px; }
+.lab-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px 14px; }
+.lab-field { display: grid; gap: 4px; align-content: start; font-size: .86rem; color: var(--text-muted); }
+.lab-field input, .lab-field select { min-height: 32px; }
+.lab-check label { display: flex; gap: 8px; align-items: center; color: var(--text); padding-top: 18px; }
+.lab-progress { position: relative; height: 22px; margin-top: 12px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.lab-progress i { position: absolute; inset: 0 auto 0 0; background: var(--primary); transition: width .2s; }
+.lab-progress span { position: relative; display: block; padding: 0 8px; line-height: 22px; font-size: .82rem; font-weight: 600; color: var(--text); }
+.lab-params { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.lab-params code { font-size: .74rem; padding: 1px 6px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); }
+.lab-sec { margin-top: 14px; }
+.lab-sec h3 { margin: 0 0 8px; font-family: var(--font-display); font-size: .95rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.lab-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.lab-kpi { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.lab-kpi .ui-stat-value { font-size: 1.3rem; }
+.lab-tw { overflow-x: auto; }
+.lab-table { width: 100%; font-variant-numeric: tabular-nums; }
+.lab-table td, .lab-table th { white-space: nowrap; padding: 4px 8px; }
+.lab-ok { color: var(--primary-text); font-weight: 700; }
+.lab-bad { color: var(--danger-text); font-weight: 700; }
+.lab-bars { display: grid; gap: 4px; }
+.lab-bar { display: grid; grid-template-columns: 70px minmax(0, 1fr) 120px; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
+.lab-bar i { display: block; height: 10px; border-radius: 2px; background: var(--primary); }
+.lab-bar em { font-style: normal; color: var(--text-muted); font-size: .84rem; }
+.lab-ev { list-style: none; margin: 0; padding: 0; max-height: 460px; overflow: auto; font-size: .88rem; }
+.lab-ev li { padding: 3px 8px; border-left: 3px solid transparent; }
+.lab-ev li b { display: inline-block; width: 54px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lab-ev .lab-ev-0 { border-left-color: var(--info, #38bdf8); }
+.lab-ev .lab-ev-1 { border-left-color: var(--warning); }

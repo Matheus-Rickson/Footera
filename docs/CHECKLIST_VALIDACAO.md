@@ -446,6 +446,14 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [x] Táticas: pré-definições e esquemas acima da lista do elenco; campo maior ocupando a coluna da direita inteira.
 - [x] Táticas, arraste: o crachá não pula para o lado ao ser pego; acompanha o cursor; a vaga mais perto acende sem precisar acertar o círculo; ao soltar, os jogadores deslizam (troca e formação nova); reserva só troca com titular; Esc cancela; clique simples ainda abre função/jogador.
 
+## 13z9. Laboratório (v0.9.0; `docs/LAB.md`)
+- [ ] `npm run lab` abre a janela FOOTERA · Laboratório com os 4 cenários; o seu jogo e os seus saves não mudam.
+- [ ] Lote de partidas: escolher clubes/formações/mentalidade, rodar (barra de progresso), ler o relatório; Cancelar interrompe; "Salvar HTML e JSON" grava em `lab-reports/` e "Pasta de relatórios" abre a pasta.
+- [ ] Inspetor de partida: com o número de um jogo extremo do lote, refaz o mesmo placar e mostra lance a lance e notas.
+- [ ] Calibração: metas com ok/fora e o equilíbrio entre formações.
+- [ ] Inspetor de save: escolher um save da lista, avançar alguns dias e ver o antes e depois; abrir o jogo depois e conferir que a carreira continua onde estava.
+- [ ] Terminal: `npm run lab:run -- lista` e `npm run lab:run -- lote-partidas n=200`.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.
