@@ -15,6 +15,7 @@ const api: GameApi = {
   openPacksFolder: () => ipcRenderer.invoke('packs:folder', {}),
   imageKeys: () => ipcRenderer.invoke('images:keys', {}),
   imageVersion: () => ipcRenderer.invoke('images:version', {}),
+  clubColors: (ids) => ipcRenderer.invoke('club:colors', { ids }),
   editorImportCsv: (packId, kind) => ipcRenderer.invoke('editor:importCsv', { packId, kind }),
   editorExportCsv: (packId, kind, template, filter) => ipcRenderer.invoke('editor:exportCsv', { packId, kind, template, filter }),
   editorSetImage: (packId, kind, id) => ipcRenderer.invoke('editor:setImage', { packId, kind, id }),

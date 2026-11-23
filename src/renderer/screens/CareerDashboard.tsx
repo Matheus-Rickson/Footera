@@ -1,8 +1,5 @@
 import { useCallback, useState } from 'react';
-import {
-  ArrowLeftRight, Award, Binoculars, Building2, CalendarDays, CalendarRange, Dumbbell, FastForward, FileSignature, HeartPulse, History, Landmark, LayoutDashboard,
-  LogOut, Mail, Moon, Newspaper, Play, PlayCircle, Sprout, Sun, Swords, Trophy, UserCog, Users, Wallet, type LucideIcon,
-} from 'lucide-react';
+import { ArrowLeftRight, Briefcase, CalendarRange, FastForward, LogOut, Mail, Moon, Play, PlayCircle, Shield, Sprout, Sun, Trophy, Users, type LucideIcon } from 'lucide-react';
 import { useTheme } from '../theme.ts';
 import type { CareerOverviewDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtWeekday, unwrap } from '../util.ts';
@@ -33,6 +30,7 @@ import { InfrastructureView } from './InfrastructureView.tsx';
 import { BoardView } from './BoardView.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
+import { clubVars, useClubPalette } from '../clubColors.ts';
 
 type View = 'overview' | 'inbox' | 'squad' | 'tactics' | 'calendar' | 'competitions' | 'finance' | 'transfers' | 'season' | 'contracts' | 'news' | 'history' | 'trophies' | 'scouting' | 'youth' | 'staff' | 'training' | 'medical' | 'infrastructure' | 'board';
 const TITLES: Record<View, string> = {
@@ -41,26 +39,24 @@ const TITLES: Record<View, string> = {
 };
 /** Sem clube (demitido) só fazem sentido as telas que não dependem de um elenco. */
 const UNEMPLOYED_VIEWS: View[] = ['overview', 'inbox', 'season', 'competitions', 'board', 'trophies', 'news', 'history'];
-const NAV: Array<{ group: string; items: Array<{ id: View; label: string; icon: LucideIcon }> }> = [
-  { group: 'Clube', items: [
-    { id: 'overview', label: 'Visão geral', icon: LayoutDashboard }, { id: 'inbox', label: 'Caixa de entrada', icon: Mail }, { id: 'season', label: 'Temporada', icon: CalendarRange }, { id: 'squad', label: 'Elenco', icon: Users },
-    { id: 'contracts', label: 'Contratos', icon: FileSignature }, { id: 'tactics', label: 'Táticas', icon: Swords },
-  ] },
-  { group: 'Competição', items: [
-    { id: 'calendar', label: 'Calendário', icon: CalendarDays }, { id: 'competitions', label: 'Competições', icon: Trophy },
-  ] },
-  { group: 'Mercado', items: [{ id: 'transfers', label: 'Transferências', icon: ArrowLeftRight }, { id: 'scouting', label: 'Olheiros', icon: Binoculars }] },
-  { group: 'Desenvolvimento', items: [
-    { id: 'youth', label: 'Categorias de base', icon: Sprout }, { id: 'training', label: 'Treinamento', icon: Dumbbell },
-    { id: 'staff', label: 'Comissão técnica', icon: UserCog }, { id: 'medical', label: 'Departamento médico', icon: HeartPulse },
-  ] },
-  { group: 'Gestão', items: [{ id: 'finance', label: 'Finanças', icon: Wallet }, { id: 'infrastructure', label: 'Infraestrutura', icon: Building2 }, { id: 'board', label: 'Diretoria', icon: Landmark }] },
-  { group: 'Carreira', items: [{ id: 'trophies', label: 'Sala de troféus', icon: Award }, { id: 'news', label: 'Notícias', icon: Newspaper }, { id: 'history', label: 'Histórico da carreira', icon: History }] },
+/** Barra superior: 6 abas, cada uma com as suas subseções (docs/INTERFACE.md). */
+type Tab = 'club' | 'squad' | 'comp' | 'market' | 'dev' | 'mgmt';
+const TABS: Array<{ id: Tab; label: string; icon: LucideIcon; items: View[] }> = [
+  { id: 'club', label: 'Clube', icon: Shield, items: ['overview', 'inbox', 'news', 'season', 'trophies', 'history'] },
+  { id: 'squad', label: 'Elenco', icon: Users, items: ['squad', 'tactics', 'contracts', 'training', 'medical'] },
+  { id: 'comp', label: 'Competições', icon: Trophy, items: ['calendar', 'competitions'] },
+  { id: 'market', label: 'Mercado', icon: ArrowLeftRight, items: ['transfers', 'scouting'] },
+  { id: 'dev', label: 'Desenvolvimento', icon: Sprout, items: ['youth', 'staff', 'infrastructure'] },
+  { id: 'mgmt', label: 'Gestão', icon: Briefcase, items: ['finance', 'board'] },
 ];
-const initials = (name: string) => name.replace(/[^A-Za-zÀ-ú ]/g, '').split(' ').filter((w) => w.length > 2 || /^[A-ZÀ-Ú]/.test(w)).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || 'FC';
+const tabOf = (v: View): Tab => TABS.find((t) => t.items.includes(v))!.id;
+/** Nome curto da subseção na barra (o título completo fica em TITLES). */
+const SHORT: Partial<Record<View, string>> = { history: 'Histórico', medical: 'Médico', youth: 'Base' };
 
 export function CareerDashboard({ overview, onExit, onRefresh }: { overview: CareerOverviewDto; onExit: () => void; onRefresh: () => Promise<void> }) {
   const [view, setView] = useState<View>('overview');
+  // última subseção visitada em cada aba: voltar à aba reabre onde o treinador estava
+  const [lastIn, setLastIn] = useState<Partial<Record<Tab, View>>>({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: 'ok' | 'info' | 'error'; text: string } | null>(null);
   const [match, setMatch] = useState<{ fixtureId: string; autoplay: boolean } | { live: true } | null>(null);
@@ -75,8 +71,18 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const pos = overview.leaguePosition;
   const season = overview.seasonStatus;
   const refreshKey = `${summary.gameDate}|${summary.season}|${pos?.played ?? 0}`;
-  const go = (v: View) => { setNote(null); setMatch(null); setPlayer(null); setClubPage(null); setPreselect(null); setView(v); };
+  // um aviso (não erro) que chegou fora da Visão geral espera até ser visto lá; quem sai da Visão geral para outra tela já o viu
+  const go = (v: View) => { setNote((n) => (n && n.kind !== 'error' && !(view === 'overview' && v !== 'overview') ? n : null)); setMatch(null); setPlayer(null); setClubPage(null); setPreselect(null); setView(v); setLastIn((m) => ({ ...m, [tabOf(v)]: v })); };
+  const locked = (v: View) => !club && !UNEMPLOYED_VIEWS.includes(v);
+  const openTab = (t: (typeof TABS)[number]) => {
+    const remembered = lastIn[t.id];
+    const target = remembered && !locked(remembered) ? remembered : t.items.find((v) => !locked(v));
+    if (target) go(target);
+  };
+  const palette = useClubPalette(club?.id);
   const clearPreselect = useCallback(() => setPreselect(null), []);
+  /** avisos da carreira (fim de temporada, resultado do avanço, foto do treinador) só aparecem na tela principal */
+  const onMain = view === 'overview' && !match && !player && !clubPage;
   const negotiate = (p: MarketPlayerDto) => { setPlayer(null); setMatch(null); setNote(null); setPreselect({ ...p }); setView('transfers'); };
 
   async function simulate(live: boolean) {
@@ -105,64 +111,76 @@ export function CareerDashboard({ overview, onExit, onRefresh }: { overview: Car
   const userMatchToday = !!next && next.status === 'scheduled' && next.date <= summary.gameDate;
 
   const img = useImages();
+  const tab = tabOf(view);
+  const activeTab = TABS.find((t) => t.id === tab)!;
   return (
-    <div className={match ? 'dash focus' : 'dash'}>
-      {/* durante a partida o acompanhamento é o foco: sem menu lateral nem barra de ações */}
-      {!match && <nav className="side" aria-label="Seções do jogo">
-        <div className="brand">
-          {club ? <ClubCrest id={club.id} name={club.name} size={32} src={img.url('clubs', club.id)} /> : <span className="crest" aria-hidden="true">—</span>}
-          <span>{club ? club.name : 'Sem clube'}<span className="brand-sub">{club ? club.league : 'Treinador desempregado'}</span></span>
-        </div>
-        {NAV.map((g) => (
-          <div key={g.group}>
-            <div className="nav-group">{g.group}</div>
-            {g.items.map((s) => {
-              const locked = !club && !UNEMPLOYED_VIEWS.includes(s.id);
-              const Icon = s.icon;
-              return (
-                <button key={s.id} className={`nav ${view === s.id ? 'active' : ''}`} disabled={locked} title={locked ? 'Sem clube: aceite uma proposta na Diretoria' : ''} aria-current={view === s.id ? 'page' : undefined}
-                  onClick={() => { setNote(null); setPlayer(null); setClubPage(null); setMatch(null); setView(s.id); }}><Icon size={17} strokeWidth={1.9} aria-hidden="true" />{s.label}
-                  {s.id === 'inbox' && overview.unreadInbox > 0 && <span className="nav-badge" aria-label={`${overview.unreadInbox} não lida(s)`}>{overview.unreadInbox > 99 ? '99+' : overview.unreadInbox}</span>}</button>
-              );
-            })}
-          </div>
-        ))}
-        <div className="side-foot">
-          <button className="nav" onClick={toggleTheme} title="Alternar entre tema escuro e claro">
-            {theme === 'dark' ? <Sun size={17} strokeWidth={1.9} aria-hidden="true" /> : <Moon size={17} strokeWidth={1.9} aria-hidden="true" />}{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
-          </button>
-          <button className="nav exit" onClick={onExit}><LogOut size={17} strokeWidth={1.9} aria-hidden="true" />Menu principal</button>
-        </div>
-      </nav>}
-
-      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview' || view === 'board' || view === 'trophies' || view === 'history' || view === 'finance' || view === 'training' || view === 'medical') ? 'content content-fit' : 'content'}>
-        {!match && <header className="topbar">
-          <div className="row">
-            <h1>{TITLES[view]}</h1>
-            <span className="date-pill" aria-label={`Hoje: ${fmtWeekday(summary.gameDate)}, ${fmtDate(summary.gameDate)}. Temporada ${summary.seasonLabel}`}>
-              <span className="dpill-icon"><CalendarDays size={18} aria-hidden="true" /></span>
-              <span className="dpill-day"><small>{fmtWeekday(summary.gameDate)}</small><b>{fmtDate(summary.gameDate)}</b></span>
-              <span className="dpill-season"><small>Temporada</small><b>{summary.seasonLabel}</b></span>
+    <div className={`dash club-scope ${match ? 'focus' : ''}`} style={clubVars(palette)}>
+      {/* durante a partida o acompanhamento é o foco: sem barra superior */}
+      {!match && <header className="nv">
+        <div className="nv-top">
+          <div className="nv-club">
+            {club ? <ClubCrest id={club.id} name={club.name} size={38} src={img.url('clubs', club.id)} /> : <span className="nv-noclub" aria-hidden="true">—</span>}
+            <span className="nv-club-text">
+              <b>{club ? club.name : 'Sem clube'}</b>
+              <small>{club ? <>{club.league}{pos ? <> · <strong>{pos.position}º</strong> de {pos.total}</> : null}</> : 'Treinador desempregado'}</small>
             </span>
           </div>
-          <div className="row">
+          <nav className="nv-tabs" aria-label="Seções do jogo">
+            {TABS.map((t) => {
+              const all = t.items.every(locked);
+              const Icon = t.icon;
+              const unread = t.id === 'club' && overview.unreadInbox > 0;
+              return (
+                <button key={t.id} className={`nv-tab ${t.id === tab ? 'nv-tab-on' : ''}`} disabled={all} aria-current={t.id === tab ? 'true' : undefined}
+                  title={all ? 'Sem clube: aceite uma proposta na Diretoria' : undefined} onClick={() => openTab(t)}>
+                  <Icon size={17} strokeWidth={2} aria-hidden="true" /><span>{t.label}</span>
+                  {unread && <span className="nv-dot" aria-label={`${overview.unreadInbox} mensagem(ns) não lida(s)`} />}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="nv-actions">
+            <button className={`nv-icon ${view === 'inbox' ? 'nv-icon-on' : ''}`} onClick={() => go('inbox')} title="Caixa de entrada" aria-label={`Caixa de entrada${overview.unreadInbox ? `: ${overview.unreadInbox} não lida(s)` : ''}`}>
+              <Mail size={18} aria-hidden="true" />{overview.unreadInbox > 0 && <span className="nav-badge">{overview.unreadInbox > 99 ? '99+' : overview.unreadInbox}</span>}
+            </button>
             {season.canStart ? (
-              <button disabled={busy} onClick={() => go('season')}><CalendarRange size={16} aria-hidden="true" />Iniciar nova temporada</button>
+              <button className="nv-go" disabled={busy} onClick={() => go('season')}><CalendarRange size={18} aria-hidden="true" />Nova temporada</button>
             ) : userMatchToday ? (
               <>
-                <button className="secondary" disabled={busy} onClick={() => void simulate(false)}><Play size={16} aria-hidden="true" />Simular partida</button>
-                <button disabled={busy} onClick={() => void simulate(true)}><PlayCircle size={16} aria-hidden="true" />Acompanhar ao vivo</button>
+                <button className="secondary nv-sim" disabled={busy} onClick={() => void simulate(false)} title="Simula a partida sem acompanhar"><Play size={16} aria-hidden="true" />Simular</button>
+                <button className="nv-go nv-matchday" disabled={busy} onClick={() => void simulate(true)}><PlayCircle size={18} aria-hidden="true" />Jogo ao vivo</button>
               </>
             ) : (
-              <button className="ct-continue" disabled={busy} onClick={startContinue} title="Avança o tempo dia a dia; para no jogo do seu time, numa decisão importante ou quando você quiser">
-                <FastForward size={16} aria-hidden="true" />Continuar</button>
+              <button className="nv-go ct-continue" disabled={busy} onClick={startContinue} title="Avança o tempo dia a dia; para no jogo do seu time, numa decisão importante ou quando você quiser">
+                <FastForward size={18} aria-hidden="true" />Continuar</button>
             )}
+            <button className="nv-icon" onClick={toggleTheme} title={theme === 'dark' ? 'Tema claro (dia de jogo)' : 'Tema escuro (estádio noturno)'} aria-label="Alternar tema">
+              {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+            </button>
+            <button className="nv-icon" onClick={onExit} title="Menu principal" aria-label="Menu principal"><LogOut size={18} aria-hidden="true" /></button>
           </div>
-        </header>}
+        </div>
+        <div className="nv-sub">
+          <nav className="nv-subtabs" aria-label={`Subseções de ${activeTab.label}`}>
+            {activeTab.items.map((v) => (
+              <button key={v} className={`nv-subtab ${v === view ? 'nv-subtab-on' : ''}`} disabled={locked(v)} aria-current={v === view ? 'page' : undefined}
+                title={locked(v) ? 'Sem clube: aceite uma proposta na Diretoria' : TITLES[v]} onClick={() => go(v)}>
+                {SHORT[v] ?? TITLES[v]}{v === 'inbox' && overview.unreadInbox > 0 && <span className="nv-count">{overview.unreadInbox > 99 ? '99+' : overview.unreadInbox}</span>}
+              </button>
+            ))}
+          </nav>
+          <span className="nv-date" aria-label={`Hoje: ${fmtWeekday(summary.gameDate)}, ${fmtDate(summary.gameDate)}. Temporada ${summary.seasonLabel}`}>
+            <span className="nv-weekday">{fmtWeekday(summary.gameDate)}</span><b>{fmtDate(summary.gameDate)}</b><span className="nv-season">Temporada {summary.seasonLabel}</span>
+          </span>
+        </div>
+      </header>}
+
+      <main className={!match && !player && !clubPage && (view === 'squad' || view === 'tactics' || view === 'contracts' || view === 'transfers' || view === 'calendar' || view === 'news' || view === 'inbox' || view === 'competitions' || view === 'overview' || view === 'board' || view === 'trophies' || view === 'history' || view === 'finance' || view === 'training' || view === 'medical') ? 'content content-fit' : 'content'}>
+        {!match && <h1 className="ui-sr">{TITLES[view]}</h1>}
         {continuing && <ContinueBox profileId={profileId} careerId={careerId} startDate={summary.gameDate} onDone={(o) => void continueDone(o)} />}
-        {note && <p className={note.kind === 'error' ? 'error' : note.kind === 'info' ? 'notice' : 'ok'} role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
-        {overview.warnings.map((w) => <p key={w} className="error" role="alert">{w}</p>)}
-        {season.complete && !match && view !== 'season' && (
+        {note && (note.kind === 'error' || onMain) && <p className={note.kind === 'error' ? 'error' : note.kind === 'info' ? 'notice' : 'ok'} role={note.kind === 'error' ? 'alert' : 'status'}>{note.text}</p>}
+        {onMain && overview.warnings.map((w) => <p key={w} className="error" role="alert">{w}</p>)}
+        {season.complete && onMain && (
           <p className="notice">A temporada {summary.seasonLabel} terminou. {season.canStart ? 'Inicie a nova temporada' : `A virada acontece em ${fmtDate(season.turnoverDate)}`} na aba <button className="link" onClick={() => go('season')}>Temporada</button>; antes disso, renove os contratos que vencem.</p>
         )}
 

@@ -12,6 +12,7 @@ import { CareerList } from './screens/CareerList.tsx';
 import { CareerDashboard } from './screens/CareerDashboard.tsx';
 import { ClubCrest } from './flags.tsx';
 import { useImages } from './images.ts';
+import { clubVars, useClubPalette } from './clubColors.ts';
 
 type Screen = { name: 'home' } | { name: 'new' } | { name: 'load' } | { name: 'packs' } | { name: 'editor' } | { name: 'career'; overview: CareerOverviewDto };
 const LS_KEY = 'fmsim.profileId';
@@ -31,6 +32,8 @@ export function App() {
   const [theme, toggleTheme] = useTheme();
   const [creatingProfile, setCreatingProfile] = useState(false);
   const img = useImages();
+  // carreira mais recente em destaque nas cores do clube dela (hook antes dos retornos antecipados)
+  const latestPal = useClubPalette(careers?.careers[0]?.clubId || null);
 
   useEffect(() => {
     (async () => {
@@ -85,7 +88,7 @@ export function App() {
   const profileName = profiles.find((p) => p.id === profileId)?.name;
   const showNewProfile = creatingProfile || profiles.length === 0;
   return (
-    <main className="hm">
+    <main className="hm club-scope" style={clubVars(latestPal)}>
       <section className="hm-hero" aria-label="FOOTERA">
         <img className="hm-pitch" src={homeTactics} alt="" aria-hidden="true" />
         <div className="hm-brand">

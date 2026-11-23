@@ -1,0 +1,156 @@
+/* ---------- Táticas (tc-) — TacticsView.tsx: faixa de formações, elenco | campo iluminado, janelas de função e estilo ---------- */
+.tc { position: relative; display: grid; gap: 12px; }
+.tc-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; padding: 10px 14px; }
+.tc-presets, .tc-schemes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tc-label { font-family: var(--font-display); font-size: .86rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+.tc-schemes select, .tc-schemes input { min-height: 32px; padding: 4px 8px; }
+.tc-schemes input { width: 150px; }
+.tc-status { margin-left: 4px; }
+.tc-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.tc-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tc-list { gap: 8px; }
+.tc-scroll { max-height: calc(100vh - 330px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.tc-scroll td { padding: 4px 8px; white-space: nowrap; }
+.tc-scroll th { padding: 7px 8px; }
+tr.tc-row { cursor: grab; user-select: none; }
+tr.tc-row.tc-lifted td { opacity: .45; }
+/* durante o arraste: mão fechada em toda a tela, sem seleção de texto nem arraste nativo das fotos */
+body.tc-grabbing, body.tc-grabbing * { cursor: grabbing !important; user-select: none; }
+.tc-field img, tr.tc-row img, .tc-ghost img { -webkit-user-drag: none; }
+tr.tc-starter { background: color-mix(in srgb, var(--club, var(--primary)) 7%, transparent); }
+tr.tc-sel { background: var(--club-soft, var(--primary-soft)) !important; outline: 1px solid var(--club, var(--primary)); }
+/* vaga do titular: selo na cor do clube */
+.tc-badge {
+  display: inline-grid; place-items: center; min-width: 38px; padding: 0 6px; font-family: var(--font-display); font-size: .9rem; font-weight: 800; letter-spacing: .05em;
+  background: var(--club, var(--primary)); color: var(--club-ink, var(--primary-contrast)); clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+}
+.tc-name { font-weight: 600; }
+.tc-fit { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; }
+.tc-field-card { gap: 8px; }
+/* campo noturno: faixas de gramado, brilho dos refletores nos cantos e vinheta escura (verde nos dois temas) */
+.tc-field {
+  position: relative; aspect-ratio: 68 / 100; cursor: pointer; max-height: calc(100vh - 290px); margin: 0 auto; width: 100%; border-radius: 8px; overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 30% at 0% 0%, rgba(220, 235, 255, .16), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 100% 0%, rgba(220, 235, 255, .16), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 0% 100%, rgba(220, 235, 255, .12), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 100% 100%, rgba(220, 235, 255, .12), transparent 70%),
+    radial-gradient(ellipse 90% 70% at 50% 50%, transparent 55%, rgba(0, 0, 0, .35)),
+    repeating-linear-gradient(0deg, #17652f 0 6.25%, #1b7236 6.25% 12.5%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 10px 30px rgba(0, 0, 0, .45);
+}
+.tc-field:focus-visible { outline: none; box-shadow: var(--ring); }
+.tc-lines { position: absolute; inset: 3%; border: 2px solid rgba(255, 255, 255, .5); pointer-events: none; }
+.tc-lines i { position: absolute; left: 0; right: 0; top: 50%; border-top: 2px solid rgba(255, 255, 255, .5); }
+.tc-lines b { position: absolute; left: 50%; top: 50%; width: 26%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 2px solid rgba(255, 255, 255, .5); border-radius: 50%; }
+.tc-lines s, .tc-lines u { position: absolute; left: 25%; right: 25%; height: 15%; border: 2px solid rgba(255, 255, 255, .5); }
+.tc-lines s { top: -2px; border-top: 0; }
+.tc-lines u { bottom: -2px; border-bottom: 0; }
+button.tc-empty, button.tc-chip-p { position: absolute; transform: translate(-50%, -50%); background: none; border: 0; padding: 0; min-height: 0; color: #fff; }
+button.tc-empty { width: 46px; height: 46px; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .35); font-size: .82rem; font-weight: 700; color: rgba(255, 255, 255, .6); }
+button.tc-empty:hover:not(:disabled), button.tc-empty.over, button.tc-empty.armed:hover { background: rgba(255, 255, 255, .12); border-color: #fff; color: #fff; }
+button.tc-empty.armed { border-color: rgba(255, 255, 255, .65); }
+/* posições livres só aparecem ao arrastar um jogador (ou no modo "Colocar em campo"): o campo fica limpo no resto do tempo */
+.tc-field button.tc-empty { opacity: 0; visibility: hidden; transition: opacity .15s ease, visibility .15s, transform .15s ease; }
+.tc-field.tc-placing button.tc-empty { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .tc-field button.tc-empty { transition: none; } }
+button.tc-chip-p { display: grid; justify-items: center; gap: 2px; width: 92px; cursor: grab; touch-action: none;
+  transition: left .32s cubic-bezier(.2, .8, .2, 1), top .32s cubic-bezier(.2, .8, .2, 1), opacity .15s; }
+/* o crachá que está na mão fica esmaecido no lugar de origem; o alvo do ímã cresce */
+button.tc-chip-p.tc-lifted { opacity: .3; }
+/* o "afundar" global dos botões pressionados (translateY) apagava o centro do crachá: ele pulava meio crachá para o lado ao ser pego */
+.tc-field button.tc-chip-p:active, .tc-field button.tc-empty:active { transform: translate(-50%, -50%); }
+.tc-dragging button.tc-chip-p.over .tc-face { transform: scale(1.12); }
+.tc-dragging button.tc-empty.over { transform: translate(-50%, -50%) scale(1.15); background: rgba(255, 255, 255, .2); border-style: solid; }
+/* crachá-fantasma que acompanha o ponteiro */
+.tc-ghost { position: absolute; z-index: 50; display: grid; justify-items: center; gap: 2px; pointer-events: none; transform: translate(-50%, -50%) scale(1.08); color: #fff;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55)); }
+.tc-ghost .tc-face { border-color: #fff; }
+.tc-ghost .tc-chip-name { padding: 0 5px; border-radius: 3px; background: rgba(0, 0, 0, .7); }
+@media (prefers-reduced-motion: reduce) { button.tc-chip-p, .tc-face { transition: none; } }
+button.tc-chip-p:hover:not(:disabled) { background: none; }
+button.tc-chip-p.over .tc-face, button.tc-chip-p.sel .tc-face { outline: 3px solid #fff; outline-offset: 2px; }
+/* crachá: camisa na cor do clube; o anel colorido diz se ele está na posição (o selo embaixo traz o número) */
+.tc-face {
+  display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; font-family: var(--font-display); font-size: 1rem; font-weight: 800;
+  background: var(--club, #1d4ed8); border: 3px solid currentColor; box-shadow: 0 3px 8px rgba(0, 0, 0, .5), 0 0 12px var(--club-glow, transparent);
+  transition: transform .15s ease;
+}
+/* iniciais na tinta do clube: o seletor vence a cor de nível (.great…) também no tema claro */
+.tc-field .tc-chip-p span.tc-face { color: var(--club-ink, #fff); }
+.tc-face.great { border-color: #34d399; } .tc-face.good { border-color: #facc15; } .tc-face.poor { border-color: #fb923c; }
+.tc-chip-name { font-size: .76rem; font-weight: 700; text-shadow: 0 1px 2px rgba(0, 0, 0, .85); white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.tc-chip-pos { display: inline-flex; gap: 3px; align-items: center; font-family: var(--font-display); font-size: .82rem; }
+.tc-chip-pos b { padding: 0 4px; border-radius: 3px; background: rgba(0, 0, 0, .6); }
+.tc-chip-pos i { font-style: normal; font-weight: 800; padding: 0 4px; border-radius: 3px; background: rgba(0, 0, 0, .6); }
+.tc-out { position: absolute; top: -2px; right: 18px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--danger); font-size: .7rem; font-weight: 900; }
+.tc-key { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.tc-legend { gap: 6px 10px; }
+.tc-style-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.tc-chip-role { max-width: 96px; padding: 0 5px; border-radius: 3px; background: rgba(0, 0, 0, .62); font-size: .62rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-chip-role.auto { font-weight: 500; color: rgba(255, 255, 255, .78); font-style: italic; }
+
+/* janela do estilo de jogo */
+.tc-style { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; align-items: start; }
+.tc-style-modal { width: min(720px, 100%); }
+.tc-style-modal .modal-foot { justify-content: space-between; }
+.tc-style-item { display: grid; gap: 6px; min-width: 150px; margin: 0; font-size: .82rem; color: var(--text-muted); }
+.tc-style-item > span { font-family: var(--font-display); font-size: .9rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.tc-style-item strong { color: var(--club-text, var(--text)); font-size: 1.05rem; }
+
+/* janela de funções */
+.tc-roles { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.tc-roles-main { display: grid; gap: 12px; min-width: 0; }
+.tc-roles-modal { width: min(1240px, 100%); }
+.tc-roles-modal .modal-foot { justify-content: space-between; }
+.tc-roles-head { flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.tc-roles-head h2 { margin: 0; }
+.tc-roles-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+button.tc-role {
+  display: grid; align-content: start; gap: 4px; text-align: left; justify-content: stretch; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font-family: var(--font-body); font-size: inherit; font-weight: 500; letter-spacing: 0; white-space: normal;
+}
+button.tc-role:hover:not(:disabled) { background: var(--surface-3); border-color: var(--edge-hi); }
+button.tc-role.on { border-color: var(--club, var(--primary)); box-shadow: inset 0 0 0 1px var(--club, var(--primary)), 0 0 14px var(--club-glow, transparent); background: var(--club-soft, var(--primary-soft)); }
+.tc-role-name { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; letter-spacing: .03em; text-transform: uppercase; }
+.tc-role-desc { line-height: 1.3; }
+.tc-role-meter { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 6px; font-size: .72rem; color: var(--text-muted); }
+.tc-role-meter i { height: 6px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.tc-role-meter b { display: block; height: 100%; background: currentColor; }
+.tc-role-meter em { font-style: normal; font-family: var(--font-display); font-size: .95rem; font-weight: 700; color: var(--text); text-align: right; }
+.tc-roles-train { align-items: center; gap: 8px; }
+.tc-roles-train select { margin-left: 6px; }
+/* cabe na janela (content-fit): só a lista do elenco rola; o campo ocupa a altura que sobra, mantendo a proporção */
+.content-fit > .tc { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.content-fit .tc > .tc-grid { flex: 1; min-height: 0; align-items: stretch; grid-template-rows: minmax(0, 1fr); }
+.content-fit .tc-grid > .tc-side, .content-fit .tc-grid > .tc-field-card { min-height: 0; }
+.content-fit .tc-side > .tc-list { flex: 1; min-height: 0; }
+.content-fit .tc-list .tc-scroll { flex: 1; min-height: 0; max-height: none; }
+.content-fit .tc-field-card .tc-field { flex: 1 1 0; min-height: 260px; max-height: none; width: auto; max-width: 100%; align-self: center; }
+@media (max-width: 1200px), (max-height: 680px) {
+  .content-fit:has(> .tc) { overflow: auto; }
+  .content-fit > .tc { flex: none; }
+  .content-fit .tc .tc-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+  .content-fit .tc-list .tc-scroll { max-height: 60vh; }
+  .content-fit .tc-field-card .tc-field { flex: none; width: min(100%, 560px); }
+}
+@media (max-width: 1000px) { .tc-roles-modal .tc-roles { grid-template-columns: 1fr; } }
+
+/* ---------- campinho animado das funções (rf-) — roleField.tsx ---------- */
+.rf { margin: 0; display: grid; gap: 8px; align-content: start; }
+.rf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rf-pitch { width: 100%; height: auto; border-radius: 8px; display: block; }
+.rf-grass { fill: #17652f; }
+.rf-stripe { fill: rgba(255, 255, 255, .035); }
+.rf-lines rect, .rf-lines circle, .rf-lines line { fill: none; stroke: rgba(255, 255, 255, .55); stroke-width: .35; }
+.rf-zone.risk { fill: rgba(239, 68, 68, .28); stroke: rgba(239, 68, 68, .7); stroke-width: .3; stroke-dasharray: 1 1; }
+.rf-zone.cover { fill: rgba(56, 189, 248, .22); stroke: rgba(56, 189, 248, .7); stroke-width: .3; stroke-dasharray: 1 1; }
+.rf-route { fill: none; stroke: rgba(255, 255, 255, .7); stroke-width: .45; stroke-dasharray: 1.4 1.2; }
+.rf-home { fill: rgba(255, 255, 255, .45); }
+.rf-pass { stroke: #facc15; stroke-width: .4; stroke-dasharray: .8 .9; opacity: .75; }
+.rf-pass.air { stroke-dasharray: 2 1; }
+.rf-player { fill: var(--club, var(--primary)); stroke: #fff; stroke-width: .6; }
+.rf-ball { fill: #fff; stroke: #111; stroke-width: .25; }
+.rf-tags { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.rf-tags li { padding: 0 8px; border-radius: 3px; background: var(--surface-3); font-family: var(--font-display); font-size: .86rem; font-weight: 600; letter-spacing: .03em; }
+.rf-note { margin: 0; }

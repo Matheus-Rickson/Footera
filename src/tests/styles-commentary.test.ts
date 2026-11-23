@@ -5,7 +5,11 @@ import { commentate } from '../game/match-engine/commentary.ts';
 import type { ChanceType, MatchEvent } from '../game/match-engine/types.ts';
 
 test('CSS: nenhuma classe simples é definida duas vezes (colisão silenciosa já cortou os cabeçalhos do painel)', () => {
-  const css = fs.readFileSync(new URL('../renderer/styles.css', import.meta.url), 'utf8');
+  // todos os arquivos de styles/ juntos: a regra vale para a folha de estilos inteira
+  const dir = new URL('../renderer/styles/', import.meta.url);
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.css'));
+  assert.ok(files.length >= 5, `arquivos de estilo: ${files.join(', ')}`);
+  const css = files.map((f) => fs.readFileSync(new URL(f, dir), 'utf8')).join('\n');
   const seen = new Map<string, number>();
   for (const m of css.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
     const sel = m[1]!.trim();

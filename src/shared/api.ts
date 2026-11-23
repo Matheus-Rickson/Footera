@@ -1,4 +1,5 @@
 /** Contrato da API exposta pelo preload ao renderer. */
+import type { ClubPalette } from './crestColor.ts';
 import type { AttrSummary } from './attributeSummary.ts';
 import type { CoachAttributes, CoachAttrKey } from './coachAttributes.ts';
 import type { Methodology, Position } from './types.ts';
@@ -682,6 +683,8 @@ export interface GameApi {
   imageKeys(): Promise<IpcResult<{ version: number; keys: string[] }>>;
   /** só a versão do índice de imagens (barato: a tela recarrega as chaves quando muda) */
   imageVersion(): Promise<IpcResult<number>>;
+  /** cores tiradas do escudo de cada clube (null = sem imagem de escudo; a tela usa as matizes do escudo gerado) */
+  clubColors(ids: string[]): Promise<IpcResult<Record<string, ClubPalette | null>>>;
   /** escolhe uma imagem (diálogo) e grava no pacote para a entidade; devolve as chaves atualizadas (ou null se cancelou) */
   /** importa jogadores/clubes de uma planilha CSV escolhida pelo usuário (null = cancelou) */
   editorImportCsv(packId: string, kind: 'players' | 'clubs'): Promise<IpcResult<CsvImportReportDto | null>>;

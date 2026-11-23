@@ -1,7 +1,10 @@
-import { useState } from 'react';
-import { FolderOpen, Trash2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { FolderOpen, Play, Trash2 } from 'lucide-react';
 import type { CareerListDto, CareerSummaryDto } from '../../shared/api.ts';
 import { errMsg, fmtDate, fmtDateTime, fmtPlay, unwrap } from '../util.ts';
+import { ClubCrest } from '../flags.tsx';
+import { useImages } from '../images.ts';
+import { clubVars, useClubPalette } from '../clubColors.ts';
 
 interface Props {
   profileId: string; data: CareerListDto | null; error: string | null; busy: boolean;
@@ -56,22 +59,11 @@ export function CareerList({ profileId, data, error, busy, onBack, onOpen, onCha
           </div>
         </section>
       )}
-      <section className="card">
-        {!data ? <p className="muted">Carregando…</p> : data.careers.length === 0 ? <p className="muted">Este perfil ainda não tem carreiras.</p> : (
-          <table>
-            <thead><tr><th>Treinador</th><th>Clube</th><th>Temporada</th><th>Data do jogo</th><th>Último salvamento</th><th>Tempo de jogo</th><th /></tr></thead>
-            <tbody>
-              {data.careers.map((c) => (
-                <tr key={c.id} className={pending?.id === c.id ? 'csl-pending' : ''}>
-                  <td>{c.coachName}</td><td>{c.clubName}</td><td>{c.seasonLabel}</td><td>{fmtDate(c.gameDate)}</td>
-                  <td>{fmtDateTime(c.updatedAt)}</td><td>{fmtPlay(c.playSeconds)}</td>
-                  <td><div className="row csl-row-actions"><button disabled={locked} onClick={() => onOpen(c.id)}>Abrir</button>{actions(c.id, c)}</div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {!data ? <p className="muted">Carregando…</p> : data.careers.length === 0 ? <section className="card"><p className="muted">Este perfil ainda não tem carreiras.</p></section> : (
+        <ul className="csl-slots" aria-label="Carreiras salvas">
+          {data.careers.map((c) => <SaveSlot key={c.id} c={c} pending={pending?.id === c.id} locked={locked} onOpen={() => onOpen(c.id)} actions={actions(c.id, c)} />)}
+        </ul>
+      )}
       {data && data.unreadable.length > 0 && (
         <section className="card">
           <h2>Saves ilegíveis</h2>
@@ -80,5 +72,25 @@ export function CareerList({ profileId, data, error, busy, onBack, onOpen, onCha
         </section>
       )}
     </main>
+  );
+}
+
+/** Uma carreira salva, como um "slot" de jogo: escudo e cores do clube, treinador, temporada, data do jogo e tempo jogado. */
+function SaveSlot({ c, pending, locked, onOpen, actions }: { c: CareerSummaryDto; pending: boolean; locked: boolean; onOpen: () => void; actions: ReactNode }) {
+  const img = useImages();
+  const pal = useClubPalette(c.clubId || null);
+  return (
+    <li className={`csl-slot club-scope ${pending ? 'csl-pending' : ''}`} style={clubVars(pal)}>
+      {c.clubId ? <ClubCrest id={c.clubId} name={c.clubName} size={44} src={img.url('clubs', c.clubId)} /> : <span className="csl-noclub" aria-hidden="true">—</span>}
+      <div className="csl-slot-main">
+        <strong>{c.clubId ? c.clubName : 'Sem clube'}</strong>
+        <span className="muted small">{c.coachName} · temporada {c.seasonLabel} · data do jogo {fmtDate(c.gameDate)}</span>
+      </div>
+      <div className="csl-slot-meta small">
+        <span>Salvo em {fmtDateTime(c.updatedAt)}</span>
+        <span className="muted">{fmtPlay(c.playSeconds)} de jogo</span>
+      </div>
+      <div className="row csl-row-actions"><button className="csl-open" disabled={locked} onClick={onOpen}><Play size={15} aria-hidden="true" />Abrir</button>{actions}</div>
+    </li>
   );
 }

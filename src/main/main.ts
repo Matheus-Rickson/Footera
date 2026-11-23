@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell } from 'electron';
 import type { OpenDialogOptions, SaveDialogOptions } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,6 +23,7 @@ import { careerUniverse, exportPackZip, imageIndex, importPackZip, listPacks, pa
 import { imagesVersion, listPackImages, packImageFile, removePackImage, setPackImage, type ImageKind } from '../services/imageService.node.ts';
 import { editorCreatePack, editorGet, editorList, editorOptions, editorRemove, editorRevert, editorSave, editorSummary, editorUpdateManifest, editorImportCsv, editorExportCsvRows } from '../services/editorService.node.ts';
 import { decodeCsv } from '../game/data-pack/csv.ts';
+import { crestColors, type ClubPalette } from '../shared/crestColor.ts';
 
 // O nome do produto (FOOTERA) não muda a pasta dos saves: o app instalado usa a mesma pasta de sempre,
 // senão carreiras criadas antes da troca de nome sumiriam da lista.
@@ -73,6 +74,28 @@ function registerHandlers(): void {
   const imageKeys = () => ({ version: imagesVersion(), keys: [...imageIndex(dataDir()).keys()] });
   handle('images:keys', z.unknown(), () => imageKeys());
   handle('images:version', z.unknown(), () => { imageIndex(dataDir()); return imagesVersion(); });
+  // cores do escudo (interface "Estádio noturno"): a imagem é reduzida a 32 px e lida uma vez por arquivo; sem escudo → null
+  // (a tela usa as matizes do escudo gerado). O toBitmap do Electron entrega BGRA no Windows.
+  const crestCache = new Map<string, ClubPalette | null>();
+  const crestOf = (id: string): ClubPalette | null => {
+    const file = imageIndex(dataDir()).get(`clubs/${id}`);
+    if (!file) return null;
+    const key = `${file}|${(() => { try { return fs.statSync(file).mtimeMs; } catch { return 0; } })()}`;
+    if (crestCache.has(key)) return crestCache.get(key)!;
+    let pal: ClubPalette | null = null;
+    try {
+      const im = nativeImage.createFromPath(file);
+      if (!im.isEmpty()) {
+        const small = im.resize({ width: 32, quality: 'good' });
+        const { width, height } = small.getSize();
+        pal = crestColors(new Uint8Array(small.toBitmap()), width, height, 'bgra');
+      }
+    } catch { pal = null; }
+    crestCache.set(key, pal);
+    return pal;
+  };
+  handle('club:colors', z.object({ ids: z.array(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/)).max(64) }),
+    (i) => Object.fromEntries(i.ids.map((id) => [id, crestOf(id)])) as Record<string, ClubPalette | null>);
   const imgRef = z.object({ packId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/), kind: z.enum(['players', 'clubs', 'stadiums', 'leagues', 'coaches', 'cups']), id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/) });
   const packDirFor = (id: string) => { const d = path.join(packsDir(dataDir()), id); if (!fs.existsSync(path.join(d, 'manifest.json'))) throw new ValidationError('Pacote não encontrado.'); return d; };
   const packImageKeys = (id: string) => ({ version: imagesVersion(), keys: listPackImages(packDirFor(id)).map((im) => `${im.kind}/${im.id}`) });
@@ -348,7 +371,7 @@ function registerHandlers(): void {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#161718', title: 'FOOTERA',
+    width: 1280, height: 800, minWidth: 1024, minHeight: 640, backgroundColor: '#03050a', title: 'FOOTERA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,

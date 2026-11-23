@@ -9,6 +9,8 @@ import { LivePitch } from './LivePitch.tsx';
 import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
+import { useClubPalette } from '../clubColors.ts';
+import { matchSides } from '../../shared/crestColor.ts';
 
 interface Props {
   profileId: string; careerId: string; fixtureId?: string; autoplay: boolean; onBack: () => void;
@@ -59,7 +61,7 @@ function TeamPitch({ players, side }: { players: LivePlayer[]; side: 0 | 1 }) {
   );
 }
 
-function TeamTable({ name, team, levels }: { name: string; team: LiveState['teams'][number]; levels: Record<string, number> }) {
+function TeamTable({ name, team, levels, side }: { name: string; team: LiveState['teams'][number]; levels: Record<string, number>; side: 0 | 1 }) {
   const row = (p: LivePlayer) => (
     <tr key={p.id} className={p.onPitch ? '' : 'mc-gone'}>
       <td><PosPill pos={p.slot} /></td>
@@ -72,7 +74,7 @@ function TeamTable({ name, team, levels }: { name: string; team: LiveState['team
     </tr>
   );
   return (
-    <section className="card mc-table">
+    <section className={`card mc-table ${side === 1 ? 'mc-table-away' : ''}`}>
       <h2>{name}</h2>
       <table>
         <thead><tr><th>Pos</th><th>Nome</th><th className="center" title="Força atual (só do seu clube)">Lvl</th><th>Condição</th><th className="center">Nota</th><th className="right">Min</th><th className="right">G</th></tr></thead>
@@ -206,6 +208,13 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
     const ht = r.commentary.find((l) => l.kind === 'period');
     return ht ? ticks.findIndex((t) => t.ev > ht.i) + 1 : -1;
   }, [r, ticks]);
+  // cores dos dois times, tiradas dos escudos; o visitante troca de cor quando as duas se confundem
+  const homePal = useClubPalette(r?.home.clubId), awayPal = useClubPalette(r?.away.clubId);
+  const sideVars = useMemo(() => {
+    if (!homePal || !awayPal) return undefined;
+    const [h, a] = matchSides(homePal, awayPal);
+    return { ['--mc-home' as string]: h.color, ['--mc-home-ink' as string]: h.ink, ['--mc-away' as string]: a.color, ['--mc-away-ink' as string]: a.ink };
+  }, [homePal, awayPal]);
 
   const finish = useCallback(async (controlUntil: number | null) => {
     setBusy(true); setPlaying(false);
@@ -270,7 +279,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const leave = () => { if (deciding && !finished) { if (window.confirm('Sair agora encerra a partida: o auxiliar decide o restante e a rodada é gravada. Continuar?')) void finish(step).then(onBack); } else onBack(); };
 
   return (
-    <div className="mc">
+    <div className="mc" style={sideVars}>
       <section className="card mc-head">
         <div className="mc-board">
           <div className="mc-side"><div className="mc-team"><span className="mc-team-name">{r.home.name}</span><small className="muted">{st.teams[0].formation}</small></div>
@@ -328,7 +337,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
       <div className="mc-grid">
         <div className="mc-col">
           <section className="card mc-pitch-card"><TeamPitch players={st.teams[0].onPitch} side={0} /></section>
-          <TeamTable name={r.home.name} team={st.teams[0]} levels={r.levels} />
+          <TeamTable name={r.home.name} team={st.teams[0]} levels={r.levels} side={0} />
         </div>
         <div className="mc-col">
           <EventsCard st={st} minor={minor} setMinor={setMinor} />
@@ -342,7 +351,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
         </div>
         <div className="mc-col">
           <section className="card mc-pitch-card"><TeamPitch players={st.teams[1].onPitch} side={1} /></section>
-          <TeamTable name={r.away.name} team={st.teams[1]} levels={r.levels} />
+          <TeamTable name={r.away.name} team={st.teams[1]} levels={r.levels} side={1} />
         </div>
       </div>
 

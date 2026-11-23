@@ -5,6 +5,7 @@ import { fmtDate } from './util.ts';
 import { Flag as CountryFlag } from './flags.tsx';
 import { POS_LABEL, POS_NAME } from '../shared/positions.ts';
 import { range20, to20 } from '../shared/scale.ts';
+import { groupOf } from '../game/transfer-engine/transfer.ts';
 export { POS_LABEL, POS_NAME, posLabel } from '../shared/positions.ts';
 export const FOOT_LABEL: Record<string, string> = { right: 'Destro', left: 'Canhoto', both: 'Ambidestro' };
 export const fmtRange = (r: Range) => (r.low === r.high ? `${r.low}` : `${r.low}–${r.high}`);
@@ -21,9 +22,9 @@ export function PlayerFace({ img, id, name, className }: { img: { url: (kind: 'p
 /** Faixa de cor por nível (escala 0–100). */
 export const tone = (v: number) => (v >= 75 ? 'great' : v >= 60 ? 'good' : v >= 45 ? 'avg' : 'poor');
 
-/** Sigla da posição com o nome completo no tooltip. */
+/** Sigla da posição com o nome completo no tooltip; a cor do setor (goleiro, defesa, meio, ataque) só reforça a sigla. */
 export function PosPill({ pos, minor = false }: { pos: Position; minor?: boolean }) {
-  return <span className={minor ? 'pf-pos tr-pos-minor' : 'pf-pos'} title={POS_NAME[pos]}>{POS_LABEL[pos]}</span>;
+  return <span className={`pf-pos pf-pos-${groupOf(pos)}${minor ? ' tr-pos-minor' : ''}`} title={POS_NAME[pos]}>{POS_LABEL[pos]}</span>;
 }
 
 /** Sinalizações ao lado do nome: lista de observação, lesão, suspensão e cartões da temporada. Nada aparece se não houver o que sinalizar. */

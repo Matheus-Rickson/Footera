@@ -13,6 +13,8 @@ import { attributeHelp } from '../../game/world/attributeInfo.ts';
 import { HelpTip } from '../help.tsx';
 import { Stars } from '../stars.tsx';
 import { ATTR_LABEL } from '../../shared/attributeLabels.ts';
+import { clubVars, useClubPalette } from '../clubColors.ts';
+import { Meter, Panel, StatTile } from '../ui/index.tsx';
 
 const GROUP_LABEL = { goalkeeper: 'Goleiro', technical: 'Técnicos', mental: 'Mentais', physical: 'Físicos' } as const;
 /** grupos exibidos: o de goleiro só para goleiros (nos demais ele existe, mas não interessa) */
@@ -54,6 +56,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const img = useImages();
+  // o cartaz usa as cores do clube do jogador (sem clube: as do seu clube, herdadas da barra)
+  const palette = useClubPalette(p?.clubId || null);
   const load = useCallback(async () => { setP(await unwrap(window.api.getPlayerProfile(profileId, careerId, playerId))); }, [profileId, careerId, playerId]);
   useEffect(() => { setTab('overview'); load().catch((e) => setError(errMsg(e))); }, [load]);
 
@@ -69,8 +73,8 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
   const unknownTip = 'Os olheiros ainda não conhecem o jogador o bastante (50% de conhecimento).';
 
   return (
-    <div className="grid1">
-      <section className="card pf-head">
+    <div className="pf-page">
+      <section className={`card pf-head ${p.clubId ? 'club-scope' : ''}`} style={p.clubId ? clubVars(palette) : undefined}>
         <div className="pf-top">
           <div className="pf-id">
             {img.url('players', p.id) ? <img className="pf-avatar pf-photo" src={img.url('players', p.id)!} alt={`Foto de ${p.name}`} /> : <div className="pf-avatar" aria-hidden="true">{initials(p.name)}</div>}
@@ -100,22 +104,23 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
           </div>
           <div className="pf-body">
             <div className="row muted small"><Ruler size={14} aria-hidden="true" />{p.heightCm} cm<Weight size={14} aria-hidden="true" />{p.weightKg} kg</div>
-            <div className="pf-meter"><span className="meter"><i style={{ width: `${p.condition}%` }} /></span><b>{p.condition}%</b> Condição</div>
+            <div className="pf-meter"><span>Condição</span><Meter value={p.condition} label="Condição física" /><b>{p.condition}%</b></div>
             <div className="pf-meter" title={p.morale === null ? unknownTip : ''}>
-              <span className="meter"><i className={p.morale !== null && p.morale < 50 ? 'mid' : ''} style={{ width: `${p.morale ?? 0}%` }} /></span><b>{p.morale === null ? '?' : `${p.morale}%`}</b> Moral
+              <span>Moral</span>{p.morale === null ? <span className="muted small">desconhecida</span> : <Meter value={p.morale} label="Moral" />}<b>{p.morale === null ? '?' : `${p.morale}%`}</b>
             </div>
           </div>
         </div>
         <div className="pf-strip">
-          <span><span className="muted">Valor</span> <strong>{fmtMoney(p.marketValue)}</strong></span>
-          <span><span className="muted">{p.clubId || p.youth ? 'Salário' : 'Pretensão'}</span> <strong>{fmtMoney(p.salary)}/mês</strong></span>
-          <span><span className="muted">Fim do contrato</span> <strong>{p.clubId || p.youth ? fmtDate(p.contractEnd) : '—'}</strong></span>
-          <span><span className="muted">Potencial estimado</span> <strong>{fmtRange20(p.estPotential)}</strong></span>
-          {!p.own && <span className="row"><span className="muted">Olheiros</span> <KnowledgeBar value={p.knowledge} /></span>}
-          <span className="grow" />
+          <StatTile label="Valor" value={fmtMoney(p.marketValue)} />
+          <StatTile label={p.clubId || p.youth ? 'Salário' : 'Pretensão'} value={fmtMoney(p.salary)} sub="por mês" />
+          <StatTile label="Fim do contrato" value={p.clubId || p.youth ? fmtDate(p.contractEnd) : '—'} />
+          <StatTile label="Potencial estimado" value={fmtRange20(p.estPotential)} sub="escala 1–20" />
+          {!p.own && <StatTile label="Olheiros" value={<KnowledgeBar value={p.knowledge} />} sub="conhecimento" />}
+          <span className="pf-strip-actions">
           {p.market && <button className="secondary" disabled={busy} onClick={() => void toggleShortlist()}><Binoculars size={16} aria-hidden="true" />{p.market.shortlisted ? 'Observando' : 'Observar'}</button>}
           {p.market && <button disabled={!p.negotiable} title={p.negotiable ? '' : 'Janela de transferências fechada'} onClick={() => onNegotiate(p.market!)}><FileSignature size={16} aria-hidden="true" />Fazer proposta</button>}
           <button className="secondary" onClick={onClose}><ArrowLeft size={16} aria-hidden="true" />Voltar</button>
+          </span>
         </div>
         {error && <p className="error" role="alert">{error}</p>}
         {p.verdict && <p className={VERDICT_CLASS[p.verdict.level]}><strong>Parecer do olheiro:</strong> {p.verdict.text}</p>}
@@ -130,8 +135,7 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
       {tab === 'overview' && (
         <>
           <div className="pf-grid">
-            <section className="card">
-              <h2>Atributos</h2>
+            <Panel title="Atributos">
               {(
                 <div className="pf-attr">
                   <div className="pf-bars">{groups.map((g) => {
@@ -147,15 +151,14 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
                   <Radar groups={groups.map((g) => ({ short: g.short, range: g.range }))} />
                 </div>
               )}
-            </section>
-            <section className="card">
-              <h2>Posições</h2>
+            </Panel>
+            <Panel title="Posições">
               <PositionMap natural={p.position} familiar={p.secondaryPositions} />
-            </section>
+            </Panel>
           </div>
           {p.roles && (
-            <section className="card">
-              <div className="bar"><h2>Funções</h2><span className="muted small">Compatibilidade = quanto os atributos combinam com a função; domínio = quanto ele já sabe jogar assim (cresce jogando e treinando a função em Táticas). Treinar a função com foco Equilibrado também puxa a evolução dos atributos dela.</span></div>
+            <Panel title="Funções">
+              <p className="muted small pf-roles-note">Compatibilidade = quanto os atributos combinam com a função; domínio = quanto ele já sabe jogar assim (cresce jogando e treinando a função em Táticas). Treinar a função com foco Equilibrado também puxa a evolução dos atributos dela.</p>
               <div className="pf-roles">
                 {[...p.roles.list].sort((a, b) => b.familiarity - a.familiarity || b.suitability - a.suitability).map((r) => (
                   <div key={r.id} className={`pf-role ${p.roles!.focus === r.id ? 'pf-role-focus' : ''}`} title={r.description}>
@@ -166,42 +169,38 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
                   </div>
                 ))}
               </div>
-            </section>
+            </Panel>
           )}
           <div className="pf-grid3">
-            <section className="card">
-              <h2>Desenvolvimento</h2>
+            <Panel title="Desenvolvimento">
               {p.history ? <DevChart points={p.history.map((h) => ({ ...h, overall: to20(h.overall) }))} /> : <p className="muted pf-empty"><Gauge size={28} aria-hidden="true" />A evolução da força só é conhecida para jogadores do seu clube.</p>}
-            </section>
-            <section className="card">
-              <h2>Estatísticas da temporada</h2>
+            </Panel>
+            <Panel title="Estatísticas da temporada">
               {p.stats.appearances === 0 ? <p className="muted pf-empty"><CircleGauge size={28} aria-hidden="true" />Nenhuma partida nesta temporada.</p> : (
                 <div className="pf-kpis">
-                  <div><strong>{p.stats.appearances}</strong><span>jogos</span></div>
-                  <div><strong>{p.stats.goals}</strong><span>gols</span></div>
-                  <div><strong>{p.stats.assists}</strong><span>assistências</span></div>
-                  <div><strong>{p.stats.avgRating?.toFixed(2) ?? '—'}</strong><span>nota média</span></div>
+                  <div><StatTile label="Jogos" value={p.stats.appearances} /></div>
+                  <div><StatTile label="Gols" value={p.stats.goals} /></div>
+                  <div><StatTile label="Assistências" value={p.stats.assists} /></div>
+                  <div><StatTile label="Nota média" value={p.stats.avgRating?.toFixed(2).replace('.', ',') ?? '—'} /></div>
                 </div>
               )}
-            </section>
-            <section className="card">
-              <h2>Últimos jogos</h2>
+            </Panel>
+            <Panel title="Últimos jogos">
               {p.lastMatches.length === 0 ? <p className="muted pf-empty"><CircleGauge size={28} aria-hidden="true" />Nenhum jogo recente pelo clube.</p> : (
                 <table><tbody>{p.lastMatches.map((m) => (
                   <tr key={m.fixtureId}><td className="muted small nowrap">{fmtDate(m.date)}</td><td className="pf-opp" title={m.opponent}>{m.home ? 'vs' : '@'} {m.opponent}</td><td className="muted small nowrap">{m.score}</td>
                     <td className="small nowrap">{m.minutes}'{m.goals ? ` · ${m.goals} gol` : ''}{m.assists ? ` · ${m.assists} ass.` : ''}</td>
                     <td className="right"><span className={`pf-rating ${tone(m.rating * 10)}`}>{m.rating.toFixed(1)}</span></td></tr>))}</tbody></table>
               )}
-            </section>
+            </Panel>
           </div>
         </>
       )}
 
       {tab === 'attributes' && (
-        <section className="card">
-          <h2>Atributos detalhados (1 a 20)</h2>
+        <Panel title="Atributos detalhados (1 a 20)">
           {(
-            <div className="attrs">
+            <div className="pf-attrs">
               {groupsFor(p.position).filter((g) => p.attributes[g]).map((g) => (
                 <table key={g}><thead><tr><th colSpan={2}>{GROUP_LABEL[g]}</th></tr></thead>
                   <tbody>{Object.entries(p.attributes[g]!).map(([k, r]) => <tr key={k}><td><span className="pf-attr-name">{ATTR_LABEL[k] ?? k}<HelpTip text={attributeHelp(k)} /></span></td><td className="right"><strong className={tone(((r.low + r.high) / 2) * 5)}>{fmtRange(r)}</strong></td></tr>)}</tbody></table>
@@ -209,25 +208,23 @@ export function PlayerProfile({ profileId, careerId, playerId, onClose, onNegoti
             </div>
           )}
           {!p.own && <p className="muted small">Faixas: o valor real está dentro delas e elas estreitam conforme os olheiros conhecem o jogador; com 100% de conhecimento, aparece o valor exato.</p>}
-        </section>
+        </Panel>
       )}
 
       {tab === 'history' && (
         <div className="grid2">
-          <section className="card">
-            <h2>Transferências</h2>
+          <Panel title="Transferências">
             {p.transfers.length === 0 ? <p className="muted">Nenhuma transferência registrada nesta carreira.</p> : (
               <table><thead><tr><th>Data</th><th>De</th><th>Para</th><th className="right">Taxa</th></tr></thead>
                 <tbody>{p.transfers.map((t, i) => <tr key={i}><td>{fmtDate(t.date)}</td><td>{t.from ?? <span className="muted">sem clube</span>}</td><td>{t.to}</td><td className="right">{t.fee ? fmtMoney(t.fee) : 'livre'}</td></tr>)}</tbody></table>
             )}
-          </section>
-          <section className="card">
-            <h2>Força por temporada</h2>
+          </Panel>
+          <Panel title="Força por temporada">
             {!p.history ? <p className="muted">Disponível apenas para jogadores do seu clube.</p> : (
               <table><thead><tr><th>Temporada</th><th className="right">Força</th></tr></thead>
                 <tbody>{[...p.history].reverse().map((h, i) => <tr key={`${h.season}-${i}`}><td>{h.season}/{String(h.season + 1).slice(2)}{i === 0 ? <span className="muted small"> (atual)</span> : ''}</td><td className="right">{to20(h.overall)}</td></tr>)}</tbody></table>
             )}
-          </section>
+          </Panel>
         </div>
       )}
     </div>
@@ -254,9 +251,9 @@ function PositionMap({ natural, familiar }: { natural: Position; familiar: Posit
   return (
     <div className="pf-posmap">
       <svg viewBox="0 0 100 140" role="img" aria-label="Posições do jogador">
-        <rect className="pitch-bg" x="1" y="1" width="98" height="138" rx="3" />
-        <line className="pitch-line" x1="1" y1="70" x2="99" y2="70" /><circle className="pitch-line" cx="50" cy="70" r="10" fill="none" />
-        <rect className="pitch-line" x="25" y="1" width="50" height="18" fill="none" /><rect className="pitch-line" x="25" y="121" width="50" height="18" fill="none" />
+        <rect className="pf-pitch-bg" x="1" y="1" width="98" height="138" rx="3" />
+        <line className="pf-pitch-line" x1="1" y1="70" x2="99" y2="70" /><circle className="pf-pitch-line" cx="50" cy="70" r="10" fill="none" />
+        <rect className="pf-pitch-line" x="25" y="1" width="50" height="18" fill="none" /><rect className="pf-pitch-line" x="25" y="121" width="50" height="18" fill="none" />
         {(Object.keys(POS_XY) as Position[]).map((pos) => {
           const [x, y] = POS_XY[pos]!; const cls = pos === natural ? 'pf-pos-natural' : familiar.includes(pos) ? 'pf-pos-familiar' : 'pf-pos-none';
           return <g key={pos}><circle className={cls} cx={x} cy={y * 1.4} r={pos === natural ? 5.2 : 4.2} /><title>{POS_NAME[pos]}</title></g>;
@@ -336,10 +333,10 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
                 <div>
                   <h3>Temporada</h3>
                   <div className="pq-kpis">
-                    <div><strong>{p.stats.appearances}</strong><span>jogos</span></div>
-                    <div><strong>{p.stats.goals}</strong><span>gols</span></div>
-                    <div><strong>{p.stats.assists}</strong><span>assist.</span></div>
-                    <div><strong>{p.stats.avgRating?.toFixed(2) ?? '—'}</strong><span>nota</span></div>
+                    <div><StatTile label="Jogos" value={p.stats.appearances} /></div>
+                    <div><StatTile label="Gols" value={p.stats.goals} /></div>
+                    <div><StatTile label="Assist." value={p.stats.assists} /></div>
+                    <div><StatTile label="Nota" value={p.stats.avgRating?.toFixed(2).replace('.', ',') ?? '—'} /></div>
                   </div>
                 </div>
               </section>
@@ -360,7 +357,7 @@ export function PlayerQuickView({ profileId, careerId, playerId, onClose, onOpen
             </>
           )}
         </div>
-        <footer className="modal-foot pq-foot">
+        <footer className="modal-foot">
           {actions}
           <span className="grow" />
           {onOpenFull && <button className="secondary" disabled={!p} onClick={() => onOpenFull(playerId)}>Ficha completa</button>}

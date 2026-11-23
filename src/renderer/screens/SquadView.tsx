@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Ban, Cross } from 'lucide-react';
+import { ArrowDown, ArrowUp, Ban, Cross, Users } from 'lucide-react';
 import type { SquadRow } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
 import { POS_ORDER } from '../../shared/positions.ts';
 import { fmtDate } from '../util.ts';
 import { Flag, PlayerFace, PosPill, to20, tone } from '../playerUi.tsx';
 import { useImages } from '../images.ts';
+import { Panel, SegFilter, StatTile } from '../ui/index.tsx';
 
 
 type Group = 'all' | 'GK' | 'DEF' | 'MID' | 'ATT';
@@ -46,17 +47,14 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
   );
 
   return (
-    <section className="card sq">
+    <Panel className="sq" title="Elenco" icon={<Users size={18} aria-hidden="true" />}
+      actions={<SegFilter label="Setor" value={group} onChange={setGroup} options={GROUPS.map(([g, label]) => ({ id: g, label, count: count(g) }))} />}>
       <div className="sq-bar">
-        <div className="sq-groups" role="tablist" aria-label="Setor">
-          {GROUPS.map(([g, label]) => (
-            <button key={g} role="tab" aria-selected={group === g} className={`sq-group ${group === g ? 'on' : ''}`} onClick={() => setGroup(g)}>{label}<b>{count(g)}</b></button>
-          ))}
-        </div>
-        <div className="sq-summary muted small">
-          <span>Força média <strong>{to20(avg((p) => p.overall))}</strong></span>
-          <span>Idade média <strong>{avg((p) => p.age).toFixed(1).replace('.', ',')}</strong></span>
-          <span>Condição média <strong>{Math.round(avg((p) => p.condition))}%</strong></span>
+        <div className="sq-summary" aria-label={group === 'all' ? 'Médias do elenco' : 'Médias do setor'}>
+          <StatTile label="Jogadores" value={rows.length} />
+          <StatTile label="Força média" value={to20(avg((p) => p.overall))} />
+          <StatTile label="Idade média" value={avg((p) => p.age).toFixed(1).replace('.', ',')} />
+          <StatTile label="Condição média" value={`${Math.round(avg((p) => p.condition))}%`} tone={avg((p) => p.condition) >= 75 ? 'good' : avg((p) => p.condition) >= 60 ? 'mid' : 'low'} />
         </div>
       </div>
       <div className="sq-scroll">
@@ -98,14 +96,14 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
                   </div>
                 </td>
                 <td><Flag code={p.nationality} name={p.nationalityName} /></td>
-                <td className="right">{p.age}</td>
+                <td className="right sq-num">{p.age}</td>
                 <td className="right nowrap">{p.heightCm} cm</td>
                 <td><span className="sq-meter" title={`Condição física: ${Math.round(p.condition)}%`}><span className="pf-track"><i className={meterTone(p.condition)} style={{ width: `${p.condition}%` }} /></span><b className={meterTone(p.condition)}>{Math.round(p.condition)}%</b></span></td>
                 <td><span className="sq-meter" title={`Moral: ${Math.round(p.morale)} de 100`}><span className="pf-track"><i className={meterTone(p.morale)} style={{ width: `${p.morale}%` }} /></span><b className={meterTone(p.morale)}>{Math.round(p.morale)}</b></span></td>
-                <td className="right sq-first">{p.stats.appearances || <span className="muted">0</span>}</td>
-                <td className="right">{p.stats.minutes ? p.stats.minutes.toLocaleString('pt-BR') : <span className="muted">0</span>}</td>
-                <td className="right">{p.stats.goals || <span className="muted">0</span>}</td>
-                <td className="right">{p.stats.assists || <span className="muted">0</span>}</td>
+                <td className="right sq-first sq-num">{p.stats.appearances || <span className="muted">0</span>}</td>
+                <td className="right sq-num">{p.stats.minutes ? p.stats.minutes.toLocaleString('pt-BR') : <span className="muted">0</span>}</td>
+                <td className="right sq-num">{p.stats.goals || <span className="muted">0</span>}</td>
+                <td className="right sq-num">{p.stats.assists || <span className="muted">0</span>}</td>
                 <td className="center">{p.stats.avgRating === null ? <span className="muted">—</span> : <span className={`pf-rating ${ratingTone(p.stats.avgRating)}`}>{p.stats.avgRating.toFixed(2).replace('.', ',')}</span>}</td>
                 <td className="center">{p.stats.yellows ? <span className="tr-card tr-card-y">{p.stats.yellows}</span> : <span className="muted">0</span>}</td>
                 <td className="center">{p.stats.reds ? <span className="tr-card tr-card-r">{p.stats.reds}</span> : <span className="muted">0</span>}</td>
@@ -114,7 +112,7 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
           </tbody>
         </table>
       </div>
-      <p className="muted small">{rows.length} jogador(es){group !== 'all' ? ' neste setor' : ''}. Clique no nome para abrir a ficha completa; clique no cabeçalho para ordenar. Estatísticas somam todas as competições da temporada pelo clube.</p>
-    </section>
+      <p className="muted small sq-foot">Clique no nome para abrir a ficha completa; clique no cabeçalho para ordenar. Estatísticas somam todas as competições da temporada pelo clube.</p>
+    </Panel>
   );
 }

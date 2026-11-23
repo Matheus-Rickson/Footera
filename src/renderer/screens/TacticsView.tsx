@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, Ban, Cross, Dumbbell, Save, SlidersHorizontal, Trash2, UserCog, Wand2, X } from 'lucide-react';
+import { ArrowLeftRight, Ban, Cross, Dumbbell, LayoutGrid, Save, SlidersHorizontal, Trash2, UserCog, Users, Wand2, X } from 'lucide-react';
 import type { SchemeDto, TacticsOverviewDto, TacticsSquadPlayer } from '../../shared/api.ts';
 import type { TeamTactics } from '../../game/match-engine/types.ts';
 import type { Position } from '../../shared/types.ts';
@@ -11,6 +11,7 @@ import { PlayerFace, POS_NAME, posLabel, PosPill, to20, tone } from '../playerUi
 import { useImages } from '../images.ts';
 import { PlayerQuickView } from './PlayerProfile.tsx';
 import { RoleField } from '../roleField.tsx';
+import { Panel } from '../ui/index.tsx';
 
 interface Props { profileId: string; careerId: string; /** abre a ficha completa do jogador */ onOpenPlayer?: (id: string) => void }
 /**
@@ -20,6 +21,9 @@ interface Props { profileId: string; careerId: string; /** abre a ficha completa
 interface Work { scheme: SchemeDto; formation: string; settings: TeamTactics; lineup: string[] | null; roles: Array<string | null> }
 const NO_ROLES = (): Array<string | null> => Array<string | null>(11).fill(null);
 
+/** faixa vertical do gramado usada pelos crachás: nome, posição e função cabem embaixo do goleiro e em cima do centroavante */
+const FIELD_TOP = 4, FIELD_SPAN = 0.84;
+const chipStyle = (id: string) => { const a = ANCHORS.find((x) => x.id === id)!; return { left: `${a.x}%`, top: `${FIELD_TOP + (100 - a.y) * FIELD_SPAN}%` }; };
 const anchorsOf = (formation: string) => getFormation(formation).slots.map((s) => s.anchor);
 /** volta ao nome da pré-definição quando as posições (na mesma ordem) são as dela */
 const formationFrom = (anchors: string[]) => FORMATIONS.find((f) => f.slots.map((s) => s.anchor).join() === anchors.join())?.id ?? customFormationId(anchors);
@@ -35,8 +39,8 @@ const fitTone = (p: TacticsSquadPlayer, pos: Position) => (p.position === pos ? 
 
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: Record<T, string>; onChange: (v: T) => void; label: string }) {
   return (
-    <div className="tc-seg" role="radiogroup" aria-label={label}>
-      {(Object.keys(options) as T[]).map((k) => <button key={k} role="radio" aria-checked={value === k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{options[k]}</button>)}
+    <div className="ui-seg" role="radiogroup" aria-label={label}>
+      {(Object.keys(options) as T[]).map((k) => <button key={k} type="button" role="radio" aria-checked={value === k} className={`ui-seg-btn ${value === k ? 'ui-seg-on' : ''}`} onClick={() => onChange(k)}>{options[k]}</button>)}
     </div>
   );
 }
@@ -48,6 +52,18 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
   const [autoXI, setAutoXI] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  /** arraste em curso: 'reshape' = titular de linha (pode ir para uma vaga livre, que então aparece); 'swap' = só troca com quem está em campo */
+  const [dragging, setDragging] = useState<null | 'swap' | 'reshape'>(null);
+  /** crachá que acompanha o ponteiro (coordenadas dentro de `.tc`) */
+  const [ghost, setGhost] = useState<{ pid: string; x: number; y: number } | null>(null);
+  const drag = useRef<{ pid: string; sx: number; sy: number; active: boolean; target: string | null; targets: string[] } | null>(null);
+  /** o clique que o navegador dispara ao soltar não deve abrir a janela de função/estilo nem a do jogador */
+  const justDragged = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const placeRef = useRef<(pid: string, target: string) => void>(() => undefined);
+  // solta o ponteiro se a tela sair no meio de um arraste
+  useEffect(() => () => { document.body.classList.remove('tc-grabbing'); }, []);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -116,6 +132,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
     const formation = formationFrom(nextAnchors);
     void persist({ ...work!, formation, lineup, roles: keepRoles(formation, work!.roles, ov!.roleCatalog) });
   }
+  placeRef.current = place;
   const applyPreset = async (id: string) => {
     setHint(null);
     try { const lineup = await unwrap(window.api.autoLineup(profileId, careerId, id)); setAutoXI(lineup); await persist({ ...work, formation: id, lineup, roles: NO_ROLES() }); } catch (e) { setError(errMsg(e)); }
@@ -145,8 +162,52 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
     if (work.scheme.builtin || !window.confirm(`Excluir o esquema "${work.scheme.name}"?`)) return;
     try { await unwrap(window.api.deleteScheme(profileId, careerId, work.scheme.id)); await load(); } catch (e) { setError(errMsg(e)); }
   };
-  const onDrop = (target: string) => (e: React.DragEvent) => { e.preventDefault(); setDragOver(null); const pid = e.dataTransfer.getData('text/plain'); if (pid) place(pid, target); };
-  const dragProps = (pid: string) => ({ draggable: true, onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData('text/plain', pid); e.dataTransfer.effectAllowed = 'move'; } });
+  /** posição de uma âncora na tela (mesma conta do `style` dos crachás) */
+  const anchorPoint = (id: string, f: DOMRect) => { const a = ANCHORS.find((x) => x.id === id)!; return { x: f.left + (a.x / 100) * f.width, y: f.top + ((FIELD_TOP + (100 - a.y) * FIELD_SPAN) / 100) * f.height }; };
+  /**
+   * Arraste por ponteiro (no lugar do arrastar-e-soltar nativo): o crachá acompanha o cursor, a vaga válida mais perto
+   * acende como um ímã (não é preciso acertar o círculo) e, ao soltar, os jogadores deslizam até o lugar novo.
+   * Reserva só troca com um titular; titular de linha também pode ir para uma vaga livre (muda a formação); goleiro só troca.
+   */
+  const beginDrag = (pid: string) => (e: React.PointerEvent) => {
+    if (e.button !== 0 || saving || drag.current) return;
+    const from = slotOf.get(pid);
+    const reshape = from !== undefined && from !== 0;
+    const targets = reshape ? ANCHORS.map((a) => a.id) : anchors.filter((a) => a !== (from !== undefined ? anchors[from] : ''));
+    drag.current = { pid, sx: e.clientX, sy: e.clientY, active: false, target: null, targets };
+    const move = (ev: PointerEvent) => {
+      const d = drag.current; if (!d) return;
+      if (!d.active) {
+        if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 6) return; // abaixo disso é um clique
+        d.active = true; setDragging(reshape ? 'reshape' : 'swap'); setHint(null); document.body.classList.add('tc-grabbing');
+      }
+      ev.preventDefault();
+      const f = fieldRef.current?.getBoundingClientRect();
+      let target: string | null = null;
+      if (f && ev.clientX > f.left - 24 && ev.clientX < f.right + 24 && ev.clientY > f.top - 24 && ev.clientY < f.bottom + 24) {
+        let best = Infinity;
+        for (const id of d.targets) { const p = anchorPoint(id, f); const dist = Math.hypot(p.x - ev.clientX, p.y - ev.clientY); if (dist < best) { best = dist; target = id; } }
+      }
+      if (target !== d.target) { d.target = target; setDragOver(target); }
+      const r = rootRef.current?.getBoundingClientRect();
+      if (r) setGhost({ pid: d.pid, x: ev.clientX - r.left, y: ev.clientY - r.top });
+    };
+    const finish = (drop: boolean) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', esc);
+      const d = drag.current; drag.current = null;
+      document.body.classList.remove('tc-grabbing');
+      setDragging(null); setDragOver(null); setGhost(null);
+      if (!d?.active) return;
+      justDragged.current = true; setTimeout(() => { justDragged.current = false; }, 0);
+      if (drop && d.target) placeRef.current(d.pid, d.target);
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const esc = (ev: KeyboardEvent) => { if (ev.key === 'Escape') finish(false); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', esc);
+  };
   const presetActive = FORMATIONS.find((f) => f.id === work.formation)?.id ?? null;
   const catalog = new Map(ov.roleCatalog.map((r) => [r.id, r]));
   const slotsNow = getFormation(work.formation).slots;
@@ -225,11 +286,15 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
   }
 
   return (
-    <div className="tc">
+    <div className="tc" ref={rootRef}>
+      <div className="tc-grid">
+      <div className="tc-side">
       <div className="tc-bar card">
         <div className="tc-presets">
-          <span className="muted small">Pré-definições</span>
-          {FORMATIONS.map((f) => <button key={f.id} className={`tc-chip ${presetActive === f.id ? 'on' : ''}`} disabled={saving} onClick={() => void applyPreset(f.id)}>{f.id}</button>)}
+          <span className="tc-label">Pré-definições</span>
+          <div className="ui-seg" role="radiogroup" aria-label="Formações pré-definidas">
+            {FORMATIONS.map((f) => <button key={f.id} type="button" role="radio" aria-checked={presetActive === f.id} className={`ui-seg-btn ${presetActive === f.id ? 'ui-seg-on' : ''}`} disabled={saving} onClick={() => void applyPreset(f.id)}>{f.id}</button>)}
+          </div>
         </div>
         <div className="tc-schemes">
           <select aria-label="Esquema" value={work.scheme.builtin ? '' : work.scheme.id} onChange={(e) => e.target.value && void loadScheme(e.target.value)}>
@@ -244,14 +309,10 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
       </div>
       {error && <p className="error" role="alert">{error}</p>}
 
-      <div className="tc-grid">
-        <section className="card tc-list">
-          <div className="bar"><h2>Elenco</h2>
-            <span className="row small">
-              <label className="inline"><input type="checkbox" checked={work.lineup === null} disabled={saving} onChange={(e) => void setAuto(e.target.checked)} />Automática a cada jogo</label>
+        <Panel className="tc-list" title="Elenco" icon={<Users size={18} aria-hidden="true" />} actions={<>
+              <label className="inline small"><input type="checkbox" checked={work.lineup === null} disabled={saving} onChange={(e) => void setAuto(e.target.checked)} />Automática a cada jogo</label>
               <button className="secondary" disabled={saving} onClick={() => void bestXI()}><Wand2 size={14} aria-hidden="true" />Melhor escalação</button>
-            </span>
-          </div>
+            </>}>
           <div className="tc-scroll">
             <table>
               <thead><tr><th>Escalado</th><th>Pos.</th><th className="center">Força</th><th>Jogador</th><th className="right">Cond.</th><th className="center" title="Quanto rende na vaga em que está escalado">Na vaga</th></tr></thead>
@@ -261,8 +322,8 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
                   const pos = i !== undefined ? getFormation(work.formation).slots[i]!.pos : null;
                   const anchor = i !== undefined ? anchors[i]! : null;
                   return (
-                    <tr key={p.id} {...dragProps(p.id)} className={`tc-row ${i !== undefined ? 'tc-starter' : ''} ${selected === p.id ? 'tc-sel' : ''}`}
-                      onClick={() => { if (selected === p.id) setSelected(null); else setInfoFor(p.id); }} title="Clique para ver o jogador; arraste para o campo para escalá-lo">
+                    <tr key={p.id} onPointerDown={beginDrag(p.id)} className={`tc-row ${i !== undefined ? 'tc-starter' : ''} ${selected === p.id ? 'tc-sel' : ''} ${ghost?.pid === p.id ? 'tc-lifted' : ''}`}
+                      onClick={() => { if (justDragged.current) return; if (selected === p.id) setSelected(null); else setInfoFor(p.id); }} title="Clique para ver o jogador; arraste para o campo para escalá-lo">
                       <td>{anchor ? <span className="tc-badge" title={anchorTitle(anchor)}>{anchorLabel(anchor)}</span> : <span className="muted small">—</span>}</td>
                       <td><PosPill pos={p.position} /></td>
                       <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
@@ -270,7 +331,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
                         {p.unavailable?.kind === 'injured' && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.unavailable.until)}`}><Cross size={11} aria-hidden="true" /></span>}
                         {p.unavailable?.kind === 'suspended' && <span className="tr-flag tr-flag-susp" title={`Suspenso (${p.unavailable.matches} jogo(s))`}><Ban size={11} aria-hidden="true" /></span>}</span></td>
                       <td className="right">{Math.round(p.condition)}%</td>
-                      <td className="center">{pos ? <b className={fitTone(p, pos)}>{to20(p.slotScores[pos])}</b> : <span className="muted">—</span>}</td>
+                      <td className="center">{pos ? <b className={`tc-fit ${fitTone(p, pos)}`}>{to20(p.slotScores[pos])}</b> : <span className="muted">—</span>}</td>
                     </tr>
                   );
                 })}
@@ -279,25 +340,27 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
           </div>
           {hint && <p className="notice small" role="status">{hint}</p>}
           <p className="muted small">Clique num jogador para ver atributos, posições, funções e estatísticas. Arraste-o para o campo: sobre um titular, eles trocam; um titular arrastado para uma posição vazia muda a formação. Também dá para usar "Colocar em campo" na janela do jogador e depois clicar na posição.</p>
-        </section>
+        </Panel>
+      </div>
 
-        <section className="card tc-field-card">
-          <div className="bar"><h2>Formação {formationLabel(work.formation)}</h2><span className="muted small">{work.lineup === null ? 'Escalação automática: o melhor time disponível a cada jogo' : 'Escalação fixa (lesionados/suspensos são trocados no dia do jogo)'}</span></div>
-          <div className="tc-field" role="group" tabIndex={0} aria-label="Campo: clique no gramado (fora dos jogadores) ou tecle Enter para ajustar o estilo de jogo"
-            onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.tc-lines')) { setSelected(null); setStyleOpen(true); } }}
+        <Panel className="tc-field-card" title={`Formação ${formationLabel(work.formation)}`} icon={<LayoutGrid size={18} aria-hidden="true" />}
+          actions={<span className="muted small">{work.lineup === null ? 'Escalação automática: o melhor time disponível a cada jogo' : 'Escalação fixa: lesionados e suspensos são trocados no dia do jogo'}</span>}>
+          <div ref={fieldRef} className={`tc-field ${dragging === 'reshape' || selected ? 'tc-placing' : ''} ${dragging ? 'tc-dragging' : ''}`} role="group" tabIndex={0} aria-label="Campo: clique no gramado (fora dos jogadores) ou tecle Enter para ajustar o estilo de jogo"
+            onClick={(e) => { if (justDragged.current) return; if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.tc-lines')) { setSelected(null); setStyleOpen(true); } }}
             onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) setStyleOpen(true); }}>
             <div className="tc-lines" aria-hidden="true"><i /><b /><s /><u /></div>
-            {ANCHORS.map((a) => {
-              const pid = occupant.get(a.id);
-              const p = pid ? squad.get(pid) : undefined;
-              const style = { left: `${a.x}%`, top: `${100 - a.y}%` };
-              const common = {
-                onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDragOver(a.id); }, onDragLeave: () => setDragOver((d) => (d === a.id ? null : d)), onDrop: onDrop(a.id),
-                onClick: () => { if (selected) place(selected, a.id); else if (pid) setRoleFor(pid); },
-              };
-              if (!p) return <button key={a.id} className={`tc-empty ${dragOver === a.id ? 'over' : ''} ${selected ? 'armed' : ''}`} style={style} title={`Posição livre: ${anchorTitle(a.id)}`} aria-label={`Posição livre ${anchorTitle(a.id)}`} {...common}><span>{anchorLabel(a.id)}</span></button>;
+            {ANCHORS.filter((a) => !occupant.get(a.id) || !squad.get(occupant.get(a.id)!)).map((a) => (
+              <button key={a.id} className={`tc-empty ${dragOver === a.id ? 'over' : ''} ${selected ? 'armed' : ''}`} style={chipStyle(a.id)} title={`Posição livre: ${anchorTitle(a.id)}`} aria-label={`Posição livre ${anchorTitle(a.id)}`}
+                onClick={() => { if (selected) place(selected, a.id); }}><span>{anchorLabel(a.id)}</span></button>
+            ))}
+            {/* ordem fixa por id: trocar de vaga só muda left/top (o crachá desliza); reordenar o DOM cortaria a transição */}
+            {anchors.map((aid, i) => ({ aid, pid: ids[i]! })).filter((x) => squad.has(x.pid)).sort((a, b) => (a.pid < b.pid ? -1 : 1)).map(({ aid, pid }) => {
+              const a = ANCHORS.find((x) => x.id === aid)!;
+              const p = squad.get(pid)!;
               return (
-                <button key={a.id} className={`tc-chip-p ${dragOver === a.id ? 'over' : ''} ${selected === p.id ? 'sel' : ''}`} style={style} title={`${p.name} — ${anchorTitle(a.id)} (rende ${to20(p.slotScores[a.pos])} de 20)`} {...dragProps(p.id)} {...common}>
+                <button key={pid} className={`tc-chip-p ${dragOver === a.id ? 'over' : ''} ${selected === p.id ? 'sel' : ''} ${ghost?.pid === p.id ? 'tc-lifted' : ''}`} style={chipStyle(a.id)} title={`${p.name} — ${anchorTitle(a.id)} (rende ${to20(p.slotScores[a.pos])} de 20)`}
+                  onPointerDown={beginDrag(p.id)}
+                  onClick={() => { if (justDragged.current) return; if (selected) place(selected, a.id); else setRoleFor(pid); }}>
                   <PlayerFace img={img} id={p.id} name={p.name} className={`tc-face ${fitTone(p, a.pos)}`} />
                   <span className="tc-chip-name">{shortName(p.name)}</span>
                   <span className="tc-chip-pos"><b>{anchorLabel(a.id)}</b><i className={fitTone(p, a.pos)}>{to20(p.slotScores[a.pos])}</i></span>
@@ -307,12 +370,17 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
               );
             })}
           </div>
-          <div className="row small muted"><span className="tc-key great" />Posição natural<span className="tc-key good" />Secundária ou parecida<span className="tc-key poor" />Fora de posição
-            <span className="tc-style-hint"><SlidersHorizontal size={13} aria-hidden="true" />Clique no gramado para o estilo de jogo ({MENTALITY_LABEL[work.settings.mentality]?.toLowerCase()})</span></div>
-          <p className="muted small tc-roles-tip">Clique num jogador do campo para ver e escolher a função dele na vaga.</p>
-        </section>
+          <div className="row small muted tc-legend"><span className="tc-key great" />Posição natural<span className="tc-key good" />Secundária ou parecida<span className="tc-key poor" />Fora de posição
+            <span className="tc-style-hint"><SlidersHorizontal size={13} aria-hidden="true" />Clique num jogador para a função dele; no gramado, para o estilo de jogo ({MENTALITY_LABEL[work.settings.mentality]?.toLowerCase()})</span></div>
+        </Panel>
       </div>
 
+      {ghost && squad.get(ghost.pid) && (
+        <div className="tc-ghost" style={{ left: ghost.x, top: ghost.y }} aria-hidden="true">
+          <PlayerFace img={img} id={ghost.pid} name={squad.get(ghost.pid)!.name} className="tc-face" />
+          <span className="tc-chip-name">{shortName(squad.get(ghost.pid)!.name)}</span>
+        </div>
+      )}
       {rolePlayer && roleSlot !== undefined && rolePanel(rolePlayer, roleSlot)}
       {infoFor && <PlayerQuickView profileId={profileId} careerId={careerId} playerId={infoFor} onClose={closeInfo} onOpenFull={onOpenPlayer}
         actions={<button className="secondary" onClick={() => startMove(infoFor)}><ArrowLeftRight size={14} aria-hidden="true" />{slotOf.has(infoFor) ? 'Trocar de lugar' : 'Colocar em campo'}</button>} />}

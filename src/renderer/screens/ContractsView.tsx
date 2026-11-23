@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Frown, Handshake, Lock, Meh, Smile, Tag, UserX, Wallet } from 'lucide-react';
+import { CalendarClock, FileSignature, Frown, Handshake, Lock, Meh, Smile, Tag, UserX, Wallet, X } from 'lucide-react';
 import type { ContractRowDto, RenewResultDto, SquadStatusDto } from '../../shared/api.ts';
 import { PROSPECT_MAX_AGE, SQUAD_STATUSES, STATUS_INFO } from '../../game/career-engine/contracts.ts';
 import { groupOf, type PositionGroup } from '../../game/transfer-engine/transfer.ts';
@@ -7,6 +7,7 @@ import { errMsg, fmtDate, fmtMoney, unwrap } from '../util.ts';
 import { posLabel, PosPill, PlayerFace, to20, tone } from '../playerUi.tsx';
 import { useImages } from '../images.ts';
 import { YearsPicker } from './YearsPicker.tsx';
+import { Panel, SegFilter } from '../ui/index.tsx';
 
 interface Props { profileId: string; careerId: string; refreshKey: string; onChanged: () => Promise<void> }
 
@@ -116,15 +117,11 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
       {error && <p className="error" role="alert">{error}</p>}
 
       <div className={`kt-layout ${sel ? 'kt-layout-open' : ''}`}>
-        <section className="card kt-list">
+        <Panel className="kt-list" title="Contratos" icon={<FileSignature size={18} aria-hidden="true" />}>
           <div className="kt-filters">
-            <div className="row kt-chips" role="radiogroup" aria-label="Filtro">
-              {([['all', 'Todos'], ['expiring', 'Vencem'], ['listed', 'Na lista'], ['unhappy', 'Insatisfeitos']] as Array<[Filter, string]>).map(([k, l]) => (
-                <button key={k} type="button" role="radio" aria-checked={filter === k} className={filter === k ? '' : 'secondary'} onClick={() => setFilter(k)}>{l}</button>))}
-            </div>
-            <div className="row kt-chips" role="radiogroup" aria-label="Setor">
-              {GROUPS.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={group === k} className={group === k ? '' : 'secondary'} onClick={() => setGroup(k)}>{l}</button>)}
-            </div>
+            <SegFilter label="Filtro" value={filter} onChange={setFilter}
+              options={([['all', 'Todos', rows.length], ['expiring', 'Vencem', expiring], ['listed', 'Na lista', listed], ['unhappy', 'Insatisfeitos', unhappy]] as Array<[Filter, string, number]>).map(([id, label, count]) => ({ id, label, count }))} />
+            <SegFilter label="Setor" value={group} onChange={setGroup} options={GROUPS.map(([id, label]) => ({ id, label }))} />
           </div>
           <div className="scroll kt-scroll">
             <table className="kt-table">
@@ -139,8 +136,8 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
                       {c.talk.lockedUntil && <span className="kt-tag kt-tag-muted" title={`Encerrou a conversa de renegociação até ${fmtDate(c.talk.lockedUntil)}`}><Lock size={11} aria-hidden="true" /> sem conversa</span>}
                     </div></div></div></td>
                   <td><div className="kt-play"><span className={`kt-status kt-status-${c.squadStatus}`}>{statusLabel(c.squadStatus)}</span><VerdictIcon v={c.verdict} /></div><MinutesBar c={c} /></td>
-                  <td className={`right kt-morale-${tone(c.morale)}`}>{Math.round(c.morale)}</td>
-                  <td className="right">{fmtMoney(c.salary)}<small className="muted kt-sub">por mês</small></td>
+                  <td className={`right kt-num kt-morale-${tone(c.morale)}`}>{Math.round(c.morale)}</td>
+                  <td className="right"><span className="kt-num">{fmtMoney(c.salary)}</span><small className="muted kt-sub">por mês</small></td>
                   <td><span>{fmtDate(c.contractEnd)}</span><div className="kt-left"><span className={`kt-left-fill ${c.expiresThisSeason ? 'kt-left-warn' : ''}`} style={{ width: `${Math.min(100, Math.round((c.monthsLeft / 60) * 100))}%` }} /></div>
                     <small className="muted">{c.monthsLeft} {c.monthsLeft === 1 ? 'mês' : 'meses'}</small></td>
                 </tr>))}
@@ -148,27 +145,27 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
               </tbody>
             </table>
           </div>
-        </section>
+        </Panel>
 
         {sel && (
-          <aside className="card kt-panel" aria-label={`Contrato de ${sel.name}`}>
+          <aside className="card ui-panel kt-panel" aria-label={`Contrato de ${sel.name}`}>
             <header className="kt-panel-head">
               <PlayerFace img={img} id={sel.id} name={sel.name} className="kt-face" />
               <div><h2>{sel.name}</h2><p className="muted small">{posLabel(sel.position)} · {sel.age} anos · força {to20(sel.overall)} · valor {fmtMoney(sel.marketValue)}</p></div>
-              <button className="secondary icon" aria-label="Fechar" title="Fechar" onClick={() => setSelId(null)}>×</button>
+              <button className="secondary icon" aria-label="Fechar" title="Fechar" onClick={() => setSelId(null)}><X size={16} aria-hidden="true" /></button>
             </header>
             <dl className="kt-facts">
               <div><dt>Salário</dt><dd>{fmtMoney(sel.salary)}/mês</dd></div>
               <div><dt>Contrato até</dt><dd>{fmtDate(sel.contractEnd)} <small className="muted">({sel.monthsLeft} meses)</small></dd></div>
               <div><dt>Tempo de jogo</dt><dd>{statusLabel(sel.squadStatus)} <small className="muted">(~{pct(sel.expectedShare)} dos minutos)</small></dd></div>
               <div><dt>Na temporada</dt><dd>{sel.seasonMinutes} min · {sel.appearances} de {sel.clubMatches} jogos</dd></div>
-              <div><dt>Moral</dt><dd className={`kt-morale-${tone(sel.morale)}`}>{Math.round(sel.morale)}</dd></div>
+              <div><dt>Moral</dt><dd className={`kt-num kt-morale-${tone(sel.morale)}`}>{Math.round(sel.morale)}</dd></div>
               <div><dt>Custo da rescisão</dt><dd>{fmtMoney(sel.terminationCost)}</dd></div>
             </dl>
-            <div className="row kt-tabs" role="tablist">
-              <button role="tab" aria-selected={action === 'renew'} className={action === 'renew' ? '' : 'secondary'} onClick={() => setAction('renew')}><Handshake size={15} aria-hidden="true" />Renegociar</button>
-              <button role="tab" aria-selected={action === 'list'} className={action === 'list' ? '' : 'secondary'} onClick={() => setAction('list')}><Tag size={15} aria-hidden="true" />Lista</button>
-              <button role="tab" aria-selected={action === 'end'} className={action === 'end' ? '' : 'secondary'} onClick={() => setAction('end')}><UserX size={15} aria-hidden="true" />Rescindir</button>
+            <div className="pf-tabs" role="tablist">
+              <button role="tab" aria-selected={action === 'renew'} className={`pf-tab ${action === 'renew' ? 'on' : ''}`} onClick={() => setAction('renew')}><Handshake size={15} aria-hidden="true" />Renegociar</button>
+              <button role="tab" aria-selected={action === 'list'} className={`pf-tab ${action === 'list' ? 'on' : ''}`} onClick={() => setAction('list')}><Tag size={15} aria-hidden="true" />Lista</button>
+              <button role="tab" aria-selected={action === 'end'} className={`pf-tab ${action === 'end' ? 'on' : ''}`} onClick={() => setAction('end')}><UserX size={15} aria-hidden="true" />Rescindir</button>
             </div>
 
             {action === 'renew' && (sel.retiring ? <p className="notice">{sel.name} vai se aposentar ao fim da temporada: não há renegociação.</p>
@@ -177,10 +174,10 @@ export function ContractsView({ profileId, careerId, refreshKey, onChanged }: Pr
                 <div className="kt-renew">
                   <div className="kt-field">
                     <span>Tempo de jogo</span>
-                    <div className="row kt-status-pick" role="radiogroup" aria-label="Tempo de jogo">
+                    <div className="ui-seg" role="radiogroup" aria-label="Tempo de jogo">
                       {SQUAD_STATUSES.map((s) => {
                         const off = s === 'prospect' && sel.age > PROSPECT_MAX_AGE;
-                        return <button key={s} type="button" role="radio" aria-checked={status === s} disabled={off} className={status === s ? '' : 'secondary'}
+                        return <button key={s} type="button" role="radio" aria-checked={status === s} disabled={off} className={`ui-seg-btn ${status === s ? 'ui-seg-on' : ''}`}
                           title={off ? `Promessa só até ${PROSPECT_MAX_AGE} anos` : `Espera jogar cerca de ${pct(STATUS_INFO[s].expected)} dos minutos`} onClick={() => setStatus(s)}>{STATUS_INFO[s].label}</button>;
                       })}
                     </div>

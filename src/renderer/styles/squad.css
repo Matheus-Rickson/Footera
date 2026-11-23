@@ -1,0 +1,106 @@
+/* ---------- Elenco (sq-) — SquadView.tsx: faixa com setor e médias, tabela que rola por dentro ---------- */
+.sq { gap: 12px; min-height: 0; }
+.sq-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; flex: none; }
+.sq-summary { display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.sq-summary .ui-stat-value { font-size: 1.5rem; }
+.sq-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(0, 0, 0, .14); }
+:root[data-theme="light"] .sq-scroll { background: var(--surface); }
+.sq-table td { padding: 5px 10px; white-space: nowrap; }
+.sq-table th { padding: 0 6px; }
+.sq-table thead tr:first-child th { top: 0; }
+.sq-table thead tr:nth-child(2) th { top: 27px; }
+.sq-groups-row th { height: 27px; padding: 4px 10px; font-size: .8rem; letter-spacing: .1em; border-bottom: 0; }
+.sq-season { text-align: center; color: var(--club-text, var(--text-muted)); border-left: 1px solid var(--border); background: linear-gradient(180deg, var(--club-soft, var(--surface-2)), transparent) var(--surface); }
+.sq-first { border-left: 1px solid var(--border); }
+button.sq-sort { background: none; border: 0; color: inherit; padding: 8px 4px; min-height: 0; font: inherit; font-family: var(--font-display); font-size: .86rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; gap: 3px; }
+button.sq-sort:hover:not(:disabled) { background: none; color: var(--text); }
+th[aria-sort="ascending"] button.sq-sort, th[aria-sort="descending"] button.sq-sort { color: var(--club-text, var(--primary-text)); }
+.sq-pos { display: inline-flex; gap: 4px; align-items: center; }
+.sq-player { display: flex; align-items: center; gap: 9px; }
+.sq-player button.link { font-weight: 600; font-size: .95rem; }
+.sq-meter { display: grid; grid-template-columns: 58px 38px; align-items: center; gap: 8px; }
+.sq-meter b { font-family: var(--font-display); font-size: .98rem; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.sq-num { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sq-foot { margin: 0; flex: none; }
+
+/* ---------- Contratos (kt-) — ContractsView.tsx: indicadores que filtram, tabela e painel do jogador ---------- */
+.kt-page { display: grid; gap: 14px; }
+.kt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.kt-stat {
+  position: relative; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; row-gap: 0; text-align: left; padding: 12px 16px;
+  background: var(--glass), var(--surface); border: 1px solid var(--edge); border-radius: 10px; color: var(--text); box-shadow: var(--shadow-sm);
+  font-family: var(--font-body); font-size: inherit; font-weight: 400; letter-spacing: 0; justify-content: stretch;
+}
+button.kt-stat { cursor: pointer; }
+button.kt-stat:hover:not(:disabled) { background: var(--glass), var(--surface-2); border-color: var(--edge-hi); }
+.kt-stat svg { color: var(--club-text, var(--text-muted)); grid-row: span 2; }
+.kt-stat span { font-family: var(--font-display); font-size: .84rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); }
+.kt-stat strong { font-family: var(--font-display); font-size: 1.8rem; font-weight: 800; line-height: 1.05; grid-column: 2; font-variant-numeric: tabular-nums; }
+.kt-stat small { grid-column: 1 / -1; color: var(--text-muted); font-size: .76rem; margin-top: 4px; }
+/* indicador ativo = filtro ligado: borda e brilho na cor do clube */
+.kt-stat-on { border-color: var(--club, var(--primary)); box-shadow: 0 0 0 1px var(--club, var(--primary)) inset, 0 0 18px var(--club-glow, transparent); }
+.kt-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.kt-layout-open { grid-template-columns: minmax(0, 1fr) clamp(320px, 30vw, 390px); }
+.kt-list { gap: 10px; }
+.kt-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; }
+.kt-scroll { max-height: 64vh; border: 1px solid var(--border); border-radius: 8px; }
+.kt-table td { vertical-align: middle; }
+.kt-row { cursor: pointer; }
+.kt-row:hover td { background: var(--row-hover); }
+.kt-row-sel td { background: var(--club-soft, var(--primary-soft)) !important; }
+.kt-row-sel td:first-child { box-shadow: inset 3px 0 0 var(--club, var(--primary)); }
+.kt-who { display: flex; gap: 10px; align-items: flex-start; }
+.kt-who > div { display: grid; gap: 1px; }
+.kt-who strong { font-size: .95rem; }
+.kt-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.kt-tag { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-display); font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 0 6px; border-radius: 3px; background: var(--primary-soft); color: var(--primary-text); }
+.kt-tag-warn { background: var(--danger-soft); color: var(--danger-text); }
+.kt-tag-muted { background: var(--surface-3); color: var(--text-muted); }
+.kt-play { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.kt-status { font-family: var(--font-display); font-size: .86rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 0 8px; border-radius: 3px; background: var(--surface-3); color: var(--text); white-space: nowrap; }
+.kt-status-key { background: rgba(234, 179, 8, .18); color: #facc15; }
+.kt-status-starter { background: var(--primary-soft); color: var(--primary-text); }
+.kt-status-rotation { background: var(--info-soft); color: var(--info-text); }
+.kt-status-prospect { background: rgba(168, 85, 247, .16); color: #c4a5fd; }
+:root[data-theme="light"] .kt-status-key { color: #a16207; }
+:root[data-theme="light"] .kt-status-prospect { color: #7e22ce; }
+.kt-minutes { display: grid; gap: 2px; min-width: 130px; }
+.kt-minutes small { color: var(--text-muted); font-size: .72rem; }
+.kt-bar { position: relative; height: 6px; border-radius: 2px; background: var(--surface-3); overflow: visible; box-shadow: inset 0 0 0 1px var(--border); }
+.kt-bar-fill { display: block; height: 100%; border-radius: 2px; }
+.kt-bar-ok { background: var(--primary); } .kt-bar-mid { background: var(--warning); } .kt-bar-low { background: var(--danger); } .kt-bar-none { background: transparent; }
+.kt-bar-mark { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--text); opacity: .75; border-radius: 1px; transform: translateX(-1px); }
+.kt-sub { display: block; font-size: .7rem; }
+.kt-left { height: 4px; border-radius: 2px; background: var(--surface-3); margin: 3px 0 1px; max-width: 110px; }
+.kt-left-fill { display: block; height: 100%; border-radius: 2px; background: var(--text-muted); }
+.kt-left-warn { background: var(--danger); }
+.kt-morale-great, .kt-morale-good { color: var(--primary-text); } .kt-morale-avg { color: var(--warning-text); } .kt-morale-poor { color: var(--danger-text); }
+.kt-num { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kt-panel { position: sticky; top: 0; gap: 12px; max-height: 78vh; overflow: auto; }
+.kt-panel-head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.kt-panel-head h2 { margin: 0; font-size: 1.3rem; }
+.kt-panel-head p { margin: 2px 0 0; }
+.kt-face { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 8px; object-fit: cover; font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; color: #fff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--club, var(--primary)) 65%, #0b1220), #0b1220); box-shadow: inset 0 0 0 1px var(--edge-hi); }
+.kt-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0; }
+.kt-facts div { padding: 7px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.kt-facts dt { font-family: var(--font-display); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); }
+.kt-facts dd { margin: 1px 0 0; font-weight: 600; font-size: .88rem; }
+.kt-renew { display: grid; gap: 10px; }
+.kt-renew p { margin: 0; }
+.kt-field { display: grid; gap: 6px; font-size: .86rem; color: var(--text-muted); }
+.kt-rounds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kt-dot { width: 10px; height: 10px; border-radius: 2px; transform: rotate(45deg); background: var(--surface-3); border: 1px solid var(--border-strong); }
+.kt-dot-on { background: var(--club, var(--primary)); border-color: var(--club, var(--primary)); box-shadow: 0 0 8px var(--club-glow, transparent); }
+/* cabe na janela (content-fit): indicadores fixos, a lista e o painel do jogador rolam por dentro */
+.content-fit > .kt-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.content-fit .kt-page > .kt-layout { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+.content-fit .kt-layout > .kt-list { min-height: 0; }
+.content-fit .kt-list .kt-scroll { flex: 1; min-height: 0; max-height: none; }
+.content-fit .kt-layout > .kt-panel { position: static; max-height: none; min-height: 0; overflow: auto; }
+@media (max-width: 1100px), (max-height: 680px) {
+  .content-fit:has(> .kt-page) { overflow: auto; }
+  .content-fit > .kt-page { flex: none; }
+  .content-fit .kt-page .kt-layout-open { grid-template-columns: 1fr; }
+  .content-fit .kt-list .kt-scroll { max-height: 64vh; }
+}

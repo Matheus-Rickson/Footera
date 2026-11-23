@@ -1,0 +1,61 @@
+/* =====================================================================
+   FOOTERA — interface "Estádio noturno" (docs/INTERFACE.md)
+   Tokens por tema: escuro = padrão (fundo #03050a, escolha do usuário); claro = "dia de jogo" (data-theme="light").
+   Regra do projeto: cada classe simples é definida UMA vez em todos os arquivos de styles/ (há teste).
+   ===================================================================== */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #03050a;
+  /* superfícies sobem a partir do fundo, no mesmo azul quase preto */
+  --surface: #0a0e17; --surface-2: #0e1320; --surface-3: #151b2b; --border: #1a2131; --border-strong: #2a3348;
+  --edge: rgba(150, 180, 230, .13); --edge-hi: rgba(170, 200, 255, .26);
+  --glass: linear-gradient(180deg, rgba(160, 190, 255, .045), rgba(160, 190, 255, .012));
+  --text: #e9eef6; --text-muted: #9ba6b9; --text-faint: #8a93a6;
+  /* marca do jogo (verde de gramado iluminado): botões e destaques fora de um clube */
+  --brand: #2ee59d; --brand-2: #1aa6ff;
+  --primary: #2ee59d; --primary-hover: #63f0b8; --primary-soft: rgba(46, 229, 157, .13); --primary-contrast: #03140d; --primary-text: #52eeb0;
+  --danger: #f43f5e; --danger-soft: rgba(244, 63, 94, .14); --danger-text: #fb7185;
+  --warning: #f59e0b; --warning-soft: rgba(245, 158, 11, .14); --warning-text: #fbbf24;
+  --info: #3b82f6; --info-soft: rgba(59, 130, 246, .15); --info-text: #6aa5ff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 1px rgba(0, 0, 0, .2); --shadow-lg: 0 18px 44px rgba(0, 0, 0, .65);
+  --ring: 0 0 0 3px rgba(46, 229, 157, .35);
+  --row-hover: rgba(150, 180, 230, .05);
+  /* fundo de estádio: faixas de gramado e brilho dos refletores, só como toques sutis (não clareiam o fundo) */
+  --stadium: radial-gradient(ellipse 70% 38% at 50% -6%, rgba(120, 170, 255, .10), transparent 70%),
+             radial-gradient(ellipse 40% 30% at 0% 0%, rgba(120, 170, 255, .05), transparent 70%),
+             radial-gradient(ellipse 40% 30% at 100% 0%, rgba(120, 170, 255, .05), transparent 70%),
+             repeating-linear-gradient(90deg, rgba(46, 229, 157, .012) 0 90px, transparent 90px 180px);
+  --font-display: "Barlow Condensed", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  /* gráficos: paleta categórica validada (ordem fixa) para a superfície escura */
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181; --viz-6: #008300; --viz-other: #6d7077;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e9eef5;
+  --surface: #ffffff; --surface-2: #f6f8fb; --surface-3: #edf1f6; --border: #dde3ec; --border-strong: #c6cfdc;
+  --edge: rgba(20, 40, 80, .10); --edge-hi: rgba(20, 40, 80, .22);
+  --glass: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, .75));
+  --text: #0e1626; --text-muted: #4f5a6d; --text-faint: #6b7588;
+  --brand: #04875a; --brand-2: #0a6fd1;
+  --primary: #04875a; --primary-hover: #036e49; --primary-soft: rgba(4, 135, 90, .1); --primary-contrast: #ffffff; --primary-text: #036e49;
+  --danger: #e11d48; --danger-soft: rgba(225, 29, 72, .08); --danger-text: #be123c;
+  --warning: #d97706; --warning-soft: rgba(217, 119, 6, .1); --warning-text: #b45309;
+  --info: #2563eb; --info-soft: rgba(37, 99, 235, .08); --info-text: #1d4ed8;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .07), 0 1px 3px rgba(16, 24, 40, .05); --shadow-lg: 0 14px 34px rgba(16, 24, 40, .16);
+  --ring: 0 0 0 3px rgba(4, 135, 90, .25);
+  --row-hover: rgba(17, 24, 39, .03);
+  --stadium: radial-gradient(ellipse 70% 40% at 50% -8%, rgba(255, 255, 255, .9), transparent 70%),
+             repeating-linear-gradient(90deg, rgba(4, 135, 90, .025) 0 90px, transparent 90px 180px);
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100; --viz-5: #e87ba4; --viz-6: #008300; --viz-other: #98a1b0;
+}
+
+/* cor do clube (tirada do escudo, src/shared/crestColor.ts): as variáveis -d/-l vêm do style do elemento (clubVars);
+   sem clube, a marca do jogo. Declaradas no próprio elemento para o var() enxergar as variáveis dele. */
+.club-scope {
+  --club: var(--club-d, var(--brand)); --club-2: var(--club-2-d, var(--brand-2)); --club-text: var(--club-text-d, var(--primary-text)); --club-ink: var(--club-ink-d, var(--primary-contrast));
+  --club-soft: color-mix(in srgb, var(--club) 16%, transparent); --club-glow: color-mix(in srgb, var(--club) 45%, transparent);
+}
+:root[data-theme="light"] .club-scope {
+  --club: var(--club-l, var(--brand)); --club-2: var(--club-l, var(--brand-2)); --club-text: var(--club-text-l, var(--primary-text)); --club-ink: var(--club-ink-l, var(--primary-contrast));
+}

@@ -1,13 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ArrowRight, Building2, CalendarClock, Check, ChevronDown, Coins, Search, Target, Users } from 'lucide-react';
 import type { ClubList, ClubOption, PhotoPick } from '../../shared/api.ts';
 import type { Methodology } from '../../shared/types.ts';
 import { errMsg, fmtMoney, fmtNum, METHODOLOGY, unwrap } from '../util.ts';
 import { PosPill, to20, tone } from '../playerUi.tsx';
-import { ClubCrest, clubHues, Flag, StadiumArt } from '../flags.tsx';
+import { ClubCrest, Flag, StadiumArt } from '../flags.tsx';
+import { clubVars, useClubPalette } from '../clubColors.ts';
 import footeraMark from '../assets/footera-mark.png';
 import { baseCoachAttributes, COACH_ATTR_BASE, COACH_ATTR_MAX_START, COACH_ATTR_POINTS, COACH_ATTRS, spentPoints, type CoachAttributes, type CoachAttrKey } from '../../shared/coachAttributes.ts';
-import type { CSSProperties } from 'react';
 import { useImages } from '../images.ts';
 import { HelpTip } from '../help.tsx';
 import { Stars } from '../stars.tsx';
@@ -134,12 +134,12 @@ export function NewCareer({ profileId, onBack, onCreated }: Props) {
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
 
-  // passo 2: a tela ganha um toque da cor do clube destacado (transição suave ao trocar de clube)
-  const tint = step === 2 && chosen ? clubHues(chosen.id) : null;
-  const tintStyle = tint ? ({ '--club-h': tint.hue, '--club-h2': tint.hue2 } as CSSProperties) : undefined;
+  // passo 2: a tela ganha um toque da cor do clube destacado, tirada do escudo (transição suave ao trocar de clube)
+  const tintPal = useClubPalette(step === 2 && chosen ? chosen.id : null);
+  const tint = step === 2 && !!chosen;
 
   return (
-    <main className={`shell nc-fit ${step === 2 ? 'nc-wide' : ''} ${tint ? 'nc-tinted' : ''}`} style={tintStyle}>
+    <main className={`shell nc-fit club-scope ${step === 2 ? 'nc-wide' : ''} ${tint ? 'nc-tinted' : ''}`} style={clubVars(tintPal)}>
       {tint && <div className="nc-tint" aria-hidden="true" />}
       <header className="nc-top">
         <div className="nc-top-title">

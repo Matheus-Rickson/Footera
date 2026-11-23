@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { CalendarDays, Landmark, MessageCircle, MessagesSquare, Newspaper, X } from 'lucide-react';
+import { CalendarX2, Landmark, MessageCircle, MessagesSquare, Newspaper, Table2, UserRound, X } from 'lucide-react';
 import type { BoardOverviewDto, BoardStatus, BoardTopicDto, CareerOverviewDto, CompetitionTableDto, ConversationsDto, PlayerTopicDto, PromiseDto, SocialPostDto } from '../../shared/api.ts';
-import { errMsg, fmtDate, fmtMoney, fmtWeekday, METHODOLOGY, unwrap } from '../util.ts';
+import { errMsg, fmtDate, fmtMoney, METHODOLOGY, unwrap } from '../util.ts';
 import { Stars } from '../stars.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { PosPill } from '../playerUi.tsx';
 import { useImages } from '../images.ts';
+import { FormStrip, MatchBanner, Meter, Panel, StatTile } from '../ui/index.tsx';
 
 type Go = 'competitions' | 'news' | 'board' | 'contracts' | 'inbox';
 interface Props {
@@ -21,7 +22,10 @@ const TOPICS: Array<{ id: PlayerTopicDto; label: string; help: string }> = [
 ];
 const meterClass = (v: number) => (v >= 55 ? '' : v >= 35 ? 'mid' : 'low');
 
-/** Visão geral no esboço do usuário: treinador, notícias, conversas e promessas, tabela da liga, diretoria/torcida/objetivos. */
+/**
+ * Visão geral ("vestiário"): cartaz do próximo jogo no topo; treinador e números do clube, notícias, conversas e promessas,
+ * tabela da liga e diretoria/torcida/objetivos — o mesmo conteúdo do esboço do usuário, no visual "Estádio noturno".
+ */
 export function OverviewView({ overview, refreshKey, onGo, onOpenPlayer, onChanged }: Props) {
   const { profileId, id: careerId } = overview.summary;
   const club = overview.club;
@@ -46,22 +50,26 @@ export function OverviewView({ overview, refreshKey, onGo, onOpenPlayer, onChang
 
   const afterTalk = async (r: ConversationsDto) => { setTalks(r); await onChanged(); };
 
+  const next = overview.nextFixture;
+  const today = !!next && next.status === 'scheduled' && next.date <= overview.summary.gameDate;
+  const mine = table?.rows.find((r) => r.isUserClub) ?? null;
   return (
     <div className="ov">
       {error && <p className="error ov-error" role="alert">{error}</p>}
-      <CoachCard overview={overview} />
+      <div className="ov-match">
+        {next ? <MatchBanner fixture={next} userClubId={club?.id ?? null} kicker={today ? 'Dia de jogo' : 'Próximo jogo'} />
+          : <section className="card ov-nomatch"><CalendarX2 size={22} aria-hidden="true" /><span>{club ? 'Nenhum jogo marcado para o seu clube nesta temporada.' : 'Sem clube: sem jogos marcados.'}</span></section>}
+      </div>
+      <CoachCard overview={overview} form={mine?.form ?? null} />
       <NewsCard posts={posts} onMore={() => onGo('news')} />
-      <section className="card ov-talk">
-        <div className="ov-card-head">
-          <h2><MessagesSquare size={17} aria-hidden="true" />Conversas e promessas</h2>
-          {club && <div className="row">
-            <button className="secondary" onClick={() => setModal({ kind: 'player', playerId: null })}><MessageCircle size={15} aria-hidden="true" />Conversar com jogador</button>
-            <button className="secondary" onClick={() => setModal({ kind: 'board' })}><Landmark size={15} aria-hidden="true" />Falar com a diretoria</button>
-          </div>}
-        </div>
+      <Panel className="ov-talk" icon={<MessagesSquare size={18} aria-hidden="true" />} title="Conversas e promessas"
+        actions={club && <>
+          <button className="secondary" onClick={() => setModal({ kind: 'player', playerId: null })}><MessageCircle size={15} aria-hidden="true" />Conversar com jogador</button>
+          <button className="secondary" onClick={() => setModal({ kind: 'board' })}><Landmark size={15} aria-hidden="true" />Falar com a diretoria</button>
+        </>}>
         {!club ? <p className="muted">Sem clube: não há elenco nem diretoria para conversar. <button className="link" onClick={() => onGo('board')}>Ver propostas de emprego</button></p>
           : !talks ? <p className="muted small">Carregando…</p> : <TalksBody talks={talks} onTalk={(id) => setModal({ kind: 'player', playerId: id })} onOpenPlayer={onOpenPlayer} />}
-      </section>
+      </Panel>
       <MiniTable table={table} hasClub={!!club} onMore={() => onGo('competitions')} />
       <BoardCard board={boardDto} onMore={() => onGo('board')} />
       {modal?.kind === 'player' && talks && <PlayerTalkModal profileId={profileId} careerId={careerId} talks={talks} initial={modal.playerId} onDone={afterTalk} onClose={() => setModal(null)} />}
@@ -70,13 +78,12 @@ export function OverviewView({ overview, refreshKey, onGo, onOpenPlayer, onChang
   );
 }
 
-function CoachCard({ overview }: { overview: CareerOverviewDto }) {
+function CoachCard({ overview, form }: { overview: CareerOverviewDto; form: Array<'V' | 'E' | 'D'> | null }) {
   const { coach, club, squad } = overview;
   const [imgOk, setImgOk] = useState(true);
-  const img = useImages();
-  const next = overview.nextFixture;
+  const pos = overview.leaguePosition;
   return (
-    <section className="card ov-coach">
+    <Panel className="ov-coach" icon={<UserRound size={18} aria-hidden="true" />} title="Treinador">
       <div className="ov-coach-main">
         {overview.photoDataUrl && imgOk ? <img className="photo ov-photo" src={overview.photoDataUrl} alt="Foto do treinador" onError={() => setImgOk(false)} />
           : <div className="photo placeholder ov-photo">{coach.firstName[0]}{coach.lastName[0]}</div>}
@@ -87,20 +94,19 @@ function CoachCard({ overview }: { overview: CareerOverviewDto }) {
         </div>
       </div>
       {club ? (
-        <div className="ov-coach-club">
-          <span className="cp-club"><ClubCrest id={club.id} name={club.name} size={18} src={img.url('clubs', club.id)} /><strong>{club.name}</strong></span>
-          <span className="muted small">{club.league} · caixa <span className={club.balance < 0 ? 'neg' : ''}>{fmtMoney(club.balance)}</span> · {squad.length} jogadores</span>
-          {next && <span className="small ov-next"><CalendarDays size={13} aria-hidden="true" />Próximo jogo: {next.homeId === club.id ? `× ${next.awayName}` : `× ${next.homeName}`} ({next.cup?.neutral ? 'campo neutro' : next.homeId === club.id ? 'casa' : 'fora'}){next.cup ? ` · ${next.cup.name}, ${next.cup.stage.toLowerCase()}${next.cup.leg ? ` (${next.cup.leg === 1 ? 'ida' : 'volta'})` : ''}` : ''} · {fmtWeekday(next.date)} {fmtDate(next.date)}</span>}
+        <div className="ov-stats">
+          <StatTile label="Posição" value={pos ? `${pos.position}º` : '—'} sub={pos ? `de ${pos.total} · ${pos.points} pts em ${pos.played} j` : 'sem liga'} />
+          <StatTile label="Caixa" value={<span className={club.balance < 0 ? 'neg' : ''}>{fmtMoney(club.balance)}</span>} sub={`${squad.length} jogadores`} />
+          <div className="ui-stat"><span className="ui-stat-label">Forma na liga</span>{form ? <FormStrip form={form} /> : <span className="muted small">—</span>}</div>
         </div>
       ) : <p className="muted small">Sem clube no momento.</p>}
-    </section>
+    </Panel>
   );
 }
 
 function NewsCard({ posts, onMore }: { posts: SocialPostDto[] | null; onMore: () => void }) {
   return (
-    <section className="card ov-news">
-      <div className="ov-card-head"><h2><Newspaper size={17} aria-hidden="true" />Notícias</h2><button className="link" onClick={onMore}>ver todas</button></div>
+    <Panel className="ov-news" icon={<Newspaper size={18} aria-hidden="true" />} title="Notícias" actions={<button className="link" onClick={onMore}>ver todas</button>}>
       {!posts ? <p className="muted small">Carregando…</p> : posts.length === 0 ? <p className="muted small">Nenhuma notícia ainda.</p> : (
         <ul className="ov-news-list">{posts.map((p) => (
           <li key={p.id} className={p.mine ? 'ov-news-mine' : ''}>
@@ -109,7 +115,7 @@ function NewsCard({ posts, onMore }: { posts: SocialPostDto[] | null; onMore: ()
           </li>
         ))}</ul>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -235,8 +241,7 @@ function BoardTalkModal({ profileId, careerId, talks, onDone, onClose }: {
 function MiniTable({ table, hasClub, onMore }: { table: CompetitionTableDto | null; hasClub: boolean; onMore: () => void }) {
   const img = useImages();
   return (
-    <section className="card ov-table">
-      <div className="ov-card-head"><h2>{table ? table.competition.name : 'Tabela'}</h2><button className="link" onClick={onMore}>tabela completa</button></div>
+    <Panel className="ov-table" icon={<Table2 size={18} aria-hidden="true" />} title={table ? table.competition.name : 'Tabela'} actions={<button className="link" onClick={onMore}>tabela completa</button>}>
       {!table ? <p className="muted small">{hasClub ? 'Carregando…' : 'Sem liga: o treinador está sem clube.'}</p> : (
         <div className="ov-table-scroll">
           <table className="cp-std ov-std">
@@ -249,25 +254,24 @@ function MiniTable({ table, hasClub, onMore }: { table: CompetitionTableDto | nu
           </table>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
 function BoardCard({ board, onMore }: { board: BoardOverviewDto | null; onMore: () => void }) {
   const c = board?.club ?? null;
   return (
-    <section className="card ov-board">
-      <div className="ov-card-head"><h2><Landmark size={17} aria-hidden="true" />Diretoria, torcida e objetivos</h2><button className="link" onClick={onMore}>ver a Diretoria</button></div>
+    <Panel className="ov-board" icon={<Landmark size={18} aria-hidden="true" />} title="Diretoria, torcida e objetivos" actions={<button className="link" onClick={onMore}>ver a Diretoria</button>}>
       {!board ? <p className="muted small">Carregando…</p> : !c ? <p className="muted small">Sem clube: sem diretoria nem torcida.</p> : (
         <div className="ov-board-grid">
           <div>
             <span className="ov-label">Confiança da diretoria</span>
-            <div className="meter ov-meter"><i className={meterClass(c.confidence)} style={{ width: `${c.confidence}%` }} /></div>
+            <Meter value={c.confidence} label="Confiança da diretoria" />
             <span className="small">{Math.round(c.confidence)}/100{c.warning && <span className="neg"> · cargo ameaçado</span>}</span>
           </div>
           <div title="Indicador derivado dos últimos 5 jogos e da posição na liga em relação ao esperado.">
             <span className="ov-label">Torcida: {c.fans.label}</span>
-            <div className="meter ov-meter"><i className={meterClass(c.fans.mood)} style={{ width: `${c.fans.mood}%` }} /></div>
+            <Meter value={c.fans.mood} label="Humor da torcida" />
             <span className="muted small">{c.fans.detail}</span>
           </div>
           <div className="ov-objectives">
@@ -279,6 +283,6 @@ function BoardCard({ board, onMore }: { board: BoardOverviewDto | null; onMore: 
           </div>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

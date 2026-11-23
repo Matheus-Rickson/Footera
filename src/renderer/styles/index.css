@@ -1,0 +1,13 @@
+/* Ordem da cascata da interface "Estádio noturno" (docs/INTERFACE.md): tokens → base → telas antigas → componentes → peças compartilhadas → áreas redesenhadas. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./legacy.css";
+@import "./ui.css";
+@import "./common.css";
+@import "./shell.css";
+@import "./home.css";
+@import "./overview.css";
+@import "./squad.css";
+@import "./player.css";
+@import "./tactics.css";
+@import "./match.css";

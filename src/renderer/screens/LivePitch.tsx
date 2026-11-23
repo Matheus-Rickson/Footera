@@ -117,7 +117,7 @@ export function LivePitch({ teams, names, tick, prevTick, tickLines, tickMs, fin
           return (
             <g key={p.id} className="mc-mover" style={{ transform: `translate(${pt.x}px, ${pt.y}px)` }}>
               <circle r="2.3" className={t === 0 ? 'mc-dot-home' : 'mc-dot-away'} />
-              <text y="0.75" textAnchor="middle" className="mc-dot-txt">{initials(p.name)}</text>
+              <text y="0.75" textAnchor="middle" className={`mc-dot-txt ${t === 0 ? 'mc-ink-home' : 'mc-ink-away'}`}>{initials(p.name)}</text>
               <title>{p.name}</title>
             </g>
           );

@@ -418,6 +418,34 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Final da Libertadores e da Sul-Americana: "campo neutro" abaixo do placar.
 - [ ] Save antigo aberto depois de fevereiro de 2026: sem continentais em 2026; na virada para 2027 eles aparecem (e a Recopa, a partir do 2º ano da carreira nova).
 
+## 13z7. Interface "Estádio noturno" — lote 1 (v0.8.14; `docs/INTERFACE.md`)
+- [ ] Menu principal: fundo de estádio, títulos condensados; carreira mais recente nas cores do escudo do clube dela.
+- [ ] Carregar carreira: cada save como um "slot" com escudo e cores do clube; Abrir, pasta e excluir funcionando.
+- [ ] Nova carreira, passo 2: o clube destacado tinge a tela com a cor do escudo dele.
+- [ ] Barra superior: 6 abas (Clube, Elenco, Competições, Mercado, Desenvolvimento, Gestão) e as subseções embaixo; voltar a uma aba reabre a última subseção dela.
+- [ ] Cor do clube: aba ativa, botão Continuar, filete da barra e linha do clube nas tabelas na cor do escudo. Conferir 3 clubes: um com escudo colorido, um sem escudo (cor do escudo gerado) e um preto e branco (prateado).
+- [ ] Dia de jogo: "Simular" e "Jogo ao vivo" (pulsando) no lugar de Continuar; a partida abre em tela cheia, sem a barra.
+- [ ] Caixa de entrada: contador no ícone do envelope e na subseção.
+- [ ] Visão geral: cartaz do próximo jogo (casa/fora/campo neutro, fase da copa), treinador com posição/caixa/forma, notícias, conversas, diretoria com objetivos rolando e a tabela; tudo cabe na janela.
+- [ ] Avançando o tempo: data grande, dia atual na cor do clube, "Parar aqui".
+- [ ] Tema claro ("dia de jogo") legível; janela mínima (1024×640) sem cortar a barra.
+- [ ] Sem clube (demitido): abas sem nenhuma subseção liberada ficam desabilitadas.
+- [ ] Telas dos próximos lotes (Elenco, Táticas, Transferências…): funcionam como antes, com o visual novo herdado.
+
+## 13z8. Interface "Estádio noturno" — lote 2 (v0.8.15; `docs/INTERFACE.md`)
+- [ ] Elenco: filtro de setor em segmentos com a contagem; indicadores de jogadores/força/idade/condição mudam com o setor; ordenar pelo cabeçalho; a tabela rola por dentro.
+- [ ] Siglas de posição com a cor do setor (goleiro, defesa, meio, ataque) em Elenco, Táticas, Contratos e na partida.
+- [ ] Ficha do jogador: cartaz nas cores do clube do jogador (abrir um jogador de outro clube pelo mercado e um do seu); abas Visão geral/Atributos/Histórico; "Observar" e "Fazer proposta" funcionando.
+- [ ] Táticas: pré-definições em segmentos; campo noturno com crachás na cor do clube e anel verde/amarelo/laranja do encaixe; arrastar e soltar, janela de função, janela do jogador e estilo de jogo (clique no gramado).
+- [ ] Contratos: os 4 indicadores filtram a lista; filtros com contagem; painel com Renegociar/Lista/Rescindir; tempo de jogo em segmentos.
+- [ ] Partida ao vivo: placar com as cores dos dois escudos (conferir um jogo entre dois times da mesma cor: o visitante muda de cor); relógio e "ao vivo"; gols com a faixa de quem marcou; vestiário e sugestão do auxiliar; relatório de jogo antigo pelo Calendário.
+- [ ] Tema claro e janela mínima (1024×640) nessas telas.
+- [x] Ajustes do 1º teste: Calendário preenche a tela com números/escudos maiores; Táticas e Contratos sem barra de rolagem da página (só as listas rolam); nome, posição e função do goleiro inteiros no campo; Visão geral inteira na tela (notícias e diretoria visíveis).
+- [x] Táticas: campo só com os titulares; ao arrastar um jogador (da lista ou do campo) aparecem as posições livres e somem ao soltar; em "Colocar em campo" (janela do jogador) elas aparecem para o clique.
+- [x] Avisos (fim de temporada, "N partidas simuladas", dia de jogo) só na Visão geral: avançar estando em Táticas não mostra o aviso ali; ao abrir a Visão geral ele aparece; um erro de ação ainda aparece na tela da ação.
+- [x] Táticas: pré-definições e esquemas acima da lista do elenco; campo maior ocupando a coluna da direita inteira.
+- [x] Táticas, arraste: o crachá não pula para o lado ao ser pego; acompanha o cursor; a vaga mais perto acende sem precisar acertar o círculo; ao soltar, os jogadores deslizam (troca e formação nova); reserva só troca com titular; Esc cancela; clique simples ainda abre função/jogador.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.
