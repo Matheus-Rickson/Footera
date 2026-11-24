@@ -454,6 +454,17 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Inspetor de save: escolher um save da lista, avançar alguns dias e ver o antes e depois; abrir o jogo depois e conferir que a carreira continua onde estava.
 - [ ] Terminal: `npm run lab:run -- lista` e `npm run lab:run -- lote-partidas n=200`.
 
+## 13z10. Motor v2 lance a lance (v0.10.0; `docs/MATCH_ENGINE_V2.md`)
+- [ ] Partida ao vivo: o card "Ao vivo" diz "posições reais"; os 22 jogadores e a bola se movem a cada lance, quem está com a bola tem um anel amarelo e o lance atual aparece no canto (Passe · nome, Desarme…).
+- [ ] Nas velocidades 1× (4 s por minuto), 2× e 4× a animação acompanha o relógio e dá para seguir os lances; ao pausar, o campo para no fim do minuto.
+- [ ] Os jogadores não se movem todos juntos como um bloco: quem está perto da bola se aproxima, os meias chegam à área com o centroavante.
+- [ ] Jogo de copa com jogador suspenso na liga: o aviso pré-jogo e o banco das substituições dizem "suspenso na liga; liberado nesta copa".
+- [ ] Botão **Tática**: mudar mentalidade/pressão/linha e a formação; o jogo continua, o comentário narra a mudança e a formação no placar muda.
+- [ ] Clicar num jogador seu no campo abre a troca de função com a animação; confirmar e ver o comentário "passa a jogar como…".
+- [ ] Perdendo no fim, o técnico adversário muda a tática (comentário "O técnico do X muda a tática…").
+- [ ] Substituições, vestiário e sugestões do auxiliar seguem funcionando; "Ir para o fim" grava a rodada.
+- [ ] Rodadas e temporada avançam sem lentidão perceptível; relatórios de partidas antigas continuam abrindo.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

@@ -6,7 +6,7 @@
  */
 import { FORMATIONS } from '../../../src/game/match-engine/formations.ts';
 import { asUniverse } from '../universe.ts';
-import { f2, mean, pct, pts, se } from '../stats.ts';
+import { ENGINE_PARAM, f1, f2, mean, pct, pts, se } from '../stats.ts';
 import { Cancelled, type ParamValue, type Scenario, type Section } from '../types.ts';
 import { batchGame, summarize, type BatchGame } from './matchBatch.ts';
 
@@ -14,6 +14,8 @@ import { batchGame, summarize, type BatchGame } from './matchBatch.ts';
 export const TARGETS = {
   goals: [2.5, 2.9], home: [0.43, 0.48], draw: [0.23, 0.29], away: [0.27, 0.32], nil: [0.06, 0.10],
   yellows: [3, 4.5], reds: [0.05, 0.15], added1: [2, 3], added2: [4, 6], xgGap: 0.15, formationSpread: 0.2,
+  // por time (médias das ligas europeias e do Brasileirão; usadas para calibrar a v2, que joga lance a lance)
+  shots: [10, 15], onTarget: [3.5, 5.5], passes: [380, 560], passAcc: [0.76, 0.86], fouls: [9, 15], corners: [4, 6.2], offsides: [1.2, 2.8],
 } as const;
 
 const base = (seed: string): Record<string, ParamValue> => ({
@@ -31,6 +33,7 @@ export const calibration: Scenario = {
   description: 'Confere as metas de realismo (gols, mando, empates, 0x0, cartões, acréscimos), o determinismo e o equilíbrio entre formações.',
   params: [
     { key: 'universe', label: 'Universo', kind: 'select', default: 'calib', options: [{ value: 'calib', label: 'Calibração (Brasil e Inglaterra, 2 divisões)' }, { value: 'base', label: 'Base fixa do jogo (sem pacotes)' }] },
+    ENGINE_PARAM,
     { key: 'n', label: 'Partidas da bateria geral', kind: 'number', default: 2000, min: 100, max: 50000, step: 500 },
     { key: 'formations', label: 'Testar o equilíbrio entre formações', kind: 'boolean', default: true },
     { key: 'perFormation', label: 'Partidas por formação', kind: 'number', default: 420, min: 70, max: 20000, step: 70, help: 'Cada formação enfrenta as outras em rodízio; 420 = 70 contra cada uma das 6 outras.' },
@@ -42,7 +45,7 @@ export const calibration: Scenario = {
     const total = n + 20 + perF * FORMATIONS.length;
     let done = 0;
     const tick = async () => { done++; if (done % 25 === 0) { ctx.onProgress({ done, total }); await new Promise((r) => setImmediate(r)); } if (ctx.cancelled()) throw new Cancelled(); };
-    const prm = { ...base(String(p.seed)), universe: u };
+    const prm = { ...base(String(p.seed)), universe: u, engine: String(p.engine) };
 
     // 1) bateria geral
     const games: BatchGame[] = [];
@@ -96,6 +99,7 @@ export const calibration: Scenario = {
         { label: 'Vermelhos por jogo', value: f2(red), target: rng(TARGETS.reds, n2), ok: inRange(red, TARGETS.reds) },
         { label: 'Acréscimos 1º tempo (min)', value: f2(a1), target: rng(TARGETS.added1, n2), ok: inRange(a1, TARGETS.added1) },
         { label: 'Acréscimos 2º tempo (min)', value: f2(a2), target: rng(TARGETS.added2, n2), ok: inRange(a2, TARGETS.added2) },
+        ...teamChecks(games),
         { label: 'Anomalias', value: String(anom), target: '0', ok: anom === 0 },
         { label: 'Determinismo (20 jogos refeitos)', value: `${same}/20 idênticos`, target: '20/20', ok: same === 20 },
       ],
@@ -116,3 +120,17 @@ export const calibration: Scenario = {
     return { sections, data: { games, formations: fRows.map((r) => ({ id: r.id, ppg: mean(r.p) })) } };
   },
 };
+
+/** médias por time (os dois lados de cada jogo) contra as faixas de referência */
+function teamChecks(games: BatchGame[]): Array<{ label: string; value: string; target: string; ok: boolean }> {
+  const per = (k: (g: BatchGame) => [number, number]) => mean(games.flatMap((g) => k(g)));
+  const shots = per((g) => [g.aShots, g.bShots]), on = per((g) => g.onTarget), passes = per((g) => g.passes);
+  const acc = games.reduce((a, g) => a + g.passesOk[0] + g.passesOk[1], 0) / Math.max(1, games.reduce((a, g) => a + g.passes[0] + g.passes[1], 0));
+  const fouls = per((g) => g.fouls), corners = per((g) => g.corners), off = per((g) => g.offsides);
+  const row = (label: string, v: number, r: readonly [number, number], fmt: (x: number) => string) => ({ label, value: fmt(v), target: rng(r, fmt), ok: inRange(v, r) });
+  return [
+    row('Finalizações por time', shots, TARGETS.shots, f1), row('No gol por time', on, TARGETS.onTarget, f1),
+    row('Passes por time', passes, TARGETS.passes, (x) => x.toFixed(0)), row('Passes certos', acc, TARGETS.passAcc, (x) => pct(x, 0)),
+    row('Faltas por time', fouls, TARGETS.fouls, f1), row('Escanteios por time', corners, TARGETS.corners, f1), row('Impedimentos por time', off, TARGETS.offsides, f1),
+  ];
+}

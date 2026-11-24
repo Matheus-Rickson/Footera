@@ -134,7 +134,9 @@ test('Simulação: usa formação, escalação e tática do esquema ativo e avis
 
   // próxima rodada: um titular escolhido se lesiona antes do jogo
   const hurt = manual[9]!;
-  db.prepare('INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?, ?, ?, 0, 0)').run(hurt, '2027-06-01', 'Lesão');
+  // (upsert: o titular pode já ter linha de status, por um cartão no jogo anterior)
+  db.prepare(`INSERT INTO player_status (player_id, injury_until, injury_note, suspension_matches, yellow_cards) VALUES (?, ?, ?, 0, 0)
+    ON CONFLICT(player_id) DO UPDATE SET injury_until = excluded.injury_until, injury_note = excluded.injury_note, suspension_matches = 0`).run(hurt, '2027-06-01', 'Lesão');
   advanceTime(db, 'nextMatchday');
   const second = simulateMatchday(db);
   assert.equal(second.notes.length, 1);

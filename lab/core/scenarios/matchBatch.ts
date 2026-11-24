@@ -5,19 +5,21 @@
  */
 import { simulateMatch } from '../../../src/game/match-engine/engine.ts';
 import { createRng } from '../../../src/game/rng.ts';
-import type { MatchOutcome } from '../../../src/game/match-engine/types.ts';
+import type { EngineVersion, MatchOutcome } from '../../../src/game/match-engine/types.ts';
 import { asUniverse, clubName, midClubs, sheetFor, UNIVERSES, type UniverseId } from '../universe.ts';
-import { addedTime, anomalies, f1, f2, mean, pct, pts, se, sideParams, tacticsFrom } from '../stats.ts';
+import { addedTime, anomalies, f1, f2, mean, pct, pts, se, sideParams, tacticsFrom, ENGINE_PARAM } from '../stats.ts';
 import { Cancelled, ParamError, type ParamValue, type Scenario, type Section } from '../types.ts';
 
 export interface BatchGame {
   i: number; seed: string; aHome: boolean; aClub: string; bClub: string;
   aGoals: number; bGoals: number; aXg: number; bXg: number; aShots: number; bShots: number; aPoss: number;
   yellows: number; reds: number; subs: number; injuries: number; added: [number, number]; anomalies: string[];
+  /** por lado [A, B]: passes, passes certos, finalizações no gol, faltas, escanteios, impedimentos */
+  passes: [number, number]; passesOk: [number, number]; onTarget: [number, number]; fouls: [number, number]; corners: [number, number]; offsides: [number, number];
 }
 
 /** o jogo `i` do lote: mesmos parâmetros e semente = mesmo jogo (o inspetor de partida refaz exatamente este) */
-export function batchGame(u: UniverseId, p: Record<string, ParamValue>, i: number): { game: BatchGame; outcome: MatchOutcome } {
+export function batchGame(u: UniverseId, p: Record<string, ParamValue>, i: number, opts?: { track?: boolean; timeline?: boolean }): { game: BatchGame; outcome: MatchOutcome } {
   const pool = midClubs(u);
   const pr = createRng(`${String(p.seed)}-pair-${i}`);
   const aClub = String(p.homeClub) || pr.pick(pool);
@@ -27,7 +29,8 @@ export function batchGame(u: UniverseId, p: Record<string, ParamValue>, i: numbe
   const A = { clubId: aClub, formation: String(p.homeFormation), tactics: tacticsFrom(p, 'home') };
   const B = { clubId: bClub, formation: String(p.awayFormation), tactics: tacticsFrom(p, 'away') };
   const seed = `${String(p.seed)}-${i}`;
-  const o = aHome ? simulateMatch(sheetFor(u, A, 'H:'), sheetFor(u, B, 'A:'), { seed }) : simulateMatch(sheetFor(u, B, 'H:'), sheetFor(u, A, 'A:'), { seed });
+  const mo = { seed, engine: (p.engine === 'v2' ? 'v2' : 'v1') as EngineVersion, ...(opts ?? {}) };
+  const o = aHome ? simulateMatch(sheetFor(u, A, 'H:'), sheetFor(u, B, 'A:'), mo) : simulateMatch(sheetFor(u, B, 'H:'), sheetFor(u, A, 'A:'), mo);
   const [a, b] = aHome ? [0, 1] as const : [1, 0] as const;
   const goals = [o.homeGoals, o.awayGoals];
   const ev = (t: string) => o.events.filter((e) => e.type === t).length;
@@ -38,6 +41,8 @@ export function batchGame(u: UniverseId, p: Record<string, ParamValue>, i: numbe
       i, seed, aHome, aClub, bClub, aGoals: goals[a]!, bGoals: goals[b]!, aXg: o.stats[a].xg, bXg: o.stats[b].xg,
       aShots: o.stats[a].shots, bShots: o.stats[b].shots, aPoss: o.stats[a].possession,
       yellows: ev('yellow_card'), reds: ev('red_card'), subs: ev('substitution'), injuries: ev('injury'), added: [at.first, at.second], anomalies: anomalies(o),
+      passes: [o.stats[a].passes, o.stats[b].passes], passesOk: [o.stats[a].passesCompleted, o.stats[b].passesCompleted], onTarget: [o.stats[a].shotsOnTarget, o.stats[b].shotsOnTarget],
+      fouls: [o.stats[a].fouls, o.stats[b].fouls], corners: [o.stats[a].corners, o.stats[b].corners], offsides: [o.stats[a].offsides, o.stats[b].offsides],
     },
   };
 }
@@ -93,6 +98,7 @@ export const matchBatch: Scenario = {
   description: 'Simula N partidas com os clubes, formações e táticas escolhidos e resume gols, resultados, estatísticas e os jogos mais extremos.',
   params: [
     { key: 'universe', label: 'Universo', kind: 'select', default: 'calib', options: UNIVERSES },
+    ENGINE_PARAM,
     { key: 'homeClub', label: 'Clube do lado A', kind: 'select', default: '', options: [{ value: '', label: 'Sorteio entre clubes médios da 1ª liga' }], source: 'clubs' },
     { key: 'awayClub', label: 'Clube do lado B', kind: 'select', default: '', options: [{ value: '', label: 'Sorteio entre clubes médios da 1ª liga' }], source: 'clubs' },
     { key: 'n', label: 'Partidas', kind: 'number', default: 500, min: 1, max: 20000, step: 100 },

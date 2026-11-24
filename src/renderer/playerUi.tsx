@@ -35,7 +35,7 @@ export function PlayerFlags({ p }: { p: Pick<MarketPlayerDto, 'shortlisted' | 's
     <span className="tr-flags">
       {p.shortlisted && <span className="tr-flag tr-flag-watch" title="Na lista de observação dos olheiros" aria-label="Observado"><Binoculars size={13} aria-hidden="true" /></span>}
       {s.injuredUntil && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(s.injuredUntil)}`} aria-label="Lesionado"><Cross size={12} aria-hidden="true" /></span>}
-      {s.suspension > 0 && <span className="tr-flag tr-flag-susp" title={`Suspenso por ${s.suspension} jogo(s)`} aria-label="Suspenso"><Ban size={12} aria-hidden="true" /></span>}
+      {s.suspension > 0 && <span className="tr-flag tr-flag-susp" title={`Suspenso por ${s.suspension} jogo(s) na liga (as copas têm suspensões próprias)`} aria-label="Suspenso"><Ban size={12} aria-hidden="true" /></span>}
       {s.yellows > 0 && <span className="tr-card tr-card-y" title={`${s.yellows} cartão(ões) amarelo(s) na temporada`}>{s.yellows}</span>}
       {s.reds > 0 && <span className="tr-card tr-card-r" title={`${s.reds} cartão(ões) vermelho(s) na temporada`}>{s.reds}</span>}
     </span>

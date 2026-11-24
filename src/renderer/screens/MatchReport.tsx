@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Ban, CalendarDays, Cloud, CloudRain, Coins, Cross, FastForward, Info, MapPin, Pause, Play, RotateCcw, SkipForward, Snowflake, Star, Sun, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Ban, CalendarDays, Cloud, CloudRain, Coins, Cross, FastForward, Info, MapPin, Pause, Play, RotateCcw, SkipForward, SlidersHorizontal, Snowflake, Star, Sun, Trophy, Users } from 'lucide-react';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSummaryDto } from '../../shared/api.ts';
-import type { TeamStats } from '../../game/match-engine/types.ts';
+import type { TeamStats, TeamTactics } from '../../game/match-engine/types.ts';
+import { decodeTrack, framesByTick } from '../../game/match-engine/v2/track.ts';
 import { BUILDUP_LABEL, errMsg, fmtDate, fmtMoney, MENTALITY_LABEL, shortName, unwrap } from '../util.ts';
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
 import { PlayerFace, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
-import { AssistantModal, SubsModal, TeamTalkModal } from './LiveDecisions.tsx';
+import { AssistantModal, RoleModal, SubsModal, TacticsModal, TeamTalkModal } from './LiveDecisions.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
 import { useClubPalette } from '../clubColors.ts';
@@ -19,9 +20,12 @@ interface Props {
 }
 type Speed = 1 | 2 | 4;
 const TICK_MS: Record<Speed, number> = { 1: 1000, 2: 500, 4: 220 };
+/** com o mapa real (motor v2) cada minuto tem ~14 lances: mais tempo por minuto para dar para acompanhar */
+const TRACK_TICK_MS: Record<Speed, number> = { 1: 4000, 2: 2000, 4: 800 };
 const WEATHER: Record<string, string> = { clear: 'tempo bom', rain: 'chuva', heat: 'calor intenso', cold: 'frio' };
 const WEATHER_ICON = { clear: Sun, rain: CloudRain, heat: Sun, cold: Snowflake } as const;
 const FINAL_LABEL: Record<string, string> = { regular: 'Fim', extra_time: 'Fim · prorrogação', penalties: 'Fim · pênaltis' };
+const DEFAULT_TACTICS: TeamTactics = { mentality: 'balanced', tempo: 3, width: 3, defensiveLine: 3, pressing: 3, buildUp: 'mixed' };
 const ratingTone = (r: number) => (r >= 7.5 ? 'great' : r >= 6.8 ? 'good' : r >= 6 ? 'avg' : 'poor');
 const condTone = (c: number) => (c >= 75 ? 'great' : c >= 60 ? 'avg' : 'poor');
 
@@ -182,7 +186,9 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const [minor, setMinor] = useState(false);
   const [busy, setBusy] = useState(false);
   const img = useImages();
-  const [dialog, setDialog] = useState<null | { kind: 'talk' } | { kind: 'subs'; reason: string | null } | { kind: 'assistant'; items: LiveMatchDto['suggestions'] }>(null);
+  const [dialog, setDialog] = useState<null | { kind: 'talk' } | { kind: 'subs'; reason: string | null } | { kind: 'assistant'; items: LiveMatchDto['suggestions'] } | { kind: 'tactics' } | { kind: 'role'; id: string }>(null);
+  /** o auxiliar decidiu o fim da partida: o trajeto da prévia deixa de valer a partir dali */
+  const [auxFinish, setAuxFinish] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [talkDone, setTalkDone] = useState(false);
   const [handledInjuries, setHandledInjuries] = useState<Set<number>>(new Set());
@@ -202,6 +208,14 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const side = preview?.side ?? 0;
   const ticks = useMemo(() => (r ? ticksOf(r) : []), [r]);
   const finished = r !== null && step >= ticks.length;
+  // trajeto real (motor v2): só o da prévia que de fato virou a partida mostrada
+  const track = useMemo(() => {
+    const t = preview?.track;
+    if (!t || auxFinish) return null;
+    const byTick = framesByTick(decodeTrack(t));
+    return byTick.size ? { byTick, ids: t.ids, last: Math.max(...byTick.keys()) } : null;
+  }, [preview, auxFinish]);
+  const v2Live = preview?.engine === 'v2';
   const st = useMemo(() => (r ? liveAt(r, ticks, step) : null), [r, ticks, step]);
   const htStep = useMemo(() => {
     if (!r) return -1;
@@ -222,7 +236,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
       const sum = await unwrap(window.api.finishLiveMatch(profileId, careerId, { interventions: ivs, controlUntil }));
       const rep = await unwrap(window.api.getMatchReport(profileId, careerId, sum.userMatch!.fixtureId));
       setSaved(rep);
-      if (controlUntil !== null) setStep(ticksOf(rep).length);
+      if (controlUntil !== null) { setAuxFinish(true); setStep(ticksOf(rep).length); }
       await onLiveFinished?.(sum);
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }, [profileId, careerId, ivs, onLiveFinished]);
@@ -231,9 +245,9 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   useEffect(() => {
     if (!playing || !r || dialog || busy) return;
     if (finished) { setPlaying(false); if (deciding) void finish(null); return; }
-    const t = setTimeout(() => setStep((n) => n + 1), TICK_MS[speed]);
+    const t = setTimeout(() => setStep((n) => n + 1), (track ? TRACK_TICK_MS : TICK_MS)[speed]);
     return () => clearTimeout(t);
-  }, [playing, step, speed, r, finished, dialog, busy, deciding, finish]);
+  }, [playing, step, speed, r, finished, dialog, busy, deciding, finish, track]);
 
   // pausas automáticas: intervalo (vestiário) e lesão de jogador seu (o técnico escolhe quem entra)
   useEffect(() => {
@@ -276,6 +290,12 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const said = ivs.find((i): i is Extract<LiveInterventionInput, { kind: 'talk' }> => i.kind === 'talk')?.tone ?? null;
   const logoUrl = r.logo ? img.url(r.logo.kind, r.logo.id) : null;
   const WeatherIcon = WEATHER_ICON[r.conditions.weather as keyof typeof WEATHER_ICON] ?? Cloud;
+  const playerNames = new Map([...r.players.map((p) => [p.id, p.name] as const), ...(preview?.bench ?? []).map((b) => [b.id, b.name] as const)]);
+  const tacNow = ivs.filter((i): i is Extract<LiveInterventionInput, { kind: 'tactics' }> => i.kind === 'tactics').at(-1)?.settings ?? r.tactics?.[side] ?? DEFAULT_TACTICS;
+  const evNow = tick?.ev ?? 0;
+  const roleNow = (id: string) => [...r.commentary].reverse().find((l) => l.type === 'role_change' && l.player === id && l.i < evNow)?.detail ?? r.players.find((p) => p.id === id)?.role ?? null;
+  const canCoach = deciding && !finished && v2Live;
+  const rolePlayer = dialog?.kind === 'role' ? st.teams[side].onPitch.find((p) => p.id === dialog.id) : undefined;
   const leave = () => { if (deciding && !finished) { if (window.confirm('Sair agora encerra a partida: o auxiliar decide o restante e a rodada é gravada. Continuar?')) void finish(step).then(onBack); } else onBack(); };
 
   return (
@@ -303,6 +323,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           {!finished && <button className="secondary" disabled={busy} onClick={() => setPlaying((p) => !p)}>{playing ? <><Pause size={15} aria-hidden="true" />Pausar</> : <><Play size={15} aria-hidden="true" />{st.started ? 'Continuar' : 'Iniciar'}</>}</button>}
           {!finished && <div className="mc-speed" role="radiogroup" aria-label="Velocidade">{([1, 2, 4] as Speed[]).map((s) => <button key={s} role="radio" aria-checked={speed === s} className={speed === s ? '' : 'secondary'} onClick={() => setSpeed(s)}>{s}×</button>)}</div>}
           {deciding && !finished && <button className="secondary" disabled={busy} onClick={() => { setPlaying(false); setDialogError(null); setDialog({ kind: 'subs', reason: null }); }}><ArrowLeftRight size={15} aria-hidden="true" />Substituições ({subsUsed}/{preview!.subsMax})</button>}
+          {canCoach && <button className="secondary" disabled={busy} onClick={() => { setPlaying(false); setDialogError(null); setDialog({ kind: 'tactics' }); }}><SlidersHorizontal size={15} aria-hidden="true" />Tática</button>}
           {!finished && <button className="secondary" disabled={busy} title={deciding ? 'O auxiliar decide o restante da partida' : ''} onClick={() => { if (deciding) void finish(step); else { setStep(ticks.length); setPlaying(false); } }}><SkipForward size={15} aria-hidden="true" />Ir para o fim</button>}
           {finished && <button className="secondary" onClick={() => { setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
           <button className="secondary" disabled={busy} onClick={leave}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
@@ -326,7 +347,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
             {finished && r.attendance && <span title="Renda da bilheteria"><Coins size={13} aria-hidden="true" />{fmtMoney(r.attendance.revenue)}</span>}
             {finished && r.manOfTheMatch && <span><Star size={13} aria-hidden="true" />Craque: {r.manOfTheMatch.name}</span>}
           </div>
-          {!finished && deciding && <span className="muted small">Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.</span>}
+          {!finished && deciding && <span className="muted small">Você comanda o time: o auxiliar só sugere trocas; o jogo pausa no intervalo, nas sugestões e em lesões.{canCoach ? ' Mude a tática a qualquer momento e clique num jogador seu no campo para trocar a função dele.' : ''}</span>}
           {r.detail === 'compact' && <span className="mc-compact"><Info size={12} aria-hidden="true" />Resumo: só os eventos-chave (jogo de outros clubes)</span>}
           {!r.timeline && r.detail === 'full' && <span className="mc-compact"><Info size={12} aria-hidden="true" />Partida antiga: notas e estatísticas aparecem no fim.</span>}
         </div>
@@ -342,10 +363,13 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
         <div className="mc-col">
           <EventsCard st={st} minor={minor} setMinor={setMinor} />
           <section className="card mc-live-card">
-            <div className="bar"><h2>Ao vivo</h2><span className="row small muted" title="Representação dos lances: a bola e os jogadores se movem conforme os lances reais de cada minuto (gols, finalizações, escanteios, faltas) e a posse registrada; as posições exatas são ilustrativas, pois o motor simula por lances, não por coordenadas.">
-              <span className="mc-key mc-dot-home" />{shortName(r.home.name)}<span className="mc-key mc-dot-away" />{shortName(r.away.name)}<FastForward size={12} aria-hidden="true" />representação</span></div>
+            <div className="bar"><h2>Ao vivo</h2>{track ? <span className="row small muted" title="Posições reais da simulação: cada ação com bola (passe, condução, desarme, finalização) é gravada com a posição dos 22 jogadores e da bola, e a tela anda entre elas.">
+              <span className="mc-key mc-dot-home" />{shortName(r.home.name)}<span className="mc-key mc-dot-away" />{shortName(r.away.name)}<FastForward size={12} aria-hidden="true" />posições reais</span> : <span className="row small muted" title="Representação dos lances: a bola e os jogadores se movem conforme os lances reais de cada minuto (gols, finalizações, escanteios, faltas) e a posse registrada; as posições exatas são ilustrativas, pois o motor simula por lances, não por coordenadas.">
+              <span className="mc-key mc-dot-home" />{shortName(r.home.name)}<span className="mc-key mc-dot-away" />{shortName(r.away.name)}<FastForward size={12} aria-hidden="true" />representação</span>}</div>
             <LivePitch teams={[st.teams[0].onPitch, st.teams[1].onPitch]} names={[r.home.name, r.away.name]} tick={tick} prevTick={prevTick} tickLines={st.tickLines}
-              tickMs={playing && !finished && !dialog ? TICK_MS[speed] : null} finished={finished} />
+              tickMs={playing && !finished && !dialog ? (track ? TRACK_TICK_MS : TICK_MS)[speed] : null} finished={finished}
+              track={track} step={step} playerNames={playerNames} side={side}
+              onPick={canCoach && !busy ? (id) => { setPlaying(false); setDialogError(null); setDialog({ kind: 'role', id }); } : undefined} />
           </section>
           <StatsCard stats={st.stats} tactics={finished ? r.tactics : null} names={[r.home.name, r.away.name]} />
         </div>
@@ -368,6 +392,16 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           positions={new Map(st.teams[side].onPitch.map((p) => [p.id, p.slot] as const))}
           onAccept={(s) => decide([...ivs, { tick: step, kind: 'sub', out: s.out, in: s.in, slot: s.slot, ...(s.reshape ? { reshape: true } : {}) }])}
           onOther={() => { setDialogError(null); setDialog({ kind: 'subs', reason: null }); }} onClose={resume} />
+      )}
+      {dialog?.kind === 'tactics' && preview && (
+        <TacticsModal current={tacNow} formation={st.teams[side].formation} busy={busy} error={dialogError} onClose={resume}
+          onApply={(settings, formation) => void decide([...ivs,
+            ...(formation ? [{ tick: step, kind: 'formation' as const, formation }] : []),
+            ...(settings ? [{ tick: step, kind: 'tactics' as const, settings }] : [])]).then((ok) => { if (ok) resume(); })} />
+      )}
+      {dialog?.kind === 'role' && preview && rolePlayer && (
+        <RoleModal key={rolePlayer.id} player={rolePlayer} current={roleNow(rolePlayer.id)} busy={busy} error={dialogError} onClose={resume}
+          onPick={(role) => void decide([...ivs, { tick: step, kind: 'role', playerId: rolePlayer.id, role }]).then((ok) => { if (ok) resume(); })} />
       )}
       {dialog?.kind === 'subs' && preview && (
         <SubsModal onPitch={st.teams[side].onPitch} bench={benchLeft} used={subsUsed} max={preview.subsMax} reason={dialog.reason} busy={busy} error={dialogError}

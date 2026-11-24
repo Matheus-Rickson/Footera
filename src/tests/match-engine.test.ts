@@ -297,9 +297,11 @@ test('Técnico ao vivo: no máximo 5 substituições (a sexta é recusada com me
   const outs = sh.lineup.filter((l) => l.slot !== 'GK').map((l) => l.player.id);
   const subs = (k: number) => Array.from({ length: k }, (_, j) => ({ tick: 50 + j, kind: 'sub' as const, team: 0 as const, out: outs[j]!, in: sh.bench[j]!.id }));
   // escolhe uma semente em que nenhum dos que sairiam foi expulso/lesionado antes (o erro tem que ser o do limite)
-  const ok = simulateMatch(sh, sheet(b), { seed: 'lim', control: { team: 0, until: 10_000 }, interventions: subs(5) });
+  const fine = (seed: string, k: number) => { try { return simulateMatch(sh, sheet(b), { seed, control: { team: 0, until: 10_000 }, interventions: subs(k) }); } catch (e) { if (e instanceof MatchInterventionError && !/5 substituições/.test(e.message)) return null; throw e; } };
+  const seed = Array.from({ length: 20 }, (_, i) => `lim-${i}`).find((sd) => fine(sd, 5) && (() => { try { simulateMatch(sh, sheet(b), { seed: sd, control: { team: 0, until: 10_000 }, interventions: subs(6).slice(1) }); return true; } catch { return false; } })())!;
+  const ok = fine(seed, 5)!;
   assert.equal(ok.events.filter((e) => e.type === 'substitution' && e.team === 0).length, 5);
-  assert.throws(() => simulateMatch(sh, sheet(b), { seed: 'lim', control: { team: 0, until: 10_000 }, interventions: subs(6) }),
+  assert.throws(() => simulateMatch(sh, sheet(b), { seed, control: { team: 0, until: 10_000 }, interventions: subs(6) }),
     (e) => e instanceof MatchInterventionError && /5 substituições/.test(e.message));
 });
 

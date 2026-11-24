@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateMatch } from '../game/match-engine/engine.ts';
+import { MatchInterventionError, simulateMatch } from '../game/match-engine/engine.ts';
 import type { MatchOutcome, TeamSheet } from '../game/match-engine/types.ts';
 import { calibWorld, midClubs, sheetOf } from './fixtures.ts';
 import {
@@ -73,7 +73,8 @@ test('Treinador na partida: disciplina reduz cartões; conhecimento tático melh
   const c0 = run(300, undefined, cards), c1 = run(300, maxed('discipline'), cards);
   assert.ok(c1 < c0 * 0.85, `cartões: ${c1} com disciplina 20 × ${c0} sem`);
   const xg = (o: MatchOutcome) => o.stats[0].xg - o.stats[1].xg;
-  const x0 = run(300, undefined, xg), x1 = run(300, maxed('tactics'), xg);
+  // (motor lance a lance: cada jogo diverge logo nos primeiros lances, então o efeito de +2,5% de força só aparece numa amostra grande)
+  const x0 = run(1200, undefined, xg), x1 = run(1200, maxed('tactics'), xg);
   assert.ok(x1 > x0, `saldo de xG: ${x1.toFixed(1)} com tática 20 × ${x0.toFixed(1)} sem`);
   // conversa no 1º minuto registrado (0 × 0): "incentivar" com o time empatando dá +4 de moral; motivação 20 → +6
   const [h, a] = pair(1);
@@ -85,7 +86,9 @@ test('Treinador na partida: disciplina reduz cartões; conhecimento tático melh
   const subIv = (s: TeamSheet) => [{ tick: 40, kind: 'sub' as const, team: 0 as const, out: s.lineup[9]!.player.id, in: s.bench.find((b) => b.position !== 'GK')!.id }];
   // o efeito é pequeno (só quem entra): numa partida isolada pode não virar nenhum sorteio, então basta mudar alguma de 10
   const withSub = (c: CoachAttributes | undefined, seed: string) => simulateMatch(withCoach(h, c), a, { seed, control: { team: 0, until: 0 }, interventions: subIv(h) });
-  const changed = Array.from({ length: 10 }, (_, i) => `adapt-${i}`).filter((sd) => JSON.stringify(withSub(maxed('adaptability'), sd).events) !== JSON.stringify(withSub(undefined, sd).events));
+  // (semente em que quem sairia já foi expulso ou se lesionou antes do minuto 40: a troca é inválida e a semente não conta)
+  const valid = (sd: string) => { try { withSub(undefined, sd); return true; } catch (e) { if (e instanceof MatchInterventionError) return false; throw e; } };
+  const changed = Array.from({ length: 10 }, (_, i) => `adapt-${i}`).filter(valid).filter((sd) => JSON.stringify(withSub(maxed('adaptability'), sd).events) !== JSON.stringify(withSub(undefined, sd).events));
   assert.ok(changed.length > 0, 'adaptabilidade muda a partida depois da troca');
   assert.deepEqual(simulateMatch(withCoach(h, maxed('adaptability')), a, { seed: 'adapt' }), simulateMatch(h, a, { seed: 'adapt' }), 'sem troca do técnico, adaptabilidade não age');
 });

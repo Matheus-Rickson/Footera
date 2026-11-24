@@ -47,7 +47,12 @@ export interface MatchOptions {
   control?: { team: 0 | 1; until: number };
   /** decisões do técnico, aplicadas no início do minuto registrado `tick` (o que veio antes não muda) */
   interventions?: Intervention[];
+  /** versão do motor (ausente = `DEFAULT_ENGINE`): 'v1' estatística por fases; 'v2' lance a lance no campo (docs/MATCH_ENGINE_V2.md) */
+  engine?: EngineVersion;
+  /** só v2: grava o trajeto da bola e dos 22 jogadores (`MatchOutcome.track`) para o campo ao vivo; só observa */
+  track?: boolean;
 }
+export type EngineVersion = 'v1' | 'v2';
 
 /**
  * Regra de desempate de uma partida de copa (por competição e por fase; ver docs/COPAS_NACIONAIS.md).
@@ -67,7 +72,13 @@ export interface MatchDecider {
 export type Intervention =
   | { tick: number; kind: 'sub'; team: 0 | 1; out: string; in: string; /** posição de quem entra (padrão: a de quem sai) */ slot?: Position;
       /** reorganiza o time na formação que melhor encaixa quem entra (sugestão do auxiliar) */ reshape?: boolean; /** função de quem entra */ role?: string }
-  | { tick: number; kind: 'talk'; team: 0 | 1; tone: TalkTone };
+  | { tick: number; kind: 'talk'; team: 0 | 1; tone: TalkTone }
+  /** só v2: muda a tática (mentalidade, ritmo, largura, linha, pressão e saída de bola) */
+  | { tick: number; kind: 'tactics'; team: 0 | 1; settings: TeamTactics }
+  /** só v2: troca a função de um jogador em campo (a função precisa servir para a posição dele) */
+  | { tick: number; kind: 'role'; team: 0 | 1; playerId: string; role: string }
+  /** só v2: muda a formação; quem já tem lugar fica, os demais vão para as vagas que menos custam */
+  | { tick: number; kind: 'formation'; team: 0 | 1; formation: string };
 
 /** Ordem dos números em `MatchTick.s` (estatísticas acumuladas da equipe; xg em centésimos). */
 export const TICK_STATS = ['shots', 'shotsOnTarget', 'xg', 'corners', 'fouls', 'yellowCards', 'redCards', 'offsides', 'passes', 'passesCompleted', 'tackles', 'interceptions', 'saves'] as const;
@@ -79,7 +90,9 @@ export interface MatchTick { minute: number; label: string; ev: number; held: [n
 
 export type EventType =
   | 'goal' | 'shot' | 'corner' | 'foul' | 'yellow_card' | 'red_card' | 'offside' | 'penalty_awarded'
-  | 'substitution' | 'injury' | 'period_end' | 'shootout_kick' | 'team_talk' | 'formation_change';
+  | 'substitution' | 'injury' | 'period_end' | 'shootout_kick' | 'team_talk' | 'formation_change'
+  /** só v2: mudança de tática (detail = mentalidade nova; `by` = técnico ou IA) e de função (player, detail = id da função) */
+  | 'tactics_change' | 'role_change';
 export type ChanceType = 'buildup' | 'cross' | 'long' | 'counter' | 'corner' | 'freekick' | 'penalty';
 export type ShotOutcome = 'goal' | 'saved' | 'off_target' | 'blocked' | 'post';
 
@@ -102,6 +115,9 @@ export interface MatchEvent {
   scored?: boolean; // shootout
   /** mudança de formação: nova função e lugar de cada jogador em campo (só exibição do lugar; a função muda o jogo) */
   moves?: Array<{ id: string; slot: Position; x: number; y: number }>;
+  /** só v2: onde o lance aconteceu, em metros (x 0–105 no sentido do mandante, y 0–68) */
+  x?: number; y?: number;
+  /** só v2, mudança de tática: a tática nova */ tactics?: TeamTactics;
 }
 
 export interface TeamStats {
@@ -142,7 +158,24 @@ export interface MatchOutcome {
   moraleDelta: Record<string, number>;
   /** trocas que o auxiliar sugere ao técnico (só para o time sob controle): no minuto registrado `tick`, com o motivo */
   suggestions: SubSuggestion[];
+  /** versão do motor que jogou a partida */
+  engine: EngineVersion;
+  /** só v2 com `track`: trajeto da bola e dos jogadores (null nos demais) */
+  track: MatchTrack | null;
 }
+
+/**
+ * Trajeto da partida (v2). Um quadro por ação com bola. `ids[time]` = jogadores na ordem em que entraram (índice usado nos quadros).
+ * `data` = base64 de bytes; cada quadro tem `TRACK_HEAD` bytes de cabeçalho — minuto registrado (2 bytes), segundo×4, tipo da ação,
+ * time com a bola (0, 1; 2 = ninguém), índice de quem está com ela (255 = ninguém), bola x e y — e depois, para cada time,
+ * `TRACK_SLOTS` pares (x, y) dos jogadores (255 = fora de campo). Coordenadas em meio metro (x 0–210, y 0–136), no sentido do mandante.
+ */
+export interface MatchTrack { v: 1; ids: [string[], string[]]; frames: number; data: string }
+export const TRACK_HEAD = 8;
+export const TRACK_SLOTS = 18;
+/** tipo da ação no quadro do trajeto */
+export const TRACK_KIND = ['move', 'pass', 'carry', 'dribble', 'shot', 'cross', 'tackle', 'foul', 'restart', 'goal', 'out', 'save', 'interception', 'clearance'] as const;
+export type TrackKind = (typeof TRACK_KIND)[number];
 
 export interface SubSuggestion {
   tick: number; team: 0 | 1; out: string; in: string; slot: Position;

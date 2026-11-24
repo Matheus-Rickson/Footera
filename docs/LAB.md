@@ -56,5 +56,5 @@ Universos:
 3. Acrescentar o teste em `src/tests/lab.test.ts`.
 
 ## Próximos cenários (plano)
-- **Fase B:** comparação entre as versões do motor (v1 × v2) e o replay no mapa no inspetor de partida.
+- **Fase B (feito em parte):** os cenários de lote e de calibração têm o parâmetro `engine` (v1 ou v2; padrão = o do jogo), e a calibração mede também finalizações, passes, faltas, escanteios e impedimentos por time. Falta o replay no mapa dentro do inspetor de partida.
 - **Fase D:** projeção da base, que simula X temporadas numa cópia do save.

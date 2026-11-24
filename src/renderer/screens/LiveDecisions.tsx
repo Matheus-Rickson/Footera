@@ -1,7 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeftRight, ClipboardList, MessageSquare, X } from 'lucide-react';
+import { ArrowLeftRight, ClipboardList, MessageSquare, Shirt, SlidersHorizontal, X } from 'lucide-react';
 import type { LiveMatchDto } from '../../shared/api.ts';
 import type { Position } from '../../shared/types.ts';
+import type { TeamTactics } from '../../game/match-engine/types.ts';
+import { FORMATIONS } from '../../game/match-engine/formations.ts';
+import { roleById, rolesFor } from '../../game/match-engine/playerRoles.ts';
+import { RoleField } from '../roleField.tsx';
+import { SegFilter } from '../ui/index.tsx';
+import { BUILDUP_LABEL, MENTALITY_LABEL } from '../util.ts';
 import { TALK_MESSAGES, TALK_TONES, type TalkTone } from '../../game/match-engine/teamTalk.ts';
 import type { LivePlayer } from '../matchLive.ts';
 import { POS_NAME, PosPill, to20 } from '../playerUi.tsx';
@@ -97,7 +103,7 @@ export function SubsModal({ onPitch, bench, used, max, reason, busy, error, onCo
           {bench.length === 0 && <p className="muted small">Ninguém disponível no banco.</p>}
           {bench.map((p) => (
             <button key={p.id} className={`lv-pick ${inn === p.id ? 'on' : ''}`} aria-pressed={inn === p.id} disabled={busy || left <= 0} onClick={() => setInn(p.id)}>
-              <PosPill pos={p.position} /><span className="lv-pick-name">{p.name}</span><span className="muted small">força {to20(p.overall)} · {p.condition}%</span>
+              <PosPill pos={p.position} /><span className="lv-pick-name">{p.name}</span><span className="muted small">força {to20(p.overall)} · {p.condition}%{p.note ? ` · ${p.note}` : ''}</span>
             </button>
           ))}
         </div>
@@ -145,6 +151,70 @@ export function AssistantModal({ items, names, positions, busy, error, left, onA
             </div>
           );
         })}
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+    </Modal>
+  );
+}
+
+const SCALES = [['tempo', 'Ritmo'], ['width', 'Amplitude'], ['defensiveLine', 'Linha defensiva'], ['pressing', 'Pressão']] as const;
+const opts = <T extends string>(m: Record<string, string>) => Object.entries(m).map(([id, label]) => ({ id: id as T, label }));
+
+/** Tática durante o jogo: estilo (mentalidade, saída, ritmo, amplitude, linha, pressão) e formação. Vale a partir do minuto seguinte. */
+export function TacticsModal({ current, formation, busy, error, onApply, onClose }: {
+  current: TeamTactics; formation: string; busy: boolean; error: string | null;
+  onApply: (settings: TeamTactics | null, formation: string | null) => void; onClose: () => void;
+}) {
+  const [work, setWork] = useState<TeamTactics>(current);
+  const [form, setForm] = useState(formation);
+  const set = <K extends keyof TeamTactics>(k: K, v: TeamTactics[K]) => setWork((w) => ({ ...w, [k]: v }));
+  const changedStyle = (Object.keys(current) as Array<keyof TeamTactics>).some((k) => current[k] !== work[k]);
+  const changedForm = form !== formation;
+  const known = FORMATIONS.some((f) => f.id === formation);
+  return (
+    <Modal title="Tática" icon={<SlidersHorizontal size={18} aria-hidden="true" />} busy={busy} onClose={onClose}
+      foot={<><button className="secondary" disabled={busy} onClick={onClose}>Voltar ao jogo</button>
+        <button disabled={busy || (!changedStyle && !changedForm)} onClick={() => onApply(changedStyle ? work : null, changedForm ? form : null)}>Aplicar</button></>}>
+      <p className="muted small">As mudanças valem a partir do próximo minuto. Mudar a formação reposiciona quem está em campo; quem muda de posição perde um pouco de rendimento até se adaptar.</p>
+      <div className="tc-style">
+        <label className="tc-style-item"><span>Formação</span>
+          <select value={form} disabled={busy} onChange={(e) => setForm(e.target.value)}>
+            {!known && <option value={formation}>{formation} (atual)</option>}
+            {FORMATIONS.map((f) => <option key={f.id} value={f.id}>{f.id}{f.id === formation ? ' (atual)' : ''}</option>)}
+          </select></label>
+        <div className="tc-style-item"><span>Mentalidade</span><SegFilter label="Mentalidade" value={work.mentality} options={opts<TeamTactics['mentality']>(MENTALITY_LABEL)} onChange={(v) => set('mentality', v)} /></div>
+        <div className="tc-style-item"><span>Saída de bola</span><SegFilter label="Saída de bola" value={work.buildUp} options={opts<TeamTactics['buildUp']>(BUILDUP_LABEL)} onChange={(v) => set('buildUp', v)} /></div>
+        {SCALES.map(([k, label]) => (
+          <label key={k} className="tc-style-item"><span>{label}: <strong>{work[k]}</strong></span>
+            <input type="range" min={1} max={5} step={1} value={work[k]} disabled={busy} onChange={(e) => set(k, Number(e.target.value))} /></label>
+        ))}
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+    </Modal>
+  );
+}
+
+/** Troca a função de um jogador em campo (as funções da posição que ele ocupa agora). */
+export function RoleModal({ player, current, busy, error, onPick, onClose }: {
+  player: LivePlayer; current: string | null; busy: boolean; error: string | null; onPick: (role: string) => void; onClose: () => void;
+}) {
+  const roles = rolesFor(player.slot);
+  const [pick, setPick] = useState<string>(current && roles.some((r) => r.id === current) ? current : roles[0]?.id ?? '');
+  const sel = roleById(pick);
+  return (
+    <Modal title={`Função de ${player.name}`} icon={<Shirt size={18} aria-hidden="true" />} busy={busy} onClose={onClose}
+      foot={<><button className="secondary" disabled={busy} onClick={onClose}>Voltar ao jogo</button>
+        <button disabled={busy || !pick || pick === current} onClick={() => onPick(pick)}>Mudar a função</button></>}>
+      <p className="muted small"><PosPill pos={player.slot} /> {POS_NAME[player.slot]}. Função atual: <strong>{roleById(current)?.name ?? 'a melhor para o jogador'}</strong>. A nova função vale a partir do próximo minuto; o rendimento depende de quanto o jogador domina a função.</p>
+      <div className="lv-subs">
+        <div>
+          {roles.map((r) => (
+            <button key={r.id} className={`lv-pick ${pick === r.id ? 'on' : ''}`} aria-pressed={pick === r.id} disabled={busy} onClick={() => setPick(r.id)}>
+              <span className="lv-pick-name">{r.name}</span>{r.id === current && <span className="muted small">atual</span>}
+            </button>
+          ))}
+        </div>
+        <div>{sel && <RoleField roleId={sel.id} pos={player.slot} />}</div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
     </Modal>

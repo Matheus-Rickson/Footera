@@ -92,7 +92,7 @@ export function SquadView({ squad, onOpenPlayer }: { squad: SquadRow[]; onOpenPl
                     <PlayerFace img={img} id={p.id} name={p.name} className="tr-avatar" />
                     <button className="link" onClick={() => onOpenPlayer(p.id)}>{p.name}</button>
                     {p.status.injuredUntil && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.status.injuredUntil)}`} aria-label="Lesionado"><Cross size={11} aria-hidden="true" /></span>}
-                    {p.status.suspension > 0 && <span className="tr-flag tr-flag-susp" title={`Suspenso por ${p.status.suspension} jogo(s)`} aria-label="Suspenso"><Ban size={11} aria-hidden="true" /></span>}
+                    {p.status.suspension > 0 && <span className="tr-flag tr-flag-susp" title={`Suspenso por ${p.status.suspension} jogo(s) na liga (as copas têm suspensões próprias)`} aria-label="Suspenso"><Ban size={11} aria-hidden="true" /></span>}
                   </div>
                 </td>
                 <td><Flag code={p.nationality} name={p.nationalityName} /></td>

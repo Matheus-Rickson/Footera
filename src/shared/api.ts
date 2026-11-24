@@ -4,7 +4,7 @@ import type { AttrSummary } from './attributeSummary.ts';
 import type { CoachAttributes, CoachAttrKey } from './coachAttributes.ts';
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
-import type { MatchConditions, MatchTick, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
+import type { EngineVersion, MatchConditions, MatchTick, MatchTrack, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
 import type { TalkTone } from '../game/match-engine/teamTalk.ts';
 import type { ScoutCriteria, ScoutScope } from '../game/scouting-engine/tasks.ts';
 
@@ -325,13 +325,21 @@ export interface MatchReportDto {
 /** Decisão do técnico na partida ao vivo, aplicada no início do minuto registrado `tick` (índice da linha do tempo). */
 export type LiveInterventionInput =
   | { tick: number; kind: 'sub'; out: string; in: string; slot?: Position; reshape?: boolean }
-  | { tick: number; kind: 'talk'; tone: TalkTone };
+  | { tick: number; kind: 'talk'; tone: TalkTone }
+  /** muda a tática do time (motor v2) */
+  | { tick: number; kind: 'tactics'; settings: TeamTactics }
+  /** troca a função de um jogador em campo (motor v2) */
+  | { tick: number; kind: 'role'; playerId: string; role: string }
+  /** muda a formação, reposicionando os jogadores em campo (motor v2) */
+  | { tick: number; kind: 'formation'; formation: string };
 export interface LiveOptionsInput { interventions: LiveInterventionInput[]; /** null = o técnico decide até o fim; número = o auxiliar assume a partir desse minuto registrado */ controlUntil: number | null }
 /** Prévia (não gravada) da partida do usuário com as decisões até agora. */
 export interface LiveMatchDto {
   report: MatchReportDto; side: 0 | 1; subsMax: number; notes: string[];
+  /** motor que jogou a partida; no v2, o trajeto dos 22 jogadores e da bola (o mapa ao vivo é desenhado a partir dele) */
+  engine: EngineVersion; track: MatchTrack | null;
   /** banco do seu time no início da partida (jogadores do seu clube: força real) */
-  bench: Array<{ id: string; name: string; position: Position; overall: number; condition: number }>;
+  bench: Array<{ id: string; name: string; position: Position; overall: number; condition: number; /** ex.: suspenso na liga mas liberado nesta copa */ note: string | null }>;
   /** moral de cada relacionado do seu time antes do jogo e a variação causada pela conversa no vestiário (só nesta partida) */
   morale: Record<string, { before: number; delta: number }>;
   /** trocas sugeridas pelo auxiliar, com o motivo (o técnico decide) */

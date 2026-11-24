@@ -242,7 +242,13 @@ function registerHandlers(): void {
     interventions: z.array(z.discriminatedUnion('kind', [
       z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('sub'), out: z.string().min(1).max(60), in: z.string().min(1).max(60), slot: z.enum(['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM', 'AM', 'LW', 'RW', 'SS', 'CF', 'ST']).optional(), reshape: z.boolean().optional() }),
       z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('talk'), tone: z.enum(['incentivar', 'cobrar', 'encorajar', 'consolar']) }),
-    ])).max(12),
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('tactics'), settings: z.object({
+        mentality: z.enum(['defensive', 'balanced', 'attacking']), buildUp: z.enum(['short', 'mixed', 'long']),
+        tempo: z.number().int().min(1).max(5), width: z.number().int().min(1).max(5), defensiveLine: z.number().int().min(1).max(5), pressing: z.number().int().min(1).max(5),
+      }) }),
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('role'), playerId: z.string().min(1).max(60), role: z.string().regex(/^[a-z_]{2,40}$/) }),
+      z.object({ tick: z.number().int().min(0).max(400), kind: z.literal('formation'), formation: z.string().min(3).max(120) }),
+    ])).max(60),
     controlUntil: z.number().int().min(0).max(400).nullable(),
   }) });
   handle('career:live-preview', liveSchema, (i) => previewCareerLiveMatch(dataDir(), i.profileId, i.careerId, i.live));

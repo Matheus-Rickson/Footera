@@ -2,14 +2,14 @@ import type { SqlDb } from '../types.ts';
 import { POS_NAME } from '../../shared/positions.ts';
 import { withTransaction } from '../types.ts';
 import { createRng, clamp } from '../../game/rng.ts';
-import { conditionAfter, simulateMatch } from '../../game/match-engine/engine.ts';
+import { conditionAfter, DEFAULT_ENGINE, simulateMatch } from '../../game/match-engine/engine.ts';
 import { sharpnessAfterMatch } from '../../game/training-engine/condition.ts';
 import { effAcute, effSharp, sharpRateOf } from './fitnessState.ts';
 import { MATCH_LOAD } from '../../game/training-engine/sessions.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
 import { formationLabel } from '../../game/match-engine/formations.ts';
-import type { Intervention, MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
+import type { EngineVersion, Intervention, MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
 import { addDays } from '../../shared/date.ts';
 import type { Coach, Player } from '../../shared/types.ts';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, MatchSummaryDto, SchemeDto, SimulationSummaryDto } from '../../shared/api.ts';
@@ -60,6 +60,7 @@ interface StoredReport {
   conditions: MatchConditions; duration: number; stats: MatchOutcome['stats']; players: Array<Partial<PlayerReport>>;
   lineups: MatchOutcome['lineups']; events: MatchEvent[]; manOfTheMatch: string | null;
   tactics?: [TeamTactics, TeamTactics];
+  /** motor que jogou a partida (ausente = v1, saves anteriores à v0.10) */ engine?: EngineVersion;
   /** só nas partidas do usuário (relatório completo); ausente em saves anteriores à lapidação */ timeline?: MatchTick[];
 }
 
@@ -75,7 +76,9 @@ function summaryOf(f: FixtureRow, hg: number, ag: number, userClub: string, hasR
   return { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, homeName: f.homeName, awayName: f.awayName, homeGoals: hg, awayGoals: ag, involvesUser: f.homeId === userClub || f.awayId === userClub, hasReport };
 }
 
-interface Ctx { seed: string; userClub: string; coach: Coach; scheme: SchemeDto | null; notes: string[]; aiCoaches?: Map<string, CoachAttributes> }
+interface Ctx { seed: string; userClub: string;
+  /** competições em que o clube do usuário joga: rodam no motor lance a lance (v2); os demais jogos do país, no v1 (4–5× mais rápido) */
+  userComps: Set<string>; coach: Coach; scheme: SchemeDto | null; notes: string[]; aiCoaches?: Map<string, CoachAttributes> }
 /** Decisões do técnico na partida acompanhada ao vivo. `controlUntil` null = o técnico decide a partida toda. */
 export interface LiveOptions { interventions: LiveInterventionInput[]; controlUntil: number | null }
 
@@ -114,6 +117,9 @@ function runFixture(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixt
   const ivs: Intervention[] = (live?.interventions ?? []).map((iv) => ({ ...iv, team: side }));
   return simulateMatch(prep.hSheet, prep.aSheet, {
     seed: `${ctx.seed}:${f.id}`, conditions: conditionsFor(ctx.seed, f.id, f.date), timeline: involves,
+    engine: involves || ctx.userComps.has(f.competitionId) ? DEFAULT_ENGINE : 'v1',
+    // trajeto (motor v2) só na partida acompanhada ao vivo: é o que o mapa desenha
+    track: !!live && involves,
     ...(f.cup ? { neutral: f.cup.neutral, ...(f.cup.decider ? { decider: f.cup.decider } : {}) } : {}),
     ...(f.ko ? { neutral: f.ko.neutral, ...(f.ko.decider ? { decider: f.ko.decider } : {}) } : {}),
     ...(live && involves ? { control: { team: side, until: live.controlUntil ?? Number.MAX_SAFE_INTEGER }, interventions: ivs } : {}),
@@ -132,7 +138,7 @@ function storedOf(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixtur
     conditions: out.conditions, duration: out.duration, stats: out.stats,
     players: out.players.map((p) => ({ ...slim(p), id: p.id, name: p.name, team: p.team, slot: p.slot, position: p.position, rating: p.rating, minutes: p.minutes })),
     lineups: out.lineups, events: involves ? out.events : out.events.filter((e) => COMPACT_TYPES.has(e.type)), manOfTheMatch: out.manOfTheMatch,
-    tactics: [prep.tH, prep.tA], ...(involves && out.timeline ? { timeline: out.timeline } : {}),
+    tactics: [prep.tH, prep.tA], engine: out.engine, ...(involves && out.timeline ? { timeline: out.timeline } : {}),
   };
 }
 
@@ -271,7 +277,9 @@ function contextOf(db: SqlDb): Ctx {
   return {
     seed: S((db.prepare("SELECT value FROM meta WHERE key = 'world_seed'").get() ?? { value: 'sem-semente' }).value),
     coach: JSON.parse(S(db.prepare('SELECT coach_json FROM career WHERE id = 1').get()!.coach_json)) as Coach,
-    userClub: getCareerState(db).clubId, scheme: getActiveScheme(db), notes: [], aiCoaches: aiCoachAttributes(db),
+    userClub: getCareerState(db).clubId,
+    userComps: new Set(db.prepare('SELECT DISTINCT competition_id FROM fixtures WHERE home_club_id = ?1 OR away_club_id = ?1').all(getCareerState(db).clubId).map((r) => S(r.competition_id))),
+    scheme: getActiveScheme(db), notes: [], aiCoaches: aiCoachAttributes(db),
   };
 }
 
@@ -351,11 +359,18 @@ export function previewUserMatch(db: SqlDb, live: LiveOptions): LiveMatchDto {
   const mine = side === 0 ? prep.hSheet : prep.aSheet;
   const overall = new Map(db.prepare('SELECT id, overall FROM players WHERE club_id = ?').all(st.clubId).map((r) => [S(r.id), N(r.overall)] as const));
   const squad = [...mine.lineup.map((l) => l.player), ...mine.bench];
+  // copa: as suspensões da liga não valem aqui (cada competição tem a sua disciplina); avisa quem está liberado só por isso
+  const leagueSusp = new Map<string, number>();
+  if (discOf(f)) for (const r of db.prepare('SELECT ps.player_id, ps.suspension_matches FROM player_status ps JOIN players p ON p.id = ps.player_id WHERE p.club_id = ? AND ps.suspension_matches > 0').all(st.clubId)) leagueSusp.set(S(r.player_id), N(r.suspension_matches));
+  const freed = squad.filter((p) => leagueSusp.has(p.id));
+  const notes = freed.length ? [...ctx.notes, `${freed.map((p) => p.name).join(', ')} ${freed.length > 1 ? 'estão suspensos' : 'está suspenso'} na liga, mas pode${freed.length > 1 ? 'm' : ''} jogar nesta copa: as suspensões valem só na competição em que foram recebidas.`] : ctx.notes;
   return {
     report: dtoFromStored(db, storedOf(f, ctx, prep, out), { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, attendance: null }),
-    side, subsMax: f.cup?.decider?.extraTimeSub ? 6 : 5, notes: ctx.notes,
-    bench: mine.bench.map((p) => ({ id: p.id, name: p.name, position: p.position, overall: overall.get(p.id) ?? 0, condition: Math.round(p.condition) })),
+    side, subsMax: f.cup?.decider?.extraTimeSub ? 6 : 5, notes,
+    bench: mine.bench.map((p) => ({ id: p.id, name: p.name, position: p.position, overall: overall.get(p.id) ?? 0, condition: Math.round(p.condition),
+      note: leagueSusp.has(p.id) ? `suspenso na liga (${leagueSusp.get(p.id)} jogo(s)); liberado nesta copa` : null })),
     morale: Object.fromEntries(squad.map((p) => [p.id, { before: Math.round(p.morale), delta: out.moraleDelta[p.id] ?? 0 }])),
     suggestions: out.suggestions.map(({ team: _t, ...s }) => s),
+    engine: out.engine, track: out.track,
   };
 }

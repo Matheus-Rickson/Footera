@@ -247,6 +247,12 @@ export function clearClashes(db: SqlDb, fixtureIds: readonly string[]): number {
         let target: string | null = null;
         for (let day = addDays(d, 2); day <= last && !target; day = addDays(day, 1)) if (free(day)) target = day;
         for (let day = addDays(d, -2); !target && day > today && daysBetween(day, d) <= 60; day = addDays(day, -1)) if (free(day)) target = day;
+        // fim de temporada apertado (ex.: final continental num sábado de rodada): qualquer dia com 2 dias de folga para os dois clubes;
+        // sem isso, o jogo vai para logo depois da última rodada (jogo adiado)
+        const loose = (day: string) => N(near.get(S(x.id), h, a, h, a, addDays(day, -1), addDays(day, 1))!.n) === 0;
+        for (let day = addDays(d, 2); day <= last && !target; day = addDays(day, 1)) if (loose(day)) target = day;
+        for (let day = addDays(d, -2); !target && day > today && daysBetween(day, d) <= 30; day = addDays(day, -1)) if (loose(day)) target = day;
+        for (let day = addDays(last, 1); !target && daysBetween(last, day) <= 14; day = addDays(day, 1)) if (loose(day)) target = day;
         if (!target) continue;
         move.run(target, S(x.id));
         moved++;

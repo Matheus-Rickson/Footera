@@ -7,17 +7,17 @@ import type {
   ShotOutcome, TeamSheet, TeamStats, TeamTactics,
 } from './types.ts';
 import { TICK_STATS } from './types.ts';
-import type { Intervention } from './types.ts';
+import type { EngineVersion, Intervention } from './types.ts';
+import { simulateMatchV2 } from './v2/engine.ts';
 import { talkDelta } from './teamTalk.ts';
 import { cardMultiplier, inGameMultiplier, tacticsMultiplier, talkWithMotivation } from '../coach-engine/coach.ts';
 import type { SubSuggestion } from './types.ts';
 import { POS_NAME } from '../../shared/positions.ts';
 import { bestRole, roleById, roleFactor, type RoleDef } from './playerRoles.ts';
 import { overallFor } from '../world/overall.ts';
-import { UserError } from '../../shared/errors.ts';
+import { COND, conditionAfter, emptyStats, MatchInterventionError, newReport, rateReport, soft, startFatigue } from './common.ts';
 
-/** Decisão do técnico impossível naquele momento (jogador já saiu, banco esgotado…). */
-export class MatchInterventionError extends UserError {}
+export { COND, conditionAfter, MatchInterventionError, rateReport, soft, startFatigue };
 
 /** Constantes de calibração (ajustadas contra médias reais de futebol — ver docs e testes de calibração). */
 export const K = {
@@ -47,14 +47,6 @@ export const K = {
    */
   ment: { attacking: { a: 1.06, d: 0.93, chance: 1.1 }, balanced: { a: 1, d: 1, chance: 1 }, defensive: { a: 0.94, d: 1.12, chance: 0.9 } },
 };
-
-/**
- * Saturação suave em torno de `mid`: igual a x perto do centro e se aproxima de `lo`/`hi` sem nunca chegar (tanh). Ao contrário de um
- * limite rígido, uma melhora (substituição, tática, treinador) sempre conta, mesmo num jogo muito desigual.
- */
-export function soft(x: number, mid: number, lo: number, hi: number): number {
-  return x >= mid ? mid + (hi - mid) * Math.tanh((x - mid) / (hi - mid)) : mid - (mid - lo) * Math.tanh((mid - x) / (mid - lo));
-}
 
 type Side = 0 | 1;
 interface Live {
@@ -126,51 +118,20 @@ const VICTIM_W: Record<Position, number> = { GK: 0, CB: 0.15, LB: 0.4, RB: 0.4, 
 const TACKLE_W: Record<Position, number> = { GK: 0, CB: 1, LB: 0.9, RB: 0.9, DM: 1.2, CM: 0.8, AM: 0.3, LW: 0.25, RW: 0.25, ST: 0.15, LWB: 0.8, RWB: 0.8, LM: 0.55, RM: 0.55, SS: 0.2, CF: 0.15 };
 const CHANCE_BASE_XG: Record<ChanceType, number> = { buildup: 0.115, cross: 0.075, long: 0.042, counter: 0.19, corner: 0.07, freekick: 0.055, penalty: 0.76 };
 
-const emptyStats = (): TeamStats => ({
-  possession: 0, shots: 0, shotsOnTarget: 0, shotsBlocked: 0, chancesCreated: 0, xg: 0, corners: 0, fouls: 0, yellowCards: 0, redCards: 0,
-  offsides: 0, passes: 0, passesCompleted: 0, tackles: 0, interceptions: 0, saves: 0,
-});
-
 const a20 = (v: number) => v / 20;
 
 /**
- * Condição física depois de `minutes` em campo (a mesma fórmula grava a condição no fim do jogo, v0.8.12): um custo fixo por minuto
- * mais a fadiga acumulada no jogo (`fatigueGained`, que já depende de resistência, recuperação física, ritmo, pressão, calor, posição
- * e função). Calibrado para ~70% depois de 90 minutos com a tática padrão (antes: ~87%, só pela resistência).
+ * Versão do motor usada quando a partida não escolhe (`MatchOptions.engine`). A v1 segue como padrão até a v2 passar na bateria de
+ * calibração do Laboratório e ser validada pelo usuário (docs/MATCH_ENGINE_V2.md).
  */
-export const COND = { perMinute: 8 / 90, fatigueK: 1.41, fatigueExp: 0.8, floor: 30, startFrom: 95, startK: 0.6 };
-export function conditionAfter(condition: number, fatigueGained: number, minutes: number): number {
-  // a fadiga pesa de forma sublinear: pressão alta e calor cansam mais, sem levar todo mundo ao piso (fadiga ~31 em 90' padrão → −30)
-  const loss = COND.perMinute * minutes + COND.fatigueK * Math.pow(Math.max(fatigueGained, 0), COND.fatigueExp);
-  return Math.round(clamp(condition - loss, COND.floor, 100) * 10) / 10;
-}
-/** Fadiga com que o jogador entra em campo: quem chega cansado começa o jogo já rendendo menos (v0.8.12). */
-export const startFatigue = (condition: number): number => Math.max(0, COND.startFrom - condition) * COND.startK;
+export const DEFAULT_ENGINE: EngineVersion = 'v2';
 
-/** Nota do jogador (3..10) com o placar e os minutos informados: usada no fim do jogo e, parcial, a cada minuto. */
-export function rateReport(r: PlayerReport, minutes: number, ownGoals: number, oppGoals: number): number {
-  const result = ownGoals > oppGoals ? 0.3 : ownGoals < oppGoals ? -0.3 : 0;
-  const defender = ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(r.slot);
-  let rating = 6 + result
-    + Math.min(r.goals, 3) * 1.1 + Math.min(r.assists, 3) * 0.7 + Math.min(r.keyPasses, 4) * 0.12
-    + Math.min(r.tackles, 5) * 0.12 + Math.min(r.interceptions, 5) * 0.1
-    + (r.slot === 'GK' ? r.saves * 0.28 - r.goalsConceded * 0.3 : defender ? -0.18 * oppGoals * (minutes / 90) : 0)
-    + (oppGoals === 0 && (defender || r.slot === 'GK' || r.slot === 'DM') ? 0.45 * (minutes / 90) : 0)
-    - 0.05 * Math.max(r.shots - r.shotsOnTarget - r.goals, 0) - 0.3 * r.yellow - 1.5 * r.red - 0.08 * Math.max(r.fouls - 2, 0)
-    + (r.passes >= 10 ? (r.passesCompleted / r.passes - 0.8) * 1.5 : 0);
-  if (minutes < 25) rating = 6 + (rating - 6) * (minutes / 25);
-  return Math.round(clamp(rating, 3, 10) * 10) / 10;
-}
-
-function newReport(p: MatchPlayer, team: Side, slot: Position, starter: boolean, at: number): PlayerReport {
-  return {
-    id: p.id, name: p.name, team, slot, position: p.position, starter, minutes: 0, subbedInAt: starter ? null : at, subbedOutAt: null, rating: 6,
-    goals: 0, assists: 0, shots: 0, shotsOnTarget: 0, passes: 0, passesCompleted: 0, keyPasses: 0, tackles: 0, interceptions: 0, fouls: 0,
-    yellow: 0, red: 0, saves: 0, goalsConceded: 0, xg: 0, injuredDays: 0, fatigue: 0,
-  };
-}
-
+/** Simula uma partida com a versão escolhida do motor (mesmo contrato nas duas). */
 export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptions): MatchOutcome {
+  return (opts.engine ?? DEFAULT_ENGINE) === 'v2' ? simulateMatchV2(home, away, opts) : simulateMatchV1(home, away, opts);
+}
+
+function simulateMatchV1(home: TeamSheet, away: TeamSheet, opts: MatchOptions): MatchOutcome {
   const rng: Rng = createRng(`match:${opts.seed}`);
   const conditions: MatchConditions = opts.conditions ?? { weather: 'clear', pitch: 'good' };
   const hAdv = opts.neutral ? 0 : 1;
@@ -688,6 +649,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       emit('team_talk', iv.team, { detail: iv.tone });
       return;
     }
+    if (iv.kind !== 'sub') throw new MatchInterventionError('Mudar tática, função ou formação durante o jogo exige o motor v2.');
     const out = t.active.find((l) => l.p.id === iv.out);
     const inP = t.bench.find((b) => b.id === iv.in);
     if (!out) throw new MatchInterventionError('O jogador escolhido para sair não está mais em campo.');
@@ -830,7 +792,7 @@ export function simulateMatch(home: TeamSheet, away: TeamSheet, opts: MatchOptio
       clubId: t.sheet.clubId, name: t.sheet.name, formation: formationLabel(t.sheet.formation),
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
-    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions,
+    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions, engine: 'v1', track: null,
   };
 }
 

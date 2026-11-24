@@ -1418,3 +1418,50 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - Conferido: janela aberta (`npm run lab`) e dirigida pelo protocolo de depuração — catálogo, clubes por universo (81 no calib, 1100 na base), lote de 300 com barra de progresso, salvar HTML/JSON, cancelar no meio, calibração, inspetor de save sobre um save real e inspetor de partida, tema claro, nenhum erro no console. O relatório salvo pela janela é idêntico ao do terminal com os mesmos parâmetros (fora o tempo medido). Hash do save do usuário igual antes e depois. Duas correções vieram das capturas (formulário espremido quando havia relatório; condições do jogo em inglês).
   - Achado da calibração com amostra pequena (200 jogos): vermelhos 0,16/jogo, no limite da faixa 0,05–0,15; equilíbrio entre formações 0,46 com ±0,16 de erro por linha (amostra pequena). Rodar a bateria grande antes de concluir; é o ponto de partida da Fase B.
   - Não executado: `npm run bench` (nada no jogo mudou).
+- **Fase B — Motor lance a lance, v0.10.0 (branch `motor-v2`, sem commit; tela ao vivo NÃO validada pelo usuário)**. Detalhes em `docs/MATCH_ENGINE_V2.md`.
+  - **Funcional e testado.**
+    - Motor v2 (`src/game/match-engine/v2/`) com o mesmo contrato `simulateMatch`. É o padrão do jogo (`DEFAULT_ENGINE = 'v2'`); a v1 continua disponível.
+    - Posições reais dos 22 jogadores; ações escolhidas por utilidade (passe, bola em profundidade, condução, drible, cruzamento, chute); disputas por atributos; xG pela posição.
+    - Intervenções novas `tactics`, `role` e `formation`, com tipos, zod do IPC e comentário narrado.
+    - O técnico da IA reage ao placar aos 75', 82' e 87'.
+    - O trajeto (`track`, cerca de 1.400 quadros) é gravado na prévia ao vivo do usuário e decodificado por `v2/track.ts`.
+  - **Tela ao vivo.** Só existe no motor v2.
+    - `LivePitch` desenha as posições reais interpoladas lance a lance, com quem está com a bola e o lance atual. Sem trajeto, usa a representação antiga.
+    - Botão **Tática**: formação e os 6 ajustes.
+    - Troca de função clicando no jogador, com `RoleField`.
+  - **Calibração, 2000 jogos.**
+    - Dentro das faixas: gols 2,73; mandante/empate/visitante 43/29/28%; 0x0 10%; cartões; finalizações; passes (509, 78% certos); faltas; escanteios; impedimentos. Determinismo 20/20.
+    - Fora da faixa: equilíbrio entre formações 0,27 (meta ≤ 0,20; a v1 dá 0,15) e empate 29,1% (teto 29%). Ajuste fino pendente.
+    - Uma tentativa de aproximar as formações (DM 5, AM 13) derrubou a mentalidade defensiva para −0,26 ponto/jogo contra a equilibrada e foi desfeita.
+  - **Correção encontrada no caminho.** Um jogo da liga caía no mesmo dia da final da Sul-Americana. Agora `clearClashes` remarca o jogo para um dia sem partida no dia anterior nem no seguinte quando não há terça a quinta livre.
+  - **Testes.**
+    - `match-engine-v2.test.ts`, com 7 testes:
+      - determinismo, e o trajeto só observa;
+      - limites e ordem do trajeto;
+      - interpolação;
+      - intervenções valem só a partir do minuto e recusam entradas inválidas;
+      - reação da IA.
+    - Mutação 5/5.
+    - Testes antigos que dependiam de sementes da v1 ficaram robustos: coach, 5 substituições e upsert em tactics.
+    - Suíte completa: 399/399. Typecheck ok.
+  - **Desempenho (medição da primeira entrega, corrigida abaixo).** Cerca de 17,5 ms por partida (v1: 4,6 ms).
+  - **Retorno do primeiro teste do usuário (23/11/2026)** e o que mudou:
+    1. **Campo "estático", sempre o mesmo padrão e rápido demais.**
+       - Cada jogador perseguia um ponto que dependia só da bola, então o time andava como um bloco.
+       - Agora há movimento próprio por jogador (`wander`/`wanderDef`), aproximação ao portador (`support`) e meias que acompanham o atacante único (`loneRun`). Recalibrado: todas as metas na faixa, inclusive o equilíbrio entre formações (0,12, antes 0,27); `home` 1,08; `leadEase` 0,62.
+       - O deslocamento por lance em relação ao bloco subiu só de 3,1 m para 3,4 m: amplitudes maiores tiravam gols e mando do lugar.
+       - Ritmo da tela com o mapa real: 1× = 4 s por minuto (antes 1 s, cerca de 14 lances por segundo).
+    2. **Suspenso escalado na copa.** Não era erro de regra: o jogador está suspenso por 2 jogos na liga, e na Copa do Brasil valem só as suspensões da copa (regulamento já implementado). O erro era a tela não dizer isso.
+       - O banco do modal de substituições e o aviso pré-jogo agora indicam "suspenso na liga; liberado nesta copa".
+       - Os ícones de suspensão em Elenco e Táticas dizem que a suspensão é da liga.
+       - Não há teste automatizado desse aviso.
+    3. **Mapa de calor e estatísticas estilo Sofascore.** É a Fase C, combinada para depois do motor. Ainda não existe.
+    4. **Desempenho medido de novo:** a v2 custa cerca de 25 ms por partida, e com todos os jogos na v2 avançar 7 dias passava de 3,5 s para 8,4 s.
+       - Agora só as competições em que o clube do usuário joga rodam na v2; o resto do país usa a v1.
+       - Bench: 1 dia 336 ms, 7 dias 3,5 s, próxima rodada 598 ms (iguais aos da v1).
+       - Teste novo confere v2/v1 por competição (mutação pega).
+    5. **Teste do treinador.** O teste "conhecimento tático melhora o saldo de xG" falhou por ruído de amostra. Agora usa 1.200 jogos: o efeito medido é de +0,08 de saldo de xG por jogo.
+  - **Suíte.** 399 testes. Todos passam isolados. Na suíte completa, o de desempenho da rodada (limite de 2 s) deu 2,3 s por causa da carga dos outros testes em paralelo; isolado dá 1,5 a 1,8 s (v1: 1,4 s).
+  - **Próximos passos.**
+    1. Validação da tela pelo usuário (`npm run dev`, roteiro 13z10 do CHECKLIST).
+    2. Fase C: estatísticas pós-jogo a partir do trajeto.

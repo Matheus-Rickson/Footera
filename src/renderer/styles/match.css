@@ -149,6 +149,15 @@ tr.mc-sep td { font-family: var(--font-display); font-size: .8rem; font-weight: 
 .mc-ink-home { fill: var(--mc-home-ink); }
 .mc-ink-away { fill: var(--mc-away-ink); }
 .mc-ball { fill: #fff; stroke: #111; stroke-width: .3; }
+/* campo com o trajeto real (motor v2) */
+.mc-trk-txt { font-size: 1.3px; font-weight: 800; pointer-events: none; }
+.mc-trk-holder { fill: none; stroke: #ffd84a; stroke-width: .45; }
+.mc-trk-pick { cursor: pointer; }
+.mc-trk-pick:hover circle.mc-dot-home, .mc-trk-pick:hover circle.mc-dot-away { stroke: #ffd84a; stroke-width: .6; }
+.mc-trk-act {
+  position: absolute; left: 8px; bottom: 8px; padding: 2px 10px; border-radius: 4px; background: rgba(6, 9, 16, .78); color: #fff;
+  font-size: .8rem; font-weight: 600; pointer-events: none;
+}
 .mc-flash {
   position: absolute; left: 50%; top: 12%; transform: translateX(-50%); padding: 4px 18px; background: rgba(6, 9, 16, .86); color: #fff; white-space: nowrap;
   font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;

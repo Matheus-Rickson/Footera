@@ -1,4 +1,8 @@
 import type { MatchEvent } from './types.ts';
+import { ROLES } from './playerRoles.ts';
+
+const MENTALITY: Record<string, string> = { defensive: 'defensiva', balanced: 'equilibrada', attacking: 'ofensiva' };
+const BUILD_UP: Record<string, string> = { short: 'curta', mixed: 'mista', long: 'longa' };
 
 export interface CommentaryLine {
   i: number; minute: number; label: string; text: string; team: 0 | 1 | null;
@@ -83,6 +87,14 @@ export function commentate(events: readonly MatchEvent[], ctx: CommentaryContext
         push('tactic', `O ${team} muda a formação: de ${from} para ${to}.`, true);
         break;
       }
+      case 'tactics_change': {
+        const t = e.tactics;
+        const who = e.detail === 'ai' ? `O técnico do ${team}` : `O ${team}`;
+        push('tactic', t ? `${who} muda a tática: mentalidade ${MENTALITY[t.mentality]}, ritmo ${t.tempo}, largura ${t.width}, linha ${t.defensiveLine}, pressão ${t.pressing}, saída ${BUILD_UP[t.buildUp]}.`
+          : `${who} muda a tática.`, true);
+        break;
+      }
+      case 'role_change': push('tactic', `${nm(e.player)} (${team}) passa a jogar como ${ROLES.find((r) => r.id === e.detail)?.name ?? 'outra função'}.`, true); break;
       case 'shootout_kick': push('shootout', `${nm(e.player)} (${team}) ${e.scored ? 'converte a cobrança' : 'desperdiça a cobrança'} na disputa de pênaltis.`, true); break;
     }
   }

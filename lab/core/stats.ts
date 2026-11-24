@@ -1,6 +1,7 @@
 /** Contas e formatação usadas pelos cenários (puras). */
 import type { MatchOutcome, Mentality, TeamTactics } from '../../src/game/match-engine/types.ts';
 import { BALANCED } from './universe.ts';
+import { DEFAULT_ENGINE } from '../../src/game/match-engine/engine.ts';
 import { ParamError, type ParamDef, type ParamValue } from './types.ts';
 
 export const mean = (a: readonly number[]): number => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
@@ -48,6 +49,12 @@ export function anomalies(o: MatchOutcome): string[] {
 }
 
 // ---------------------------------------------------------------- parâmetros comuns de partida
+/** versão do motor (padrão: a que o jogo usa hoje) */
+export const ENGINE_PARAM: ParamDef = {
+  key: 'engine', label: 'Motor', kind: 'select', default: DEFAULT_ENGINE,
+  options: [{ value: 'v1', label: 'v1 — estatístico por fases' }, { value: 'v2', label: 'v2 — lance a lance no campo' }],
+  help: `O jogo usa hoje o ${DEFAULT_ENGINE}.`,
+};
 export const MENTALITIES: Array<{ value: Mentality; label: string }> = [
   { value: 'balanced', label: 'Equilibrada' }, { value: 'attacking', label: 'Ofensiva' }, { value: 'defensive', label: 'Defensiva' },
 ];

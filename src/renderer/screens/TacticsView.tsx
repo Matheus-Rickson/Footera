@@ -329,7 +329,7 @@ export function TacticsView({ profileId, careerId, onOpenPlayer }: Props) {
                       <td className="center"><span className={`sq-ovr ${tone(p.overall)}`}>{to20(p.overall)}</span></td>
                       <td><span className="sq-player"><PlayerFace img={img} id={p.id} name={p.name} className="tr-avatar" /><span className="tc-name">{p.name}</span>
                         {p.unavailable?.kind === 'injured' && <span className="tr-flag tr-flag-injury" title={`Lesionado até ${fmtDate(p.unavailable.until)}`}><Cross size={11} aria-hidden="true" /></span>}
-                        {p.unavailable?.kind === 'suspended' && <span className="tr-flag tr-flag-susp" title={`Suspenso (${p.unavailable.matches} jogo(s))`}><Ban size={11} aria-hidden="true" /></span>}</span></td>
+                        {p.unavailable?.kind === 'suspended' && <span className="tr-flag tr-flag-susp" title={`Suspenso na liga (${p.unavailable.matches} jogo(s)); nas copas valem as suspensões de cada copa`}><Ban size={11} aria-hidden="true" /></span>}</span></td>
                       <td className="right">{Math.round(p.condition)}%</td>
                       <td className="center">{pos ? <b className={`tc-fit ${fitTone(p, pos)}`}>{to20(p.slotScores[pos])}</b> : <span className="muted">—</span>}</td>
                     </tr>

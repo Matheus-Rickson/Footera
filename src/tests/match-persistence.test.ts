@@ -216,6 +216,12 @@ test('Relatório: linha do tempo minuto a minuto só nas partidas do usuário; f
   assert.ok(mine.timeline && mine.timeline.length >= 91, 'partida do usuário tem a linha do tempo');
   const other = s.results.find((r) => !r.involvesUser)!;
   assert.equal(getMatchReport(db, other.fixtureId).timeline, null, 'outras partidas não guardam (relatório resumido)');
+  // motor: lance a lance (v2) na competição do usuário; v1 (mais rápido) nas competições em que ele não joga
+  const engines = db.prepare(`SELECT f.competition_id AS c, json_extract(m.report_json, '$.engine') AS e,
+    EXISTS (SELECT 1 FROM fixtures x WHERE x.competition_id = f.competition_id AND (x.home_club_id = ?1 OR x.away_club_id = ?1)) AS mine
+    FROM matches m JOIN fixtures f ON f.id = m.fixture_id`).all(clubId);
+  assert.ok(engines.some((r) => Number(r.mine) === 0), 'há jogos de outras competições na rodada');
+  for (const r of engines) assert.equal(r.e, Number(r.mine) ? 'v2' : 'v1', `competição ${String(r.c)}`);
   const myIds = new Set(db.prepare('SELECT id FROM players WHERE club_id = ?').all(clubId).map((r) => String(r.id)));
   assert.ok(Object.keys(mine.levels).length >= 11 && Object.keys(mine.levels).every((id) => myIds.has(id)), 'força só do próprio clube');
   const side = mine.home.clubId === clubId ? 0 : 1;
