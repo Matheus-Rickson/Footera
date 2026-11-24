@@ -4,7 +4,7 @@ import type { AttrSummary } from './attributeSummary.ts';
 import type { CoachAttributes, CoachAttrKey } from './coachAttributes.ts';
 import type { Methodology, Position } from './types.ts';
 import type { CommentaryLine } from '../game/match-engine/commentary.ts';
-import type { EngineVersion, MatchConditions, MatchTick, MatchTrack, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
+import type { EngineVersion, MatchConditions, MatchDetail, MatchTick, MatchTrack, PlayerReport, TeamStats, TeamTactics } from '../game/match-engine/types.ts';
 import type { TalkTone } from '../game/match-engine/teamTalk.ts';
 import type { ScoutCriteria, ScoutScope } from '../game/scouting-engine/tasks.ts';
 
@@ -320,6 +320,8 @@ export interface MatchReportDto {
   timeline: MatchTick[] | null;
   /** força atual dos jogadores do clube do usuário que aparecem na partida */ levels: Record<string, number>;
   userClubId: string;
+  /** análise pós-jogo (mapa de calor, passes, ações defensivas, momentum): só partidas do usuário a partir da v0.11 (motor v2) */
+  analysis: MatchDetail | null;
 }
 
 /** Decisão do técnico na partida ao vivo, aplicada no início do minuto registrado `tick` (índice da linha do tempo). */

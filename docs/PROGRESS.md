@@ -1465,3 +1465,41 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
   - **Próximos passos.**
     1. Validação da tela pelo usuário (`npm run dev`, roteiro 13z10 do CHECKLIST).
     2. Fase C: estatísticas pós-jogo a partir do trajeto.
+- **Fase B validada pelo usuário em 24/11/2026.** Commit local `40a63d5` no branch `motor-v2`, ainda sem push.
+- **Fase C — Estatísticas pós-jogo, v0.11.0 (branch `estatisticas-pos-jogo`, sem commit; tela validada pelo usuário em 24/11/2026 numa final do Campeonato Brasiliense).** Detalhes em `docs/MATCH_STATS.md`.
+  - **Funcional e testado.**
+    - O motor v2 grava a análise da partida (`MatchOptions.detail` → `MatchOutcome.detail`, coletada por `v2/analysis.ts`):
+      - mapa de calor de 21 × 14;
+      - passes com origem, destino e marcas certo, cruzamento, decisivo e longo;
+      - ações defensivas com posição;
+      - toques, dribles, duelos, posses perdidas e recuperações;
+      - momentum por minuto e território por terço.
+    - A coleta só observa: a partida com e sem a análise é idêntica.
+    - É gravada só nas partidas do usuário, na tabela `match_detail` (migração 036), com cerca de 27 KB por partida. Chega à tela por `MatchReportDto.analysis`.
+    - Os eventos de finalização levam posição e xG até a tela (`CommentaryLine.x/y/xg`).
+  - **Tela** (`MatchAnalysis.tsx`).
+    - Abre sozinha no fim da partida ao vivo, depois de gravada, e ao abrir um relatório já jogado. Botões "Ver a partida" e "Análise pós-jogo".
+    - Abas: Resumo (momentum, território, destaques), Estatísticas (5 grupos), Finalizações (mapa e lista) e Jogadores (mapa de calor, passes e ações defensivas por jogador, com a grade de números).
+    - Conferida no jogo compilado numa instância isolada (dados no scratchpad, nunca nos saves do usuário): a análise abriu sozinha no fim do jogo; todas as abas, as camadas, um jogador visitante, o tema claro e a janela de 1100 px foram capturados, sem erros no console. A largura do nome no território foi corrigida pela captura.
+  - **Achado e correção no motor: lados do visitante.**
+    - O visitante jogava com esquerda e direita trocadas (o ponta-esquerda pela direita). O defeito apareceu no mapa de calor.
+    - Corrigido em `shape()`.
+    - Calibração refeita com 2000 jogos: tudo na faixa, com o equilíbrio entre formações em 0,11. A exceção são os gols, 2,896, no teto de 2,90; o Laboratório arredonda e marca [FORA], e o erro-padrão é ±0,04.
+    - Dois ajustes que baixavam os gols pioravam o equilíbrio para 0,19 e não foram aplicados.
+  - **Achado pendente (decisão do usuário): distribuição da bola por posição.**
+    - Os totais do time estão calibrados, mas zagueiro tem cerca de 6 passes por jogo (real: 50 a 70) e centroavante cerca de 75 (real: cerca de 20).
+    - A análise mostra isso fielmente. Corrigir exige mexer na escolha do passe e recalibrar o motor.
+  - **Testes.**
+    - `match-analysis.test.ts`, com 4 testes:
+      - a análise só observa;
+      - passes, desarmes, interceptações, faltas e passes decisivos batem com o relatório; mapa de calor 0–1 cobrindo o tempo em campo; momentum por minuto;
+      - leitura (espelhamento, suavização, posição média, momentum);
+      - lados certos nos dois times.
+    - `match-persistence`: análise só na partida do usuário (uma por rodada) e a prévia ao vivo sem análise.
+    - Mutação 7/7: passe decisivo, desarme, a coleta mexer no sorteio, espelhamento do visitante, análise em todos os jogos, leitura da análise e sinal dos lados.
+    - Suíte completa: 403/403. Typecheck e `vite build` ok.
+  - **Não executado.** `npm run bench`: a análise roda só no jogo do usuário, e o custo medido de uma partida com e sem ela é igual.
+  - **Próximos passos.**
+    1. Validação do usuário (`npm run dev`, roteiro 13z11).
+    2. Decidir sobre a distribuição da bola por posição.
+    3. Fase D (base sub-17 e sub-20).

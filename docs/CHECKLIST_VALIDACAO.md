@@ -465,6 +465,17 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Substituições, vestiário e sugestões do auxiliar seguem funcionando; "Ir para o fim" grava a rodada.
 - [ ] Rodadas e temporada avançam sem lentidão perceptível; relatórios de partidas antigas continuam abrindo.
 
+## 13z11. Estatísticas pós-jogo (v0.11.0; `docs/MATCH_STATS.md`)
+- [ ] Partida ao vivo até o fim (ou "Ir para o fim"): quando a rodada é gravada, a tela troca sozinha para a análise. "Ver a partida" volta ao campo e "Análise pós-jogo" volta à análise.
+- [ ] **Resumo:** o momentum tem barras para cima (mandante) e para baixo (visitante), linha do intervalo e ⚽ no minuto de cada gol; passar o mouse mostra o minuto. O território mostra os três terços de cada time. Clicar num destaque abre a ficha do jogador.
+- [ ] **Estatísticas:** os grupos (Visão geral, Finalizações, Passes, Duelos e posse, Defesa) batem com o placar e com as estatísticas da tela da partida (posse, finalizações, passes).
+- [ ] **Finalizações:** o gol aparece cheio, o defendido meio cheio e o para fora tracejado, com o tamanho pelo xG. O mandante finaliza no gol da direita e o visitante no da esquerda. O filtro por time e a lista funcionam; clicar numa bolinha destaca a linha.
+- [ ] **Jogadores:** a ficha começa no craque do jogo. O mapa de calor fica onde a posição faz sentido: lateral-esquerdo pela esquerda (em cima, atacando para a direita) e centroavante perto da área. O visitante também aparece atacando para a direita.
+- [ ] Passes (filtros Certos, Errados e Decisivos) e Ações defensivas (formas e contagem na legenda) do jogador; a grade de números embaixo bate com o que está desenhado.
+- [ ] Abrir uma partida antiga pelo Calendário: abre a análise com o aviso "sem a análise detalhada", e as estatísticas gerais aparecem.
+- [ ] Partida ao vivo: o ponta-esquerda do visitante joga pelo lado esquerdo dele, que é a parte de baixo do campo, já que ele ataca para a esquerda.
+- [ ] Tema claro e janela menor (1100 px): sem sobreposição; a análise rola por dentro.
+
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.
 - [ ] Sair e entrar na mesma carreira não refaz partidas nem cobra mês duas vezes.

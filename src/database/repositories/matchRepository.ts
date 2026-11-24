@@ -9,7 +9,7 @@ import { MATCH_LOAD } from '../../game/training-engine/sessions.ts';
 import { commentate } from '../../game/match-engine/commentary.ts';
 import { aiTactics, buildSheetDetailed, tacticsForMethodology, toMatchPlayer } from '../../game/match-engine/team-builder.ts';
 import { formationLabel } from '../../game/match-engine/formations.ts';
-import type { EngineVersion, Intervention, MatchConditions, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
+import type { EngineVersion, Intervention, MatchConditions, MatchDetail, MatchEvent, MatchOutcome, MatchTick, PlayerReport, TeamSheet, TeamTactics } from '../../game/match-engine/types.ts';
 import { addDays } from '../../shared/date.ts';
 import type { Coach, Player } from '../../shared/types.ts';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, MatchSummaryDto, SchemeDto, SimulationSummaryDto } from '../../shared/api.ts';
@@ -120,6 +120,8 @@ function runFixture(f: FixtureRow, ctx: Ctx, prep: ReturnType<typeof prepareFixt
     engine: involves || ctx.userComps.has(f.competitionId) ? DEFAULT_ENGINE : 'v1',
     // trajeto (motor v2) só na partida acompanhada ao vivo: é o que o mapa desenha
     track: !!live && involves,
+    // análise pós-jogo (mapa de calor, passes, momentum): só nas partidas do usuário; gravada em match_detail
+    detail: involves,
     ...(f.cup ? { neutral: f.cup.neutral, ...(f.cup.decider ? { decider: f.cup.decider } : {}) } : {}),
     ...(f.ko ? { neutral: f.ko.neutral, ...(f.ko.decider ? { decider: f.ko.decider } : {}) } : {}),
     ...(live && involves ? { control: { team: side, until: live.controlUntil ?? Number.MAX_SAFE_INTEGER }, interventions: ivs } : {}),
@@ -157,6 +159,7 @@ function simulateOne(db: SqlDb, f: FixtureRow, ctx: Ctx & { post: Poster }, live
   const report = storedOf(f, ctx, prep, out);
   db.prepare('INSERT INTO matches (fixture_id, seed, played_on, home_goals, away_goals, decided_in, detail, report_json) VALUES (?,?,?,?,?,?,?,?)')
     .run(f.id, `${ctx.seed}:${f.id}`, f.date, out.homeGoals, out.awayGoals, out.decidedIn, report.detail, JSON.stringify(report));
+  if (out.detail) db.prepare('INSERT INTO match_detail (fixture_id, engine, detail_json) VALUES (?,?,?)').run(f.id, out.engine, JSON.stringify(out.detail));
   // campo neutro: a renda é do organizador (finais da Copa do Brasil, da Copa Argentina, dos estaduais e das continentais), não de um dos clubes
   if (!f.cup?.neutral && !f.ko?.neutral) recordGate(db, ctx.post, { id: f.id, date: f.date, homeId: f.homeId, awayId: f.awayId, awayName: f.awayName }, out.conditions.weather, ctx.seed);
 
@@ -318,11 +321,12 @@ export function getMatchReport(db: SqlDb, fixtureId: string): MatchReportDto {
     JOIN competitions c ON c.id = f.competition_id WHERE m.fixture_id = ?`).get(fixtureId);
   if (!m) throw new Error('Relatório não encontrado: a partida ainda não foi disputada.');
   const r = JSON.parse(S(m.report_json)) as StoredReport;
-  return dtoFromStored(db, r, { fixtureId, competitionName: S(m.competition_name), date: S(m.match_date), round: N(m.round),
+  const d = db.prepare('SELECT detail_json FROM match_detail WHERE fixture_id = ?').get(fixtureId);
+  return dtoFromStored(db, r, { analysis: d ? (JSON.parse(S(d.detail_json)) as MatchDetail) : null, fixtureId, competitionName: S(m.competition_name), date: S(m.match_date), round: N(m.round),
     attendance: m.attendance == null ? null : { attendance: N(m.attendance), capacity: N(m.capacity), revenue: N(m.gate_revenue) } });
 }
 
-function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'fixtureId' | 'competitionName' | 'date' | 'round' | 'attendance'>): MatchReportDto {
+function dtoFromStored(db: SqlDb, r: StoredReport, meta: Pick<MatchReportDto, 'fixtureId' | 'competitionName' | 'date' | 'round' | 'attendance' | 'analysis'>): MatchReportDto {
   const zero = { starter: false, subbedInAt: null, subbedOutAt: null, goals: 0, assists: 0, shots: 0, shotsOnTarget: 0, passes: 0, passesCompleted: 0, keyPasses: 0, tackles: 0, interceptions: 0, fouls: 0, yellow: 0, red: 0, saves: 0, goalsConceded: 0, xg: 0, injuredDays: 0 };
   const players = r.players.map((p) => ({ ...zero, ...p })) as PlayerReport[];
   const names = new Map(players.map((p) => [p.id, p.name]));
@@ -365,7 +369,7 @@ export function previewUserMatch(db: SqlDb, live: LiveOptions): LiveMatchDto {
   const freed = squad.filter((p) => leagueSusp.has(p.id));
   const notes = freed.length ? [...ctx.notes, `${freed.map((p) => p.name).join(', ')} ${freed.length > 1 ? 'estão suspensos' : 'está suspenso'} na liga, mas pode${freed.length > 1 ? 'm' : ''} jogar nesta copa: as suspensões valem só na competição em que foram recebidas.`] : ctx.notes;
   return {
-    report: dtoFromStored(db, storedOf(f, ctx, prep, out), { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, attendance: null }),
+    report: dtoFromStored(db, storedOf(f, ctx, prep, out), { fixtureId: f.id, competitionName: f.competitionName, date: f.date, round: f.round, attendance: null, analysis: null }),
     side, subsMax: f.cup?.decider?.extraTimeSub ? 6 : 5, notes,
     bench: mine.bench.map((p) => ({ id: p.id, name: p.name, position: p.position, overall: overall.get(p.id) ?? 0, condition: Math.round(p.condition),
       note: leagueSusp.has(p.id) ? `suspenso na liga (${leagueSusp.get(p.id)} jogo(s)); liberado nesta copa` : null })),

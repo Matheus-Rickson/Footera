@@ -216,6 +216,12 @@ test('Relatório: linha do tempo minuto a minuto só nas partidas do usuário; f
   assert.ok(mine.timeline && mine.timeline.length >= 91, 'partida do usuário tem a linha do tempo');
   const other = s.results.find((r) => !r.involvesUser)!;
   assert.equal(getMatchReport(db, other.fixtureId).timeline, null, 'outras partidas não guardam (relatório resumido)');
+  // análise pós-jogo (mapa de calor, passes, momentum): gravada só na partida do usuário
+  assert.ok(mine.analysis, 'partida do usuário tem a análise');
+  assert.ok(mine.players.filter((p) => p.minutes > 0).every((p) => mine.analysis!.players[p.id]), 'todo jogador que entrou tem análise');
+  assert.equal(mine.analysis!.momentum.length, mine.timeline.length, 'momentum por minuto registrado');
+  assert.equal(getMatchReport(db, other.fixtureId).analysis, null, 'outras partidas não têm análise');
+  assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM match_detail').get()!.n), 1, 'uma análise gravada por rodada (a do usuário)');
   // motor: lance a lance (v2) na competição do usuário; v1 (mais rápido) nas competições em que ele não joga
   const engines = db.prepare(`SELECT f.competition_id AS c, json_extract(m.report_json, '$.engine') AS e,
     EXISTS (SELECT 1 FROM fixtures x WHERE x.competition_id = f.competition_id AND (x.home_club_id = ?1 OR x.away_club_id = ?1)) AS mine
@@ -315,7 +321,8 @@ test('Ao vivo com o técnico: prévia não grava nada; a rodada gravada reproduz
   const m0 = moraleOf();
   const sum = simulateMatchday(db, live);
   const saved = getMatchReport(db, sum.userMatch!.fixtureId);
-  const strip = (r: typeof saved) => ({ ...r, attendance: null });
+  assert.ok(saved.analysis, 'a gravação traz a análise pós-jogo (a prévia não a envia)');
+  const strip = (r: typeof saved) => ({ ...r, attendance: null, analysis: null });
   assert.deepEqual(strip(saved), strip(p1.report), 'o que foi visto ao vivo é exatamente o que fica gravado');
   const m1 = moraleOf(), mine = side === 0 ? saved.homeGoals - saved.awayGoals : saved.awayGoals - saved.homeGoals;
   const res = mine > 0 ? 3 : mine < 0 ? -3 : 0;
@@ -331,7 +338,7 @@ test('Ao vivo com o técnico: prévia não grava nada; a rodada gravada reproduz
   const half = previewUserMatch(db2, { interventions: [], controlUntil: 30 });
   assert.deepEqual(half.report.timeline!.slice(0, 30), r0.timeline!.slice(0, 30));
   const sum2 = simulateMatchday(db2, { interventions: [], controlUntil: 30 });
-  assert.deepEqual({ ...getMatchReport(db2, sum2.userMatch!.fixtureId), attendance: null }, { ...half.report, attendance: null });
+  assert.deepEqual({ ...getMatchReport(db2, sum2.userMatch!.fixtureId), attendance: null, analysis: null }, { ...half.report, attendance: null });
 });
 
 test('Ao vivo: aceitar a sugestão com nova formação atualiza o campo e o rótulo da formação na tela; o gravado é igual ao visto', async () => {
@@ -355,7 +362,7 @@ test('Ao vivo: aceitar a sugestão com nova formação atualiza o campo e o rót
       if (pl) assert.deepEqual([pl.slot, pl.x, pl.y], [m.slot, m.x, m.y], 'campo da tela na nova formação');
     }
     const sum = simulateMatchday(db, live);
-    assert.deepEqual({ ...getMatchReport(db, sum.userMatch!.fixtureId), attendance: null }, { ...r, attendance: null });
+    assert.deepEqual({ ...getMatchReport(db, sum.userMatch!.fixtureId), attendance: null, analysis: null }, { ...r, attendance: null });
     done = true;
   }
   assert.ok(done, 'encontrou uma sugestão com mudança de formação em 12 rodadas');

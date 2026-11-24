@@ -792,7 +792,7 @@ function simulateMatchV1(home: TeamSheet, away: TeamSheet, opts: MatchOptions): 
       clubId: t.sheet.clubId, name: t.sheet.name, formation: formationLabel(t.sheet.formation),
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
-    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions, engine: 'v1', track: null,
+    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions, engine: 'v1', track: null, detail: null,
   };
 }
 

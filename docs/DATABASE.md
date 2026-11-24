@@ -185,3 +185,9 @@ O save grava as definições em `cup_formats` (migração 019) e cada edição �
    - Linha com `id` existente altera o registro (só as colunas preenchidas; célula vazia não apaga); sem `id` (ou com `id` novo), cria.
      Linhas iguais ao que já existe são ignoradas (exportar e reimportar sem mexer não grava nada).
    - Tudo ou nada: qualquer erro de formato ou de regra (ex.: clube inexistente) e nada é gravado; o relatório aponta a linha do arquivo.
+
+## Análise das partidas (migração 036, v0.11.0)
+- `match_detail(fixture_id, engine, detail_json)`: análise pós-jogo das partidas do clube do usuário. Contém mapa de calor, passes,
+  ações defensivas, duelos, momentum e território, gravados pelo motor v2.
+- Fica fora de `matches.report_json` para o relatório continuar leve. São cerca de 27 KB por partida.
+- Saves antigos: a tabela nasce vazia. Detalhes em `docs/MATCH_STATS.md`.

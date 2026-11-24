@@ -96,20 +96,34 @@ Uma partida típica tem cerca de 1.400 quadros, 14 por minuto, e cerca de 145 KB
 
 | Meta | v2 | v1 | Faixa |
 |---|---|---|---|
-| Gols por jogo | 2,86 | 2,72 | 2,50–2,90 |
-| xG − gols | 0,09 | 0,00 | ≤ 0,15 |
+| Gols por jogo | 2,90 (2,896) | 2,72 | 2,50–2,90 |
+| xG − gols | 0,10 | 0,00 | ≤ 0,15 |
 | Mandante / empate / visitante | 45 / 27 / 28 % | 45 / 24 / 31 % | 43–48 / 23–29 / 27–32 % |
-| 0x0 | 8,2 % | 6,7 % | 6–10 % |
-| Amarelos / vermelhos | 3,78 / 0,11 | 3,24 / 0,15 | 3–4,5 / 0,05–0,15 |
-| Finalizações / no gol por time | 12,4 / 4,6 | 12,8 / 4,8 | 10–15 / 3,5–5,5 |
+| 0x0 | 7,1 % | 6,7 % | 6–10 % |
+| Amarelos / vermelhos | 3,71 / 0,11 | 3,24 / 0,15 | 3–4,5 / 0,05–0,15 |
+| Finalizações / no gol por time | 12,5 / 4,7 | 12,8 / 4,8 | 10–15 / 3,5–5,5 |
 | Passes por time / certos | 509 / 79 % | 429 / 84 % | 380–560 / 76–86 % |
-| Faltas / escanteios / impedimentos por time | 11,9 / 5,2 / 1,9 | 11,3 / 5,4 / 2,0 | 9–15 / 4–6,2 / 1,2–2,8 |
+| Faltas / escanteios / impedimentos por time | 12,0 / 5,3 / 1,9 | 11,3 / 5,4 / 2,0 | 9–15 / 4–6,2 / 1,2–2,8 |
 | Determinismo | 20/20 | 20/20 | 20/20 |
-| Equilíbrio entre formações (maior − menor pontos/jogo) | 0,12 | 0,15 | ≤ 0,20 |
+| Equilíbrio entre formações (maior − menor pontos/jogo) | 0,11 | 0,15 | ≤ 0,20 |
 
-Formações na v2, em pontos por jogo (±0,06): 4-3-3 1,45; 4-4-2 1,43; 3-5-2 1,41; 3-4-3 1,40; 4-2-3-1 1,38; 5-3-2 1,34; 4-1-4-1 1,33. Todas as metas estão na faixa.
+Valores da v0.11.0, depois da correção dos lados do visitante (abaixo). Mandante, empate e visitante: 44,5 / 27,3 / 28,2 %.
+
+Formações na v2, em pontos por jogo (±0,06): 4-2-3-1 1,42; 4-4-2 1,40; 4-3-3 1,34; 5-3-2 1,32; 3-5-2 1,32; 3-4-3 1,32; 4-1-4-1 1,31.
+
+Os gols ficam no teto da faixa: 2,896, que o Laboratório arredonda para 2,90 e marca [FORA]. O erro-padrão é ±0,04.
+- Dois ajustes testados baixam os gols (`shot` 1,62 → 2,88; `shotCost` 0,048 → 2,87), mas o equilíbrio entre formações sobe para
+  0,19, no limite da meta.
+- Os valores atuais foram mantidos, com o equilíbrio em 0,11.
+
+(v0.10.0, antes da correção: gols 2,86, 0x0 8,2 %, equilíbrio 0,12.)
 
 **Histórico do ajuste:**
+- **v0.11.0, lados do visitante.**
+  - A largura da âncora (0 = esquerda de quem ataca) virava o mesmo `y` do campo para os dois times. O visitante, que ataca para
+    o outro lado, jogava com os lados trocados: o ponta-esquerda pela direita, de frente para o lateral-esquerdo do mandante.
+  - O defeito foi descoberto pelo mapa de calor da análise pós-jogo (`docs/MATCH_STATS.md`).
+  - Corrigido em `shape()` com o sinal `sy`; há teste em `match-analysis.test.ts`.
 - Uma tentativa de equilibrar as formações com DM mais recuado e AM mais perto da linha (5 e 13) piorou a mentalidade defensiva: −0,26 ponto/jogo contra a equilibrada. Foi desfeita, e os valores voltaram a 7 e 16.
 - O que equilibrou as formações foi `loneRun`, com o movimento próprio (`wander` 3, `support` 0,05). Para manter o mando de campo na faixa, `home` passou de 1,065 para 1,08. Para conter a maior goleada em jogos muito desiguais (máximo de 9 de saldo), `leadEase` passou de 0,72 para 0,62.
 - **Atenção:** o equilíbrio entre formações é sensível a mudanças pequenas na dinâmica. Recalcular a oscilação só uma vez por segundo de jogo, em vez de continuamente, levou o equilíbrio para 0,35. Depois de qualquer mudança no motor, rode a calibração completa com formações.

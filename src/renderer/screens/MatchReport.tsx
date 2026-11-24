@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Ban, CalendarDays, Cloud, CloudRain, Coins, Cross, FastForward, Info, MapPin, Pause, Play, RotateCcw, SkipForward, SlidersHorizontal, Snowflake, Star, Sun, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Ban, BarChart3, CalendarDays, Cloud, CloudRain, Coins, Cross, FastForward, Info, MapPin, Pause, Play, RotateCcw, SkipForward, SlidersHorizontal, Snowflake, Star, Sun, Trophy, Users } from 'lucide-react';
 import type { LiveInterventionInput, LiveMatchDto, MatchReportDto, SimulationSummaryDto } from '../../shared/api.ts';
 import type { TeamStats, TeamTactics } from '../../game/match-engine/types.ts';
 import { decodeTrack, framesByTick } from '../../game/match-engine/v2/track.ts';
@@ -7,6 +7,7 @@ import { BUILDUP_LABEL, errMsg, fmtDate, fmtMoney, MENTALITY_LABEL, shortName, u
 import { liveAt, ticksOf, type LivePlayer, type LiveState } from '../matchLive.ts';
 import { PlayerFace, PosPill, to20 } from '../playerUi.tsx';
 import { LivePitch } from './LivePitch.tsx';
+import { MatchAnalysis } from './MatchAnalysis.tsx';
 import { AssistantModal, RoleModal, SubsModal, TacticsModal, TeamTalkModal } from './LiveDecisions.tsx';
 import { ClubCrest } from '../flags.tsx';
 import { useImages } from '../images.ts';
@@ -193,6 +194,9 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
   const [talkDone, setTalkDone] = useState(false);
   const [handledInjuries, setHandledInjuries] = useState<Set<number>>(new Set());
   const [handledSugg, setHandledSugg] = useState<Set<string>>(new Set());
+  /** partida (campo e eventos) ou análise pós-jogo; a análise abre sozinha quando a partida termina */
+  const [view, setView] = useState<'match' | 'analysis'>('match');
+  const [analysisShown, setAnalysisShown] = useState(false);
 
   useEffect(() => {
     let stale = false;
@@ -240,6 +244,11 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
       await onLiveFinished?.(sum);
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }, [profileId, careerId, ivs, onLiveFinished]);
+
+  // fim de jogo: abre a análise uma vez (ao vivo, só depois de gravada — é a gravação que traz o mapa de calor)
+  useEffect(() => {
+    if (finished && !analysisShown && (!live || saved)) { setView('analysis'); setAnalysisShown(true); }
+  }, [finished, analysisShown, live, saved]);
 
   // relógio da partida
   useEffect(() => {
@@ -325,7 +334,8 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           {deciding && !finished && <button className="secondary" disabled={busy} onClick={() => { setPlaying(false); setDialogError(null); setDialog({ kind: 'subs', reason: null }); }}><ArrowLeftRight size={15} aria-hidden="true" />Substituições ({subsUsed}/{preview!.subsMax})</button>}
           {canCoach && <button className="secondary" disabled={busy} onClick={() => { setPlaying(false); setDialogError(null); setDialog({ kind: 'tactics' }); }}><SlidersHorizontal size={15} aria-hidden="true" />Tática</button>}
           {!finished && <button className="secondary" disabled={busy} title={deciding ? 'O auxiliar decide o restante da partida' : ''} onClick={() => { if (deciding) void finish(step); else { setStep(ticks.length); setPlaying(false); } }}><SkipForward size={15} aria-hidden="true" />Ir para o fim</button>}
-          {finished && <button className="secondary" onClick={() => { setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
+          {finished && <button className="secondary" onClick={() => setView(view === 'match' ? 'analysis' : 'match')}>{view === 'match' ? <><BarChart3 size={15} aria-hidden="true" />Análise pós-jogo</> : <><Play size={15} aria-hidden="true" />Ver a partida</>}</button>}
+          {finished && <button className="secondary" onClick={() => { setView('match'); setStep(0); setPlaying(true); }}><RotateCcw size={15} aria-hidden="true" />Assistir do início</button>}
           <button className="secondary" disabled={busy} onClick={leave}><ArrowLeft size={15} aria-hidden="true" />Voltar</button>
         </div>
         <div className="mc-meta">
@@ -355,7 +365,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
         {preview && preview.notes.length > 0 && !st.started && <p className="notice small">{preview.notes.join(' ')}</p>}
       </section>
 
-      <div className="mc-grid">
+      {finished && view === 'analysis' ? <MatchAnalysis r={r} /> : <div className="mc-grid">
         <div className="mc-col">
           <section className="card mc-pitch-card"><TeamPitch players={st.teams[0].onPitch} side={0} /></section>
           <TeamTable name={r.home.name} team={st.teams[0]} levels={r.levels} side={0} />
@@ -377,7 +387,7 @@ export function MatchReport({ profileId, careerId, fixtureId, autoplay, live = f
           <section className="card mc-pitch-card"><TeamPitch players={st.teams[1].onPitch} side={1} /></section>
           <TeamTable name={r.away.name} team={st.teams[1]} levels={r.levels} side={1} />
         </div>
-      </div>
+      </div>}
 
       {dialog?.kind === 'talk' && preview && (
         <TeamTalkModal score={st.score} side={side} live={preview} said={said} busy={busy} error={dialogError}

@@ -19,7 +19,8 @@ import type {
   ChanceType, EventType, Intervention, MatchConditions, MatchEvent, MatchOptions, MatchOutcome, MatchPlayer, MatchTick, MatchTrack,
   PlayerReport, ShotOutcome, SubSuggestion, TeamSheet, TeamStats, TeamTactics, TrackKind,
 } from '../types.ts';
-import { TICK_STATS, TRACK_HEAD, TRACK_KIND, TRACK_SLOTS } from '../types.ts';
+import { PASS_CROSS, PASS_LONG, PASS_OK, TICK_STATS, TRACK_HEAD, TRACK_KIND, TRACK_SLOTS } from '../types.ts';
+import { createAnalysis } from './analysis.ts';
 import { talkDelta } from '../teamTalk.ts';
 import { cardMultiplier, inGameMultiplier, tacticsMultiplier, talkWithMotivation } from '../../coach-engine/coach.ts';
 import { POS_NAME } from '../../../shared/positions.ts';
@@ -236,6 +237,9 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       }
       const tilt = l.role.fx.tilt ?? {};
       const rel = l.y - 19;
+      // lado no campo (-1 = y 0, 1 = y 68): a âncora vai da esquerda (0) à direita (100) de quem ataca; o visitante ataca no sentido
+      // contrário, então a esquerda dele fica do outro lado (até a v0.10.0 os dois times usavam o mesmo lado: alas espelhados)
+      const sy = (t.idx === 0 ? 1 : -1) * ((l.x - 50) / 50);
       // movimento próprio de cada jogador (determinístico, sem sorteio): procura espaço em ciclos de 25–60 s, em fase diferente
       // dos companheiros — o time não anda como um bloco rígido
       const ph = l.ti * 2.399 + t.idx * 1.7;
@@ -252,10 +256,10 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         const run = clampN(RUN[l.slot] + (l.slot === 'CM' || l.slot === 'LM' || l.slot === 'RM' || l.slot === 'AM' ? lone : 0) + 1.5 * (tilt.att ?? 0) - 1.2 * (tilt.def ?? 0) + 0.1 * mt + 0.6 * ((l.role.fx.shoot ?? 1) - 1), 0, 1);
         // a corrida cresce conforme a bola avança (de 58 m até 85 m de profundidade)
         const go = run * clampN((bd - 58) / 27, 0, 1);
-        if (go > 0) d = Math.max(d, d + (L - 13 + 5 * ((l.x - 50) / 50) * (ball.y < MID_Y ? -1 : 1) - d) * go);
+        if (go > 0) d = Math.max(d, d + (L - 13 + 5 * sy * (ball.y < MID_Y ? -1 : 1) - d) * go);
         d += K2.wander * wx;
         const wf = 0.8 + 0.07 * (tac.width - 3);
-        yy = MID_Y + ((l.x - 50) / 50) * 31 * wf + (ball.y - MID_Y) * 0.18 + K2.wander * 1.2 * wy;
+        yy = MID_Y + sy * 31 * wf + (ball.y - MID_Y) * 0.18 + K2.wander * 1.2 * wy;
         // quem está perto do portador se aproxima para dar a opção de passe (apoio)
         if (hOwn && hOwn !== l) {
           const hdp = depthOf(t.idx, hOwn.pos.x), hy = hOwn.pos.y - yy;
@@ -273,7 +277,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         // (a linha de defesa não oscila: só quem joga à frente dela)
         if (DEF_DEPTH[l.slot] > 3) d += K2.wanderDef * wx;
         const wDef = l.slot === 'CB' && nCB === 2 ? CB_PAIR_WIDTH : DEF_WIDTH[l.slot];
-        yy = MID_Y + ((l.x - 50) / 50) * 31 * wDef + (ball.y - MID_Y) * 0.36 + K2.wanderDef * wy;
+        yy = MID_Y + sy * 31 * wDef + (ball.y - MID_Y) * 0.36 + K2.wanderDef * wy;
       }
       l.tgt = { x: xOf(t.idx, clampN(d, 4, 101)), y: clampN(yy, 1.5, W - 1.5) };
     }
@@ -379,6 +383,16 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     }
     tlen += size; tframes++;
   };
+
+  // ---------- análise pós-jogo (só observa) ----------
+  const an = opts.detail ? createAnalysis() : null;
+  const sampleAll = (dt: number): void => {
+    if (!an) return;
+    const ps: Array<{ id: string; pos: P }> = [];
+    for (const t of T) for (const l of t.active) ps.push({ id: l.p.id, pos: l.pos });
+    an.sample(dt, tickNo, ps, holder ? poss : null, ball);
+  };
+  const longPass = (d: number) => (d > 30 ? PASS_LONG : 0);
 
   // ---------- posse ----------
   const giveBall = (l: Live, at: P, regain: boolean): void => {
@@ -505,7 +519,8 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     const g = clampN((xg * finishMod * gkMod) / ((1 - pBlock) * (1 - pOff)), 0.01, 0.97);
 
     att.stats.shots++; att.stats.xg += xg; shooter.rep.shots++; shooter.rep.xg += xg;
-    if (passer && passer !== shooter) { passer.rep.keyPasses++; att.stats.chancesCreated++; }
+    an?.shot(att.idx, tickNo, xg);
+    if (passer && passer !== shooter) { passer.rep.keyPasses++; att.stats.chancesCreated++; an?.keyPass(passer.p.id); }
     let outcome: ShotOutcome;
     if (rng.next() < pBlock) { outcome = 'blocked'; att.stats.shotsBlocked++; }
     else if (rng.next() < pOff) outcome = rng.chance(0.07) ? 'post' : 'off_target';
@@ -524,7 +539,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     const loose = { x: xOf(att.idx, L - 10 - rng.next() * 8), y: MID_Y + (rng.next() - 0.5) * 24 };
     const nd = nearest(def, loose), na = nearest(att, loose, shooter);
     const attWins = na.l && (!nd.l || rng.next() < 0.32 * (nd.d + 1) / (na.d + nd.d + 2));
-    if (attWins && na.l) giveBall(na.l, loose, false); else if (nd.l) giveBall(nd.l, loose, true);
+    if (attWins && na.l) giveBall(na.l, loose, false); else if (nd.l) { an?.recovery(nd.l.p.id, loose); giveBall(nd.l, loose, true); }
     return xg;
   };
 
@@ -539,6 +554,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
   const foul = (def: TeamState, fouler: Live, victim: Live | null, where: P): void => {
     const att = opp(def);
     def.stats.fouls++; fouler.rep.fouls++;
+    an?.def(fouler.p.id, 'foul', where);
     emit('foul', def.idx, { player: fouler.p.id, player2: victim?.p.id, ...at(where) });
     frame('foul');
     const box = inBox(att.idx, where);
@@ -564,10 +580,12 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       const na = nearest(att, ball), nd = nearest(def, ball);
       const l = (na.d <= nd.d ? na.l : nd.l) ?? na.l ?? nd.l;
       if (!l) return 5;
+      if (an && sideOf(l) !== poss) an.recovery(l.p.id, ball);
       giveBall(l, ball, sideOf(l) !== poss);
       return 1.5;
     }
     possActions++;
+    an?.touch(c.p.id);
     shape(att, true); shape(def, false);
     const cd = depthOf(att.idx, c.pos.x);
     const tac = att.tac, dtac = def.tac;
@@ -586,11 +604,13 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         const won = rng.next() < duel(q.tackle(d), (q.dribble(c) + q.hold(c)) / 2, 0.42, 4);
         if (won) {
           d.rep.tackles++; def.stats.tackles++;
+          if (an) { an.def(d.p.id, 'tackle', c.pos); an.duel(d.p.id, c.p.id); an.lost(c.p.id); }
           giveBall(d, c.pos, true);
           frame('tackle');
           return 1.2;
         }
         // driblou: quem tentou fica para trás
+        if (an) { an.dribble(c.p.id, true); an.duel(c.p.id, d.p.id); }
         d.pos = { x: d.pos.x + (att.idx === 0 ? -2.5 : 2.5), y: d.pos.y };
       }
     }
@@ -762,6 +782,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         if (rng.next() < pOff) {
           att.stats.offsides++;
           emit('offside', att.idx, { player: r.p.id, ...at(r.pos) });
+          if (an) { an.pass(c.p.id, from, r.pos, longPass(d)); an.lost(c.p.id); }
           ball = { ...r.pos }; holder = null; frame('out');
           setRestart({ kind: 'freekick', team: def.idx, at: { ...r.pos } });
           return 2 + d / 15;
@@ -770,6 +791,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       if (rng.next() < o.pOK) {
         c.rep.passesCompleted++; att.stats.passesCompleted++;
         lastPass = { from: c, to: r, cross: false };
+        an?.pass(c.p.id, from, r.pos, PASS_OK | longPass(d));
         holder = r; ball = { ...r.pos };
         moveAll(0.6 + d / 15);
         frame('pass');
@@ -779,6 +801,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       const wide = r.pos.y < 4 || r.pos.y > W - 4;
       if (wide || (d > 30 && rng.chance(0.3))) {
         ball = onPitch({ x: r.pos.x, y: r.pos.y < MID_Y ? 0.5 : W - 0.5 }); holder = null; frame('out');
+        if (an) { an.pass(c.p.id, from, ball, longPass(d)); an.lost(c.p.id); }
         if (depthOf(att.idx, ball.x) > L - 1.5) setRestart({ kind: 'goalkick', team: def.idx, at: { x: xOf(def.idx, 5.5), y: MID_Y } });
         else setRestart({ kind: 'throw', team: def.idx, at: { ...ball } });
         return 1 + d / 15;
@@ -789,6 +812,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         const v = Math.exp(-(s.d * s.d) / 4) * (0.6 + 0.4 * q.read(x)) + (s.t > 0.9 ? 0.2 : 0);
         if (v > bt) { bt = v; best = x; bp = { x: from.x + (r.pos.x - from.x) * s.t, y: from.y + (r.pos.y - from.y) * s.t }; }
       }
+      if (an) { an.pass(c.p.id, from, bp, longPass(d)); an.lost(c.p.id); if (best) an.def(best.p.id, 'interception', bp); }
       if (best) { best.rep.interceptions++; def.stats.interceptions++; giveBall(best, bp, true); }
       moveAll(0.5 + d / 18);
       frame('interception');
@@ -802,6 +826,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       if (rng.next() < pOff) {
         att.stats.offsides++;
         emit('offside', att.idx, { player: r.p.id, ...at(r.pos) });
+        if (an) { an.pass(c.p.id, from, tg, longPass(d)); an.lost(c.p.id); }
         ball = { ...r.pos }; holder = null; frame('out');
         setRestart({ kind: 'freekick', team: def.idx, at: { ...r.pos } });
         return 2 + d / 15;
@@ -811,6 +836,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         if (rng.next() < (o.race ?? 1)) {
           c.rep.passesCompleted++; att.stats.passesCompleted++;
           lastPass = { from: c, to: r, cross: false };
+          an?.pass(c.p.id, from, tg, PASS_OK | longPass(d));
           r.pos = { ...tg }; holder = r; ball = { ...tg };
           moveAll(t * 0.45);
           frame('pass');
@@ -820,6 +846,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         let w: Live | null = null, wt = Infinity;
         for (const x of def.active) { const tt = dist(x.pos, tg) / (x.slot === 'GK' ? 6.5 : q.speed(x)); if (tt < wt) { wt = tt; w = x; } }
         ball = { ...tg };
+        if (an) { an.pass(c.p.id, from, tg, longPass(d)); an.lost(c.p.id); if (w) { if (w.slot !== 'GK') an.def(w.p.id, 'interception', tg); else an.recovery(w.p.id, tg); } }
         if (w) { if (w.slot !== 'GK') { w.rep.interceptions++; def.stats.interceptions++; } giveBall(w, tg, true); }
         moveAll(t * 0.6);
         frame('interception');
@@ -828,10 +855,12 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       // passe ruim: cortado no caminho ou longo demais
       if (depthOf(att.idx, tg.x) > L - 12 && rng.chance(0.35)) {
         ball = { ...tg }; holder = null; frame('out');
+        if (an) { an.pass(c.p.id, from, tg, longPass(d)); an.lost(c.p.id); }
         setRestart({ kind: 'goalkick', team: def.idx, at: { x: xOf(def.idx, 5.5), y: MID_Y } });
         return 1.5 + d / 15;
       }
       const ic = nearest(def, { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }).l;
+      if (an) { const mid = { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }; an.pass(c.p.id, from, mid, longPass(d)); an.lost(c.p.id); if (ic) an.def(ic.p.id, 'interception', mid); }
       if (ic) { ic.rep.interceptions++; def.stats.interceptions++; giveBall(ic, { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }, true); }
       moveAll(0.5 + d / 18);
       frame('interception');
@@ -840,6 +869,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     if (o.kind === 'carry' && o.target) {
       const d = dist(from, o.target), t = d / (q.speed(c) * 0.62) + 0.9;
       if (rng.next() < o.pOK) {
+        if (an && o.pOK < 0.9) an.dribble(c.p.id, true);
         ball = { ...o.target }; c.pos = { ...ball };
         moveAll(t);
         frame(o.pOK < 0.9 ? 'dribble' : 'carry');
@@ -847,6 +877,11 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       }
       let tk: Live | null = null, tkd = Infinity;
       for (const x of def.active) { const sd = segDist(x.pos, from, o.target).d; if (sd < tkd) { tkd = sd; tk = x; } }
+      if (an) {
+        if (o.pOK < 0.9) an.dribble(c.p.id, false);
+        an.lost(c.p.id);
+        if (tk) { an.def(tk.p.id, 'tackle', { x: (from.x + o.target.x) / 2, y: (from.y + o.target.y) / 2 }); an.duel(tk.p.id, c.p.id); }
+      }
       if (tk) { tk.rep.tackles++; def.stats.tackles++; giveBall(tk, { x: (from.x + o.target.x) / 2, y: (from.y + o.target.y) / 2 }, true); }
       moveAll(t * 0.6);
       frame('tackle');
@@ -857,6 +892,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       c.rep.passes++; att.stats.passes++;
       if (rng.next() < o.pOK) {
         c.rep.passesCompleted++; att.stats.passesCompleted++;
+        an?.pass(c.p.id, from, r.pos, PASS_OK | PASS_CROSS);
         ball = { ...r.pos }; holder = r;
         moveAll(1.4);
         frame('cross');
@@ -865,18 +901,26 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       }
       // cruzamento cortado: escanteio ou a defesa fica com a bola
       ball = { ...r.pos }; holder = null; frame('cross');
+      if (an) { an.pass(c.p.id, from, r.pos, PASS_CROSS); an.lost(c.p.id); }
       if (rng.chance(0.34)) { setRestart({ kind: 'corner', team: att.idx, at: { x: xOf(att.idx, L - 0.5), y: c.pos.y < MID_Y ? 0.5 : W - 0.5 } }); return 2.5; }
       const cl = nearest(def, r.pos).l;
+      if (cl && an) an.def(cl.p.id, 'clearance', r.pos);
       if (cl) giveBall(cl, { x: xOf(att.idx, L - 14 - rng.next() * 14), y: MID_Y + (rng.next() - 0.5) * 30 }, true);
       return 2.6;
     }
     // afastar: bola longa, disputa no meio
     const land = onPitch({ x: xOf(att.idx, depthOf(att.idx, from.x) + 35 + rng.next() * 20), y: MID_Y + (rng.next() - 0.5) * 50 });
     ball = land; holder = null; frame('clearance');
+    an?.def(c.p.id, 'clearance', from);
     if (rng.chance(0.15)) { setRestart({ kind: 'throw', team: def.idx, at: { x: land.x, y: land.y < MID_Y ? 0.5 : W - 0.5 } }); return 3; }
     moveAll(2.2);
     const na = nearest(att, land), nd = nearest(def, land);
     const winner = na.l && nd.l ? (rng.next() < duel(q.aerialDef(na.l), q.aerialDef(nd.l), clampN(nd.d / (na.d + nd.d + 0.01), 0.15, 0.85), 3) ? na.l : nd.l) : na.l ?? nd.l;
+    if (an && winner) {
+      const loser = winner === na.l ? nd.l : na.l;
+      if (loser) an.duel(winner.p.id, loser.p.id, true);
+      if (sideOf(winner) !== poss) an.recovery(winner.p.id, land);
+    }
     if (winner) giveBall(winner, land, sideOf(winner) !== poss);
     return 3;
   };
@@ -912,9 +956,10 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         const cands = t.active.filter((l) => l.slot !== 'GK');
         const header = rng.weighted(cands, cands.map((l) => Math.max(0.01, CORNER_W[l.slot] * (l.role.fx.head ?? 1) * Math.pow(0.3 + q.head(l), 2))));
         const spot = { x: xOf(t.idx, L - 6 - rng.next() * 7), y: MID_Y + (rng.next() - 0.5) * 14 };
+        const flagAt = { ...ball };
         header.pos = { ...spot }; ball = { ...spot }; holder = header;
         const taker = cands.filter((l) => l !== header).sort((a, b) => q.cross(b) - q.cross(a))[0] ?? null;
-        if (taker) { taker.rep.passes++; taker.rep.passesCompleted++; t.stats.passes++; t.stats.passesCompleted++; }
+        if (taker) { taker.rep.passes++; taker.rep.passesCompleted++; t.stats.passes++; t.stats.passesCompleted++; an?.pass(taker.p.id, flagAt, spot, PASS_OK | PASS_CROSS); }
         shoot(t, header, spot, 'corner', true, taker);
         return 30;
       }
@@ -954,6 +999,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     secInTick = 0;
     while (left > 0) {
       const dt = playStep();
+      sampleAll(dt);
       T[poss].held += dt;
       left -= dt; gameSec += dt; secInTick = Math.min(60, secInTick + dt);
     }
@@ -1307,6 +1353,6 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       clubId: t.sheet.clubId, name: t.sheet.name, formation: formationLabel(t.sheet.formation),
       slots: t.sheet.lineup.map((l) => ({ slot: l.slot, x: l.x, y: l.y, playerId: l.player.id })),
     })),
-    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions, engine: 'v2', track,
+    conditions, duration: lastMinute, manOfTheMatch: best?.id ?? null, timeline, moraleDelta, suggestions, engine: 'v2', track, detail: an ? an.build() : null,
   };
 }

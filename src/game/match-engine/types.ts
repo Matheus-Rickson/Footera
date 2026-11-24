@@ -51,6 +51,8 @@ export interface MatchOptions {
   engine?: EngineVersion;
   /** só v2: grava o trajeto da bola e dos 22 jogadores (`MatchOutcome.track`) para o campo ao vivo; só observa */
   track?: boolean;
+  /** só v2: grava a análise da partida (`MatchOutcome.detail`: mapa de calor, passes, ações defensivas, momentum); só observa */
+  detail?: boolean;
 }
 export type EngineVersion = 'v1' | 'v2';
 
@@ -162,6 +164,41 @@ export interface MatchOutcome {
   engine: EngineVersion;
   /** só v2 com `track`: trajeto da bola e dos jogadores (null nos demais) */
   track: MatchTrack | null;
+  /** só v2 com `detail`: análise da partida para as estatísticas pós-jogo (null nos demais) */
+  detail: MatchDetail | null;
+}
+
+/** Grade do mapa de calor: o campo inteiro (105 × 68) em células de 5 × ~4,9 m, no sentido do mandante. */
+export const HEAT_W = 21;
+export const HEAT_H = 14;
+/** bits de `flags` de cada passe gravado */
+export const PASS_OK = 1, PASS_CROSS = 2, PASS_KEY = 4, PASS_LONG = 8;
+/** tipo de cada ação defensiva gravada */
+export const DEF_KIND = ['tackle', 'interception', 'clearance', 'foul', 'recovery'] as const;
+export type DefKind = (typeof DEF_KIND)[number];
+
+/**
+ * Análise de uma partida (v2), base das estatísticas pós-jogo. Coordenadas em meio metro (x 0–210, y 0–136), no sentido do mandante.
+ * - `heat`: base64 de HEAT_W × HEAT_H bytes (linha a linha, y de cima para baixo): tempo em campo em cada célula, 255 = a célula mais
+ *   frequentada pelo jogador (escala própria de cada um).
+ * - `passes`: base64 de 5 bytes por passe — x e y de origem, x e y de destino (ou de onde a bola parou), `flags` (PASS_*).
+ * - `def`: base64 de 3 bytes por ação defensiva — índice em DEF_KIND, x, y.
+ */
+export interface PlayerDetail {
+  heat: string; passes: string; def: string;
+  touches: number; dribbles: number; dribblesWon: number;
+  duelsWon: number; duelsLost: number; aerialWon: number; aerialLost: number;
+  /** posses perdidas (passe errado, desarmado, drible que não passou) */ lost: number;
+  /** bolas recuperadas (sobras e disputas que viraram a posse) */ recoveries: number;
+  /** segundos em campo (soma das amostras do mapa de calor) */ seconds: number;
+}
+export interface MatchDetail {
+  v: 1;
+  players: Record<string, PlayerDetail>;
+  /** pressão ofensiva de cada time em cada minuto registrado (índice da linha do tempo): segundos com a bola no campo de ataque, mais o xG */
+  momentum: Array<[number, number]>;
+  /** segundos com a bola de cada time em cada terço, do ponto de vista dele: [defesa, meio, ataque] */
+  territory: [[number, number, number], [number, number, number]];
 }
 
 /**
