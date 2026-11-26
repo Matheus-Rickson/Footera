@@ -250,14 +250,10 @@ button.lv-pick { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto;
 .ma-mom-ticks span { position: absolute; top: 4px; transform: translateX(-50%); font-size: .75rem; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
 /* território */
-.ma-terr { display: grid; gap: 10px; }
-.ma-terr-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 10px; }
-.ma-terr-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ma-terr-bar { display: flex; gap: 2px; height: 22px; }
-.ma-terr-z { display: flex; align-items: center; justify-content: center; flex-basis: 0; border-radius: 4px; font-size: .75rem; font-weight: 700; color: var(--text); min-width: 0; }
-.ma-terr-z0 { background: color-mix(in srgb, var(--text-faint) 22%, transparent); }
-.ma-terr-z1 { background: color-mix(in srgb, var(--text-faint) 38%, transparent); }
-.ma-terr-z2 { background: color-mix(in srgb, var(--text-faint) 58%, transparent); }
+.ma-terr { display: grid; gap: 10px; justify-items: start; }
+.ma-terr .ma-pitch { justify-self: center; max-height: 440px; }
+.ma-terr-line { stroke: rgba(255, 255, 255, .55); stroke-width: .35; stroke-dasharray: 1.2 1.2; }
+.ma-terr-pct { fill: #fff; font-size: 4px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: rgba(0, 0, 0, .55); stroke-width: .8px; }
 
 /* destaques */
 .ma-top { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -283,6 +279,8 @@ button.ma-top-btn:hover { background: var(--surface-3); }
 
 /* campo */
 .ma-pitch { display: block; width: 100%; height: auto; max-height: 520px; border-radius: 6px; }
+/* ficha do jogador: o campo encolhe com a janela para a aba caber sem rolar (cabeçalho, abas, ficha e números somam ~610 px) */
+.ma-pitch-player { max-height: max(220px, calc(100vh - 610px)); }
 .ma-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 8px; }
 .ma-legend > span { display: inline-flex; align-items: center; gap: 5px; }
 
@@ -300,16 +298,11 @@ button.ma-top-btn:hover { background: var(--surface-3); }
 .ma-lg-goal { background: var(--text-muted); }
 .ma-lg-saved { background: color-mix(in srgb, var(--text-muted) 45%, transparent); }
 .ma-lg-miss { box-shadow: none; border: 1.5px dashed var(--text-muted); }
-.ma-shot-table { width: 100%; }
-.ma-shot-table tbody tr { cursor: pointer; }
-.ma-shot-table td .mc-key { margin-right: 6px; }
-.ma-row-sel td { background: var(--surface-3); }
 
 /* jogadores */
 .ma-players { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 10px; align-items: start; }
 .ma-plist { display: grid; gap: 12px; }
-.ma-plist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.ma-plist h2 { padding-left: 8px; }
+.ma-plist ul { list-style: none; margin: 0; padding: 0 0 0 6px; display: grid; gap: 2px; }
 .ma-plist-home { box-shadow: inset 3px 0 0 var(--mc-home); }
 .ma-plist-away { box-shadow: inset 3px 0 0 var(--mc-away); }
 button.ma-pbtn { width: 100%; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }

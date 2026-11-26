@@ -162,7 +162,8 @@ test('Motor (causal): táticas alteram o jogo na direção esperada', () => {
     simulateMatch({ ...sheetOf(a, { ...BALANCED, ...tA }) }, sheet(b), { seed: `tac-${i}` }));
   const atk = run({ mentality: 'attacking' }), def = run({ mentality: 'defensive' });
   assert.ok(mean(atk.map((r) => r.stats[0].shots)) > mean(def.map((r) => r.stats[0].shots)) * 1.08, 'mentalidade ofensiva gera mais finalizações');
-  assert.ok(mean(atk.map((r) => r.stats[1].shots)) > mean(def.map((r) => r.stats[1].shots)), 'mentalidade ofensiva cede mais finalizações');
+  // o que a ofensiva cede é chance melhor: o bloco baixo da defensiva também cede muitos chutes, mas de longe e bloqueados (v0.11.1)
+  assert.ok(mean(atk.map((r) => r.stats[1].xg)) > mean(def.map((r) => r.stats[1].xg)) * 1.15, 'mentalidade ofensiva cede mais chances (xG contra)');
   const hi = run({ pressing: 5 }), lo = run({ pressing: 1 });
   const accOpp = (rs: MatchOutcome[]) => mean(rs.map((r) => r.stats[1].passesCompleted / r.stats[1].passes));
   assert.ok(accOpp(lo) - accOpp(hi) > 0.015, 'pressão alta reduz a precisão de passe do adversário');

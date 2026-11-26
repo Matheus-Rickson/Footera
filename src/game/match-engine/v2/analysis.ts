@@ -52,6 +52,8 @@ export function createAnalysis(): Analysis {
   };
   const momentum: Array<[number, number]> = [];
   const territory: [[number, number, number], [number, number, number]] = [[0, 0, 0], [0, 0, 0]];
+  const ballHeat = [new Float64Array(HEAT_W * HEAT_H), new Float64Array(HEAT_W * HEAT_H)] as const;
+  const cell = (p: P) => Math.max(0, Math.min(HEAT_H - 1, Math.floor((p.y / W) * HEAT_H))) * HEAT_W + Math.max(0, Math.min(HEAT_W - 1, Math.floor((p.x / L) * HEAT_W)));
   const mom = (tick: number): [number, number] => { while (momentum.length <= tick) momentum.push([0, 0]); return momentum[tick]!; };
 
   return {
@@ -59,9 +61,7 @@ export function createAnalysis(): Analysis {
       if (!(dt > 0)) return;
       for (const p of players) {
         const a = A(p.id);
-        const cx = Math.max(0, Math.min(HEAT_W - 1, Math.floor((p.pos.x / L) * HEAT_W)));
-        const cy = Math.max(0, Math.min(HEAT_H - 1, Math.floor((p.pos.y / W) * HEAT_H)));
-        a.heat[cy * HEAT_W + cx]! += dt;
+        a.heat[cell(p.pos)]! += dt;
         a.seconds += dt;
       }
       const m = mom(tick);
@@ -69,6 +69,7 @@ export function createAnalysis(): Analysis {
         const d = depthOf(poss, ball.x);
         m[poss] += dt * pressureOf(d);
         territory[poss][d < L / 3 ? 0 : d < (2 * L) / 3 ? 1 : 2] += dt;
+        ballHeat[poss][cell(ball)]! += dt;
       }
     },
     touch(id) { A(id).touches++; },
@@ -105,10 +106,14 @@ export function createAnalysis(): Analysis {
         };
       }
       const r1 = (v: number) => Math.round(v * 10) / 10;
+      let bmax = 0;
+      for (const g of ballHeat) for (const v of g) if (v > bmax) bmax = v;
+      const enc = (g: Float64Array) => { const b = new Uint8Array(g.length); if (bmax > 0) for (let i = 0; i < g.length; i++) b[i] = Math.round((g[i]! / bmax) * 255); return toBase64(b); };
       return {
         v: 1, players,
         momentum: momentum.map(([h, a]) => [r1(h), r1(a)]),
         territory: territory.map((t) => t.map((v) => Math.round(v))) as MatchDetail['territory'],
+        ball: [enc(ballHeat[0]), enc(ballHeat[1])],
       };
     },
   };

@@ -87,3 +87,51 @@ test('análise: cada time joga com a esquerda e a direita certas (o visitante, q
   }
   assert.ok(checked >= 8, `poucos jogadores de lado: ${checked}`);
 });
+
+test('motor v2: a bola passa pelos zagueiros e o centroavante não é o centro do jogo; interceptação só perto da linha da bola', () => {
+  // 30 partidas entre clubes médios, titulares que jogaram 80 min ou mais (v0.11.1; antes: zagueiro 6, centroavante 75, 80 interceptações)
+  const by = new Map<string, number[]>();
+  let int = 0, tk = 0, rec = 0, lost = 0, teams = 0;
+  for (let i = 0; i < 30; i++) {
+    const h = sheetOf(mid[i % mid.length]!), a = sheetOf(mid[(i * 7 + 3) % mid.length]!);
+    if (h.clubId === a.clubId) continue;
+    const o = simulateMatch(h, a, { seed: `dist-${i}`, engine: 'v2', detail: true });
+    teams += 2;
+    for (const s of o.stats) { int += s.interceptions; tk += s.tackles; }
+    for (const p of o.players) { const d = o.detail!.players[p.id]; if (d) { rec += d.recoveries; lost += d.lost; } }
+    for (const p of o.players.filter((r) => r.starter && r.minutes >= 80)) {
+      const g = p.slot === 'CB' ? 'CB' : p.slot === 'CF' || p.slot === 'ST' ? 'CF' : p.slot === 'CM' ? 'CM' : null;
+      if (!g) continue;
+      const v = by.get(g) ?? [0, 0]; v[0]!++; v[1]! += p.passes; by.set(g, v);
+    }
+  }
+  const avg = (g: string) => { const [n, s] = by.get(g)!; return s! / n!; };
+  assert.ok(avg('CB') >= 12, `zagueiro com ${avg('CB').toFixed(1)} passes por jogo`);
+  assert.ok(avg('CF') <= 65, `centroavante com ${avg('CF').toFixed(1)} passes por jogo`);
+  assert.ok(avg('CF') < avg('CM'), 'centroavante passa menos que o meio-campista');
+  assert.ok(int / teams <= 25 && int / teams >= 4, `${(int / teams).toFixed(1)} interceptações por time`);
+  assert.ok(tk / teams <= 28, `${(tk / teams).toFixed(1)} desarmes por time (a condução que perde a bola longe do defensor é recuperação)`);
+  assert.ok(rec > int, 'a bola que sobra solta conta como recuperação, não como interceptação');
+  assert.ok(lost / teams <= 145, `${(lost / teams).toFixed(0)} posses perdidas por time`);
+});
+
+test('análise: onde a bola esteve com cada time bate com o território por terço (mesma escala nos dois times)', () => {
+  for (const seed of ['ball-1', 'ball-2']) {
+    const d = play(seed).detail!;
+    assert.ok(d.ball, 'grade da bola gravada');
+    const g = d.ball.map((b) => decodeHeat({ heat: b }));
+    assert.ok(Math.max(...g[0]!, ...g[1]!) === 1, 'a célula mais usada (de qualquer time) vale 1');
+    for (const t of [0, 1] as const) {
+      // terços no sentido do mandante: colunas 0–6, 7–13 e 14–20
+      const cols = [0, 0, 0];
+      g[t]!.forEach((v, i) => { cols[Math.min(2, Math.floor((i % HEAT_W) / 7))]! += v; });
+      const tot = cols.reduce((a, b) => a + b, 0);
+      const ter = d.territory[t], tt = ter.reduce((a, b) => a + b, 0);
+      const att = t === 0 ? cols[2]! : cols[0]!; // terço de ataque de cada um
+      assert.ok(Math.abs(att / tot - ter[2] / tt) < 0.06, `time ${t}: ataque ${(att / tot).toFixed(2)} × território ${(ter[2] / tt).toFixed(2)}`);
+    }
+    // o mandante tem a bola mais no campo da direita do que o visitante (cada um ataca para um lado)
+    const right = (gr: number[]) => gr.reduce((s, v, i) => s + ((i % HEAT_W) >= 11 ? v : 0), 0) / gr.reduce((s, v) => s + v, 0);
+    assert.ok(right(g[0]!) > right(g[1]!), 'mandante mais à direita');
+  }
+});

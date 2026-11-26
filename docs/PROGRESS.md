@@ -1503,3 +1503,56 @@ Commit anterior: `8cca05e` (base fixa, simulação por divisão, nova carreira).
     1. Validação do usuário (`npm run dev`, roteiro 13z11).
     2. Decidir sobre a distribuição da bola por posição.
     3. Fase D (base sub-17 e sub-20).
+- **Fase C validada pelo usuário em 24/11/2026.** Commit `7d9e890` no branch `estatisticas-pos-jogo`, com push.
+- **v0.11.1: distribuição da bola e contagens (branch `motor-distribuicao`, sem commit). Telas da análise validadas pelo usuário em 24/11/2026 (território, finalizações e jogadores sem rolagem).**
+  - **Contagem.** Interceptação e desarme só perto da linha da bola (`K2.credR` 1,25 m). Mais longe, conta como recuperação. Só a
+    estatística muda; a partida sai igual. Por time:
+
+    | Estatística | Antes | Agora |
+    |---|---|---|
+    | Interceptações | 80 | 14 |
+    | Desarmes | cerca de 30 | 25 |
+    | Posses perdidas | cerca de 140 | 116 |
+
+  - **Saída de bola.** Paciência para girar a bola atrás (`recycle`, `recZone`), passe livre para trás mais seguro (`backSafe`),
+    zagueiro perto do portador (`cbGap`) e atacante mais à frente sem a bola (`DEF_DEPTH` 30).
+    - Zagueiro: de 6 para 16 passes por jogo.
+    - Centroavante: de 75 para 54.
+    - Ainda abaixo do real no zagueiro (50 a 70). Os limites estão em `docs/MATCH_STATS.md`.
+  - **Recalibração com 2000 jogos.** Valores em `docs/MATCH_ENGINE_V2.md`.
+    - Gols 2,78. Mandante, empate e visitante: 43,1 / 29,4 / 27,5 %. Passes 492, com 82 % certos.
+    - Empate 0,4 ponto acima da meta, dentro do erro-padrão de ±1,0. Com outra semente e 4000 jogos: 27,6 %.
+    - Equilíbrio entre formações: 0,11 com 1680 jogos por formação; 0,21 com 420, que é ruído.
+  - **Testes.**
+    - Novo, em `match-analysis.test.ts`: distribuição por posição e contagens. Mutação 4/4: contar toda bola perdida como
+      interceptação, contar toda condução perdida como desarme, sem a saída de bola e atacante recuado como antes.
+    - `match-engine.test.ts`: "mentalidade ofensiva cede mais" passou a medir o xG cedido, não os chutes. A defensiva cede mais
+      chutes, mas piores: sofre 1,47 gol contra 2,27 da ofensiva.
+    - `career-cycle.test.ts`: o teste do dinheiro na virada fixa a confiança da diretoria. Com os novos resultados, o clube do teste
+      era rebaixado, o técnico era demitido, e o extrato deixava de ser o do clube. Mesma proteção que outro teste de virada já
+      usava; não há defeito nas finanças.
+    - Suíte completa 404/404, typecheck ok.
+  - **Ajustes da tela pedidos pelo usuário (validação de 24/11/2026).**
+    - Território virou um campo com o mapa de calor de onde a bola esteve com cada time, com filtro (Os dois, mandante, visitante) e a fatia
+      por terço. O motor passou a gravar `MatchDetail.ball`.
+    - A lista de finalizações foi retirada; ficou só o campo.
+    - Na aba Jogadores, a lista mostra um time por vez, com filtro. Trocar o time abre a ficha do melhor em campo dele.
+    - O campo da ficha do jogador encolhe com a altura da janela (`.ma-pitch-player`), para a aba caber sem rolar.
+      - Medido no jogo compilado: sem rolagem em 1920 × 1000 e 1600 × 950.
+      - Em janelas de 700 px de altura ainda rola, porque o campo tem altura mínima de 220 px.
+    - Teste novo: a grade da bola bate com o território por terço, e o mandante fica mais à direita. A mutação (gravar a bola dos dois
+      times no mandante) é pega.
+    - Conferido no jogo compilado numa instância isolada, sem erros no console. Suíte 405/405.
+  - **Campo ao vivo (pedido do usuário: andam em bloco e em linha reta, repetem movimentos, rápido demais).**
+    - **Hora do quadro:** cada quadro agora leva a hora em que as posições valem. Antes levava a hora do início do lance com as posições do fim. Deslocamentos acima de 9,5 m/s entre quadros: de 0,9 % para 0 %. A partida não muda: calibração idêntica.
+    - **Tela:** curva suave (Catmull-Rom) pelos quadros, em vez de linha reta.
+    - **Ritmo:** 1× passou de 4 s para 8 s por minuto de jogo.
+    - **Testes:** dois novos em `match-engine-v2.test.ts`; mutação 2/2. Suíte 407/407.
+    - **Repetição:** não resolvida. Duas tentativas de variar o movimento próprio pioraram o equilíbrio entre formações (0,11 → 0,17–0,20) e foram desfeitas.
+  - **(Histórico) Em aberto: campo ao vivo com "movimentos pré-definidos".**
+    - O campo ao vivo desenha as posições gravadas pelo motor, em média 12,5 quadros por minuto de jogo, e anda em linha reta entre
+      eles.
+    - Com 4 s por minuto, a 1×, cada jogador anda em média 6 m entre quadros, e cerca de 1 em cada 4 deslocamentos passa de 8 m.
+    - Aguardando o usuário descrever o que parece pré-definido.
+  - **Próximos passos.** Validação do usuário (`npm run dev`: partida ao vivo e análise pós-jogo). Depois, a Fase D (base sub-17 e
+    sub-20).

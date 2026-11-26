@@ -475,6 +475,10 @@ Testes automáticos desta versão: `npm test` → 161 de 161 passando; typecheck
 - [ ] Abrir uma partida antiga pelo Calendário: abre a análise com o aviso "sem a análise detalhada", e as estatísticas gerais aparecem.
 - [ ] Partida ao vivo: o ponta-esquerda do visitante joga pelo lado esquerdo dele, que é a parte de baixo do campo, já que ele ataca para a esquerda.
 - [ ] Tema claro e janela menor (1100 px): sem sobreposição; a análise rola por dentro.
+- [ ] (v0.11.1) **Território:** campo com o mapa de calor da bola. O filtro (Os dois, mandante, visitante) muda o mapa e as porcentagens dos terços. O mapa não vaza para fora do campo.
+- [ ] (v0.11.1) **Finalizações:** só o campo, sem a lista; o xG dos dois times fica no cabeçalho.
+- [ ] (v0.11.1) **Campo ao vivo:** a 1×, um minuto leva cerca de 8 s. Os jogadores andam em curvas, sem quinas a cada passe, e acompanham o lance na hora certa (o receptor chega junto com a bola).
+- [ ] (v0.11.1) **Jogadores:** um time por vez no filtro; trocar o time abre a ficha do melhor em campo dele; a lista cabe sem barra de rolagem.
 
 ## 14. Persistência
 - [ ] Fechar no meio de uma temporada e reabrir: data, resultados, finanças, contratos, olheiros, treino, obras e diretoria continuam iguais.

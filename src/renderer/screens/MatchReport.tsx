@@ -22,7 +22,8 @@ interface Props {
 type Speed = 1 | 2 | 4;
 const TICK_MS: Record<Speed, number> = { 1: 1000, 2: 500, 4: 220 };
 /** com o mapa real (motor v2) cada minuto tem ~14 lances: mais tempo por minuto para dar para acompanhar */
-const TRACK_TICK_MS: Record<Speed, number> = { 1: 4000, 2: 2000, 4: 800 };
+// trajeto real: 8 s por minuto a 1× (a 4 s ficava rápido demais para acompanhar; validação de 24/11/2026)
+const TRACK_TICK_MS: Record<Speed, number> = { 1: 8000, 2: 4000, 4: 1600 };
 const WEATHER: Record<string, string> = { clear: 'tempo bom', rain: 'chuva', heat: 'calor intenso', cold: 'frio' };
 const WEATHER_ICON = { clear: Sun, rain: CloudRain, heat: Sun, cold: Snowflake } as const;
 const FINAL_LABEL: Record<string, string> = { regular: 'Fim', extra_time: 'Fim · prorrogação', penalties: 'Fim · pênaltis' };

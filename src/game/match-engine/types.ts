@@ -199,6 +199,9 @@ export interface MatchDetail {
   momentum: Array<[number, number]>;
   /** segundos com a bola de cada time em cada terço, do ponto de vista dele: [defesa, meio, ataque] */
   territory: [[number, number, number], [number, number, number]];
+  /** onde a bola esteve com cada time (v0.11.1): grade HEAT_W × HEAT_H no sentido do mandante, em bytes (base64), com a mesma escala
+   * nos dois times (255 = a célula mais usada por qualquer um deles). Ausente nas partidas gravadas antes. */
+  ball?: [string, string];
 }
 
 /**

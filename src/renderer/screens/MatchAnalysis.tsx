@@ -98,23 +98,38 @@ function Momentum({ r }: { r: MatchReportDto }) {
   );
 }
 
+/** Onde a bola esteve com cada time (ou com os dois), no campo inteiro, com a fatia de tempo em cada terço. */
 function Territory({ r }: { r: MatchReportDto }) {
-  const t = r.analysis!.territory;
-  const zones = ['Defesa', 'Meio', 'Ataque'];
+  const [team, setTeam] = useState<'all' | '0' | '1'>('all');
+  const an = r.analysis!;
+  const grid = useMemo(() => {
+    if (!an.ball) return null;
+    const g = [0, 1].map((t) => decodeHeat({ heat: an.ball![t]! }));
+    const raw = team === 'all' ? g[0]!.map((v, i) => v + g[1]![i]!) : g[Number(team)]!;
+    const sm = smoothHeat(raw, 1), max = Math.max(...sm);
+    return max > 0 ? sm.map((v) => v / max) : sm;
+  }, [an, team]);
+  // fatia do tempo com a bola em cada terço do campo (esquerda, meio, direita no sentido do mandante)
+  const thirds = useMemo(() => {
+    const t = an.territory;
+    const h = t[0], a = [t[1][2], t[1][1], t[1][0]];
+    const v = team === '0' ? h : team === '1' ? a : h.map((x, i) => x + a[i]!);
+    const tot = v.reduce((x, y) => x + y, 0) || 1;
+    return v.map((x) => Math.round((x / tot) * 100));
+  }, [an, team]);
+  const who = team === 'all' ? 'os dois times' : team === '0' ? r.home.name : r.away.name;
   return (
     <div className="ma-terr">
-      {([0, 1] as const).map((s) => {
-        const tot = t[s].reduce((x, y) => x + y, 0) || 1;
-        return (
-          <div key={s} className="ma-terr-row">
-            <span className="ma-terr-name"><i className={s === 0 ? 'mc-key mc-dot-home' : 'mc-key mc-dot-away'} />{shortName(s === 0 ? r.home.name : r.away.name)}</span>
-            <div className="ma-terr-bar">
-              {t[s].map((v, z) => <span key={z} className={`ma-terr-z ma-terr-z${z}`} style={{ flexGrow: Math.max(v, 0.001) }} title={`${zones[z]}: ${Math.round((v / tot) * 100)}% do tempo com a bola`}>{v / tot >= 0.12 ? `${Math.round((v / tot) * 100)}%` : ''}</span>)}
-            </div>
-          </div>
-        );
-      })}
-      <p className="muted small">Onde cada time teve a bola: terço defensivo, meio-campo e terço de ataque (do ponto de vista de cada um).</p>
+      <SegFilter label="Time" value={team} onChange={setTeam} options={[{ id: 'all', label: 'Os dois' }, { id: '0', label: shortName(r.home.name) }, { id: '1', label: shortName(r.away.name) }]} />
+      <Pitch label={`Onde a bola esteve com ${who}: ${thirds.join('%, ')}% do tempo nos terços esquerdo, central e direito`}>
+        {grid ? <HeatGrid grid={grid} /> : null}
+        {[PW / 3, (2 * PW) / 3].map((x) => <line key={x} x1={x} y1="0.5" x2={x} y2={PH - 0.5} className="ma-terr-line" />)}
+        {thirds.map((v, i) => <text key={i} x={(PW / 6) * (2 * i + 1)} y={PH - 3} className="ma-terr-pct">{v}%</text>)}
+      </Pitch>
+      <p className="muted small">
+        {grid ? 'Mapa de calor: onde a bola esteve com ' + who + '. ' : 'Partida gravada antes da v0.11.1: só a fatia por terço. '}
+        Os números são a fatia do tempo com a bola em cada terço. {r.home.name} ataca para a direita.
+      </p>
     </div>
   );
 }
@@ -129,11 +144,11 @@ function Summary({ r, onPick }: { r: MatchReportDto; onPick: (id: string) => voi
         {r.analysis && r.timeline ? <Momentum r={r} /> : <p className="muted small">Momentum disponível só nas partidas do seu clube jogadas a partir da v0.11.</p>}
         <p className="muted small">Pressão ofensiva minuto a minuto: tempo com a bola no campo de ataque (mais no terço final) somado ao xG das finalizações. Barras para cima: {r.home.name}; para baixo: {r.away.name}.</p>
       </section>
-      <section className="card ma-card">
+      <section className="card ma-card ma-wide">
         <h2>Território</h2>
         {r.analysis ? <Territory r={r} /> : <p className="muted small">Sem dados de posição nesta partida.</p>}
       </section>
-      <section className="card ma-card">
+      <section className="card ma-card ma-wide">
         <h2>Destaques</h2>
         <ol className="ma-top">
           {top.map((p) => (
@@ -266,6 +281,7 @@ function Shots({ r, names }: { r: MatchReportDto; names: Map<string, string> }) 
     <div className="ma-grid2">
       <section className="card ma-card ma-wide">
         <div className="bar"><h2><Crosshair size={15} aria-hidden="true" />Mapa de finalizações</h2>
+          <span className="small muted">xG: {shortName(r.home.name)} {xgOf(0).toFixed(2)} · {shortName(r.away.name)} {xgOf(1).toFixed(2)}</span>
           <SegFilter label="Time" value={team} onChange={(v) => { setTeam(v); setSel(null); }} options={[{ id: 'all', label: 'Os dois' }, { id: '0', label: shortName(r.home.name) }, { id: '1', label: shortName(r.away.name) }]} />
         </div>
         <div className="ma-tipbox" onMouseLeave={tip.hide}>
@@ -285,18 +301,6 @@ function Shots({ r, names }: { r: MatchReportDto; names: Map<string, string> }) 
           <span><span className="mc-key mc-dot-home" />{shortName(r.home.name)} ataca →</span><span><span className="mc-key mc-dot-away" />← {shortName(r.away.name)}</span>
         </div>
       </section>
-      <section className="card ma-card ma-wide">
-        <div className="bar"><h2>Lista</h2><span className="small muted">xG: {shortName(r.home.name)} {xgOf(0).toFixed(2)} · {shortName(r.away.name)} {xgOf(1).toFixed(2)}</span></div>
-        <table className="ma-shot-table">
-          <thead><tr><th>Min</th><th>Jogador</th><th>Time</th><th>Origem</th><th>Resultado</th><th className="right">xG</th></tr></thead>
-          <tbody>{list.map((l) => (
-            <tr key={l.i} className={sel === l.i ? 'ma-row-sel' : ''} onClick={() => setSel(l.i)}>
-              <td>{l.label}</td><td>{names.get(l.player!) ?? '—'}</td><td><span className={l.team === 0 ? 'mc-key mc-dot-home' : 'mc-key mc-dot-away'} />{shortName(l.team === 0 ? r.home.name : r.away.name)}</td>
-              <td>{l.chance ? CHANCE[l.chance] : '—'}</td><td>{OUTCOME[l.type === 'goal' ? 'goal' : l.outcome ?? 'goal']}</td><td className="right">{(l.xg ?? 0).toFixed(2)}</td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </section>
     </div>
   );
 }
@@ -305,17 +309,26 @@ function Shots({ r, names }: { r: MatchReportDto; names: Map<string, string> }) 
 
 type Layer = 'heat' | 'passes' | 'def';
 
-function HeatLayer({ d, team }: { d: PlayerDetail; team: 0 | 1 }) {
+/** Grade do mapa de calor (valores 0–1, no sentido do mandante) com desfoque. */
+function HeatGrid({ grid }: { grid: number[] }) {
   const fid = useId().replace(/:/g, '');
-  const grid = useMemo(() => smoothHeat(heatAttackRight(decodeHeat(d), team), 1), [d, team]);
-  const avg = useMemo(() => averagePosition(grid), [grid]);
   const cw = PW / HEAT_W, ch = PH / HEAT_H;
   return (
     <>
-      <defs><filter id={`hb${fid}`} x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.4" /></filter></defs>
-      <g filter={`url(#hb${fid})`}>
+      <defs><filter id={`hb${fid}`} x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.4" /></filter><clipPath id={`hc${fid}`}><rect x="0" y="0" width={PW} height={PH} /></clipPath></defs>
+      <g clipPath={`url(#hc${fid})`}><g filter={`url(#hb${fid})`}>
         {grid.map((v, i) => v > 0.04 && <rect key={i} x={(i % HEAT_W) * cw - 0.6} y={Math.floor(i / HEAT_W) * ch - 0.6} width={cw + 1.2} height={ch + 1.2} className="ma-heat" style={{ opacity: Math.min(0.92, 0.15 + 0.85 * Math.pow(v, 0.9)) }} />)}
-      </g>
+      </g></g>
+    </>
+  );
+}
+
+function HeatLayer({ d, team }: { d: PlayerDetail; team: 0 | 1 }) {
+  const grid = useMemo(() => smoothHeat(heatAttackRight(decodeHeat(d), team), 1), [d, team]);
+  const avg = useMemo(() => averagePosition(grid), [grid]);
+  return (
+    <>
+      <HeatGrid grid={grid} />
       {avg && <circle cx={avg.x} cy={avg.y} r="1.5" className="ma-avg"><title>Posição média</title></circle>}
     </>
   );
@@ -411,23 +424,25 @@ function Players({ r, sel, setSel }: { r: MatchReportDto; sel: string | null; se
   const img = useImages();
   const chosen = r.players.find((p) => p.id === sel) ?? r.players.find((p) => p.id === r.manOfTheMatch?.id) ?? r.players[0];
   const order = (t: 0 | 1) => r.players.filter((p) => p.team === t && p.minutes > 0).sort((a, b) => Number(b.starter) - Number(a.starter) || (a.subbedInAt ?? 0) - (b.subbedInAt ?? 0));
+  const t = (chosen?.team ?? 0) as 0 | 1;
+  // um time por vez: trocar o time abre a ficha do melhor em campo dele
+  const pickTeam = (v: '0' | '1') => {
+    const best = [...order(Number(v) as 0 | 1)].sort((a, b) => b.rating - a.rating)[0];
+    if (best) setSel(best.id);
+  };
   return (
     <div className="ma-players">
       <section className="card ma-card ma-plist">
-        {([0, 1] as const).map((t) => (
-          <div key={t}>
-            <h2 className={t === 0 ? 'ma-plist-home' : 'ma-plist-away'}>{t === 0 ? r.home.name : r.away.name}</h2>
-            <ul>{order(t).map((p) => (
-              <li key={p.id}><button type="button" className={`ma-pbtn ${chosen?.id === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)} aria-pressed={chosen?.id === p.id}>
-                <PlayerFace img={img} id={p.id} name={p.name} className={`ma-face ${t === 0 ? 'mc-dot-home' : 'mc-dot-away'}`} />
-                <PosPill pos={p.slot} />
-                <span className="ma-pbtn-name">{p.name}{!p.starter && <small className="muted"> entrou {p.subbedInAt}'</small>}</span>
-                {p.goals > 0 && <span title={`${p.goals} gol(s)`}>⚽{p.goals > 1 ? p.goals : ''}</span>}
-                <span className={`pf-rating ${ratingTone(p.rating)}`}>{p.rating.toFixed(1)}</span>
-              </button></li>
-            ))}</ul>
-          </div>
-        ))}
+        <SegFilter label="Time" value={String(t) as '0' | '1'} onChange={pickTeam} options={[{ id: '0', label: shortName(r.home.name) }, { id: '1', label: shortName(r.away.name) }]} />
+        <ul className={t === 0 ? 'ma-plist-home' : 'ma-plist-away'}>{order(t).map((p) => (
+          <li key={p.id}><button type="button" className={`ma-pbtn ${chosen?.id === p.id ? 'on' : ''}`} onClick={() => setSel(p.id)} aria-pressed={chosen?.id === p.id}>
+            <PlayerFace img={img} id={p.id} name={p.name} className={`ma-face ${t === 0 ? 'mc-dot-home' : 'mc-dot-away'}`} />
+            <PosPill pos={p.slot} />
+            <span className="ma-pbtn-name">{p.name}{!p.starter && <small className="muted"> entrou {p.subbedInAt}'</small>}</span>
+            {p.goals > 0 && <span title={`${p.goals} gol(s)`}>⚽{p.goals > 1 ? p.goals : ''}</span>}
+            <span className={`pf-rating ${ratingTone(p.rating)}`}>{p.rating.toFixed(1)}</span>
+          </button></li>
+        ))}</ul>
       </section>
       {chosen && <PlayerPanel key={chosen.id} r={r} p={chosen} />}
     </div>

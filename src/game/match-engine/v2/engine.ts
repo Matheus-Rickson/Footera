@@ -36,23 +36,29 @@ export const K2 = {
   /** seletividade da escolha de ação (softmax): maior = escolhe mais a melhor opção */
   beta: 300,
   /** peso da ameaça da posição de destino, do avanço e de manter a bola na utilidade das ações */
-  val: 1.0, prog: 0.2, keep: 0.012,
+  val: 1.3, prog: 0.22, keep: 0.012,
   /** custo de perder a bola (cresce perto do próprio gol) */
   loss: 0.035,
   /** peso do chute (× xG da posição) e custo fixo de finalizar (troca a posse por um chute) */
-  shot: 1.65, shotCost: 0.045,
+  shot: 2, shotCost: 0.038,
   /** tentativa de desarme de quem está a até 2 m do portador (por ação) e chance de falta numa disputa */
   tackleTry: 0.7, foul: 0.16,
   /** movimento próprio sem a bola (m): amplitude com a bola e sem ela; aproximação de quem está perto do portador (fração) */
   wander: 3, wanderDef: 1.5, support: 0.05,
   /** com um atacante só, quanto os meias a mais atacam a área */
   loneRun: 0.3,
+  /** passe para trás: fração da perda de avanço que pesa (1 = igual ao ganho para frente); bônus de girar a bola quando não há passe bom
+   * para frente (recycle), só com o portador a até recZone m do próprio gol; erro do passe livre para trás × backSafe; zagueiro a no
+   * máximo cbGap m atrás do portador no ataque */
+  back: 1, recycle: 0.08, recZone: 50, backSafe: 0.5, backLane: 1, longPen: 0.006, passBase: 0.835, patOpen: 0.9, recvR: 3, recvK: 2.6, cbGap: 8, passSkill: 0.14, laneW: 0.9,
+  /** distância (m) até a linha da bola para contar interceptação ou desarme; mais longe, a bola sobrou e é recuperação */
+  credR: 1.25,
   /** impedimento num passe para frente a um atacante adiantado */
   offside: 0.019,
   /** escanteio: chance de virar finalização de cabeça */
   cornerShot: 0.3,
   /** mando de campo: multiplicador da qualidade de quem joga em casa */
-  home: 1.08,
+  home: 1.097,
   /** lesão por minuto em campo (mesma base da v1) */
   injury: 0.00006,
   /** desvio da forma do dia de cada time */
@@ -73,14 +79,14 @@ export const K2 = {
   /** mentalidade: proteção da área de quem defende (o xG cedido × (1 + mtOrg × mentalidade)) e o ganho próprio no avanço e no chute */
   mtOrg: 0.25, mtProg: 0.03, mtShot: 0.05,
   /** tempo fixo de um passe certo (s), além do voo da bola: domínio, ajeitar e olhar */
-  passT: 3.4,
+  passT: 3.7,
 };
 
 /** Posições que recompõem (a v1 usa o mesmo grupo para "tirar alguém da defesa" ao buscar o resultado). */
 const DEFENSIVE_OUT = new Set<Position>(['CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'LM', 'RM']);
 const ATTACKERS = new Set<Position>(['LW', 'RW', 'SS', 'CF', 'ST']);
 /** sem a bola: distância (m) de cada posição à frente da linha defensiva — toda formação recompõe em linhas de 4–5, 4–5 e 1–2 */
-export const DEF_DEPTH: Record<Position, number> = { GK: 0, CB: 0, LB: 0.8, RB: 0.8, LWB: 2, RWB: 2, DM: 7, CM: 13, LM: 13.5, RM: 13.5, AM: 16, LW: 12, RW: 12, SS: 19, CF: 22, ST: 22 };
+export const DEF_DEPTH: Record<Position, number> = { GK: 0, CB: 0, LB: 0.8, RB: 0.8, LWB: 2, RWB: 2, DM: 7, CM: 13, LM: 13.5, RM: 13.5, AM: 16, LW: 12, RW: 12, SS: 25, CF: 30, ST: 30 };
 /** com a bola, quanto cada posição sobe além da âncora: meias abertos e alas dão a largura alta que os pontas dão nas outras formações */
 export const ATT_PUSH: Partial<Record<Position, number>> = { LM: 5, RM: 5, LWB: 6, RWB: 6, CM: 3 };
 /** lateral numa linha de três zagueiros (5-3-2): sobe no ataque como ala */
@@ -199,6 +205,9 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
   let lastPass: { from: Live; to: Live; cross: boolean } | null = null;
   let gameSec = 0;
   let secInTick = 0;
+  /** trajeto: tempo de movimento já passado dentro do lance atual (o quadro sai na hora em que as posições valem, não no início
+   * do lance) e o último segundo gravado no minuto (os quadros nunca voltam no tempo). Só o trajeto usa; o jogo não muda. */
+  let motion = 0, lastStamp = 0, lastStampTick = -1;
   let debt = 0;
 
   const sideOf = (l: Live): Side => (T[0].active.includes(l) ? 0 : 1);
@@ -242,6 +251,8 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       const sy = (t.idx === 0 ? 1 : -1) * ((l.x - 50) / 50);
       // movimento próprio de cada jogador (determinístico, sem sorteio): procura espaço em ciclos de 25–60 s, em fase diferente
       // dos companheiros — o time não anda como um bloco rígido
+      // (v0.11.1: períodos próprios por jogador ou dois ritmos somados deixavam o desenho menos repetitivo, mas o equilíbrio entre
+      // formações piorava de 0,11 para 0,17–0,20 com 1680 jogos; ficou como estava)
       const ph = l.ti * 2.399 + t.idx * 1.7;
       const wx = Math.sin(gameSec / (4 + (l.ti % 3) * 1.3) + ph), wy = Math.sin(gameSec / (5.5 + (l.ti % 4) * 0.9) + ph * 1.7);
       let d: number, yy: number;
@@ -250,6 +261,8 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         d = line + rel * 0.62 * (1 + 0.03 * (tac.tempo - 3)) + 10 * (tilt.att ?? 0) - 8 * (tilt.def ?? 0) + 3 * Math.max(0, l.role.fx.risk ?? 0);
         // no último terço, quem é de área ataca o espaço (cruzamento, infiltração); antes disso, respeita a linha de impedimento
         d += ATT_PUSH[l.slot] ?? 0;
+        // saída de bola: no próprio campo o zagueiro se oferece perto do portador (opção de passe para girar)
+        if (l.slot === 'CB' && bd < 60) d = Math.max(d, bd - K2.cbGap);
         // com três zagueiros atrás, o lateral apoia como ala
         if ((l.slot === 'LB' || l.slot === 'RB') && nCB >= 3) d += FB_BACK3_PUSH;
         // (função finalizadora ataca mais a área; função de apoio, menos)
@@ -337,6 +350,7 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
   }
   /** move todos durante `dt` segundos em direção à forma calculada com a bola onde ela está agora */
   const moveAll = (dt: number): void => {
+    motion += dt;
     shape(T[poss], true); shape(T[1 - poss as Side], false);
     for (const t of T) for (const l of t.active) {
       if (l === holder) continue;
@@ -372,8 +386,11 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     if (!tracking) return;
     const size = TRACK_HEAD + 4 * TRACK_SLOTS;
     if (tlen + size > tbuf.length) { const nb = new Uint8Array(tbuf.length * 2); nb.set(tbuf); tbuf = nb; }
+    if (lastStampTick !== tickNo) { lastStampTick = tickNo; lastStamp = 0; }
+    const stamp = Math.max(lastStamp, Math.min(63, secInTick + motion));
+    lastStamp = stamp;
     const b = tbuf, o = tlen;
-    b[o] = tickNo >> 8; b[o + 1] = tickNo & 255; b[o + 2] = Math.min(255, Math.round(secInTick * 4)); b[o + 3] = TRACK_KIND.indexOf(kind);
+    b[o] = tickNo >> 8; b[o + 1] = tickNo & 255; b[o + 2] = Math.min(255, Math.round(stamp * 4)); b[o + 3] = TRACK_KIND.indexOf(kind);
     b[o + 4] = holder ? poss : 2; b[o + 5] = holder ? holder.ti : 255; b[o + 6] = half(ball.x, 210); b[o + 7] = half(ball.y, 136);
     b.fill(255, o + TRACK_HEAD, o + size);
     for (const t of T) for (const l of t.active) {
@@ -551,6 +568,12 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
   };
 
   // ---------- faltas ----------
+  /** credita quem ganhou a bola: desarme ou interceptação só perto da linha da bola; senão é recuperação (só na análise) */
+  function credit(t: TeamState, x: Live, kind: 'tackle' | 'interception' | 'recovery', where: P) {
+    if (kind === 'tackle') { x.rep.tackles++; t.stats.tackles++; an?.def(x.p.id, 'tackle', where); }
+    else if (kind === 'interception') { x.rep.interceptions++; t.stats.interceptions++; an?.def(x.p.id, 'interception', where); }
+    else an?.recovery(x.p.id, where);
+  }
   const foul = (def: TeamState, fouler: Live, victim: Live | null, where: P): void => {
     const att = opp(def);
     def.stats.fouls++; fouler.rep.fouls++;
@@ -628,6 +651,9 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
     for (let j = 0; j < nD; j++) readOf[j] = 0.65 + 0.4 * q.read(dA[j]!);
     const opts2: Option[] = [];
     const tc = threat(att.idx, c.pos);
+    // paciência: o passe seguro para trás vale mais quando não há linha boa para frente
+    const backIdx: number[] = [];
+    let fwdOpen = 0;
     for (const r of att.active) {
       if (r === c) continue;
       if (r.slot === 'GK' && cd > 42) continue;
@@ -650,19 +676,30 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       const mk = nearest(def, r.pos);
       const open = clampN((mk.d - 0.8) / 5, 0, 1) * (rd > 70 ? Math.pow(0.88, cover(def, r.pos)) : 1);
       // receber com marcador colado é uma disputa (domínio e corpo de quem recebe × leitura e desarme de quem marca)
-      const recv = mk.l && mk.d < 3 ? 1 - Math.exp(-(mk.d * mk.d) / 2.6) * (1 - duel(q.hold(r), q.tackle(mk.l), 0.55, 4)) * 1.2 : 1;
-      const lenPen = 0.0018 * d + 0.006 * Math.max(0, d - 25);
-      let pOK = (1 - lenPen) * (0.835 + 0.14 * passQ) * (1 - 0.9 * lane) * (0.9 + 0.1 * open) * clampN(recv, 0.2, 1) * (1 - 0.1 * press) + accAdj;
+      const recv = mk.l && mk.d < K2.recvR ? 1 - Math.exp(-(mk.d * mk.d) / K2.recvK) * (1 - duel(q.hold(r), q.tackle(mk.l), 0.55, 4)) * 1.2 : 1;
+      const lenPen = 0.0018 * d + K2.longPen * Math.max(0, d - 25);
+      const fwd0 = depthOf(att.idx, r.pos.x) - cd;
+      if (fwd0 < 0) lane *= K2.backLane;
+      let pOK = (1 - lenPen) * (K2.passBase + K2.passSkill * passQ) * (1 - K2.laneW * lane) * (0.9 + 0.1 * open) * clampN(recv, 0.2, 1) * (1 - 0.1 * press) + accAdj;
+      if (fwd0 <= 0.02 * L && open > 0.5) pOK = 1 - (1 - pOK) * K2.backSafe;
       pOK = clampN(pOK, 0.03, 0.985);
       const fwd = (depthOf(att.idx, r.pos.x) - cd) / L;
       // valor de receber ali: a ameaça da posição, menor se quem recebe estiver marcado (não chutaria livre)
       // (perto da área, quem tem função finalizadora vale mais como alvo)
-      let u = pOK * (K2.val * threat(att.idx, r.pos) * (rd > 70 ? (0.45 + 0.55 * open) * (r.role.fx.shoot ?? 1) : 1) + prog * fwd + K2.keep) - (1 - pOK) * lossCost;
+      let u = pOK * (K2.val * threat(att.idx, r.pos) * (rd > 70 ? (0.45 + 0.55 * open) * (r.role.fx.shoot ?? 1) : 1) + prog * fwd * (fwd < 0 ? K2.back : 1) + K2.keep) - (1 - pOK) * lossCost;
+      // girar a bola: sob pressão, o passe seguro para trás (ou para o lado) a um companheiro livre vale a posse
+      if (fwd <= 0.02 && cd < K2.recZone) backIdx.push(opts2.length, open * pOK);
+      else if (fwd > 0.05 && open > 0.5 && pOK > fwdOpen) fwdOpen = pOK;
       // saída curta: aproxima e evita a bola longa; saída longa: procura a bola longa para frente e pula o meio
       if (tac.buildUp === 'short') u += d < 18 ? 0.007 : d > 24 ? -0.012 * (d - 24) / 4 : 0;
       if (tac.buildUp === 'long') u += d > 24 && fwd > 0.08 ? 0.02 : d < 15 ? -0.006 : 0;
       u += 0.003 * ((r.role.fx.pass ?? 1) - 1) + 0.002 * ((c.role.fx.pass ?? 1) - 1);
       opts2.push({ kind: 'pass', u, to: r, pOK });
+    }
+    if (backIdx.length) {
+      const pat = K2.recycle * (tac.buildUp === 'short' ? 1.5 : tac.buildUp === 'long' ? 0.4 : 1) * clampN((K2.patOpen - fwdOpen) / 0.25, 0, 1);
+      // só a melhor opção de recuo ganha o bônus: com várias (três zagueiros) o time não ficaria girando a bola sem fim
+      { let bk = 0; for (let k = 2; k < backIdx.length; k += 2) if (backIdx[k + 1]! > backIdx[bk + 1]!) bk = k; opts2[backIdx[bk]!]!.u += pat * backIdx[bk + 1]!; }
     }
     // passe em profundidade: a bola no espaço às costas da linha para quem corre no limite do impedimento.
     // É uma corrida entre quem ataca e quem defende (cada um com a sua velocidade e distância); a linha alta deixa mais espaço.
@@ -806,14 +843,14 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         else setRestart({ kind: 'throw', team: def.idx, at: { ...ball } });
         return 1 + d / 15;
       }
-      let best: Live | null = null, bt = -1, bp: P = r.pos;
+      let best: Live | null = null, bt = -1, bp: P = r.pos, bd = Infinity;
       for (const x of def.active) {
         const s = segDist(x.pos, from, r.pos);
         const v = Math.exp(-(s.d * s.d) / 4) * (0.6 + 0.4 * q.read(x)) + (s.t > 0.9 ? 0.2 : 0);
-        if (v > bt) { bt = v; best = x; bp = { x: from.x + (r.pos.x - from.x) * s.t, y: from.y + (r.pos.y - from.y) * s.t }; }
+        if (v > bt) { bt = v; best = x; bd = s.d; bp = { x: from.x + (r.pos.x - from.x) * s.t, y: from.y + (r.pos.y - from.y) * s.t }; }
       }
-      if (an) { an.pass(c.p.id, from, bp, longPass(d)); an.lost(c.p.id); if (best) an.def(best.p.id, 'interception', bp); }
-      if (best) { best.rep.interceptions++; def.stats.interceptions++; giveBall(best, bp, true); }
+      if (an) { an.pass(c.p.id, from, bp, longPass(d)); an.lost(c.p.id); }
+      if (best) { credit(def, best, bd < K2.credR ? 'interception' : 'recovery', bp); giveBall(best, bp, true); }
       moveAll(0.5 + d / 18);
       frame('interception');
       return 0.5 + d / 18 + 0.5;
@@ -859,9 +896,10 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
         setRestart({ kind: 'goalkick', team: def.idx, at: { x: xOf(def.idx, 5.5), y: MID_Y } });
         return 1.5 + d / 15;
       }
-      const ic = nearest(def, { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }).l;
-      if (an) { const mid = { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }; an.pass(c.p.id, from, mid, longPass(d)); an.lost(c.p.id); if (ic) an.def(ic.p.id, 'interception', mid); }
-      if (ic) { ic.rep.interceptions++; def.stats.interceptions++; giveBall(ic, { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 }, true); }
+      const mid = { x: (from.x + tg.x) / 2, y: (from.y + tg.y) / 2 };
+      const ic = nearest(def, mid).l;
+      if (an) { an.pass(c.p.id, from, mid, longPass(d)); an.lost(c.p.id); }
+      if (ic) { credit(def, ic, segDist(ic.pos, from, tg).d < K2.credR ? 'interception' : 'recovery', mid); giveBall(ic, mid, true); }
       moveAll(0.5 + d / 18);
       frame('interception');
       return 1 + d / 18;
@@ -877,12 +915,12 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
       }
       let tk: Live | null = null, tkd = Infinity;
       for (const x of def.active) { const sd = segDist(x.pos, from, o.target).d; if (sd < tkd) { tkd = sd; tk = x; } }
-      if (an) {
-        if (o.pOK < 0.9) an.dribble(c.p.id, false);
-        an.lost(c.p.id);
-        if (tk) { an.def(tk.p.id, 'tackle', { x: (from.x + o.target.x) / 2, y: (from.y + o.target.y) / 2 }); an.duel(tk.p.id, c.p.id); }
+      if (an) { if (o.pOK < 0.9) an.dribble(c.p.id, false); an.lost(c.p.id); }
+      if (tk) {
+        const mid = { x: (from.x + o.target.x) / 2, y: (from.y + o.target.y) / 2 };
+        if (tkd < K2.credR) { credit(def, tk, 'tackle', mid); an?.duel(tk.p.id, c.p.id); } else credit(def, tk, 'recovery', mid);
+        giveBall(tk, mid, true);
       }
-      if (tk) { tk.rep.tackles++; def.stats.tackles++; giveBall(tk, { x: (from.x + o.target.x) / 2, y: (from.y + o.target.y) / 2 }, true); }
       moveAll(t * 0.6);
       frame('tackle');
       return t * 0.6;
@@ -996,8 +1034,9 @@ export function simulateMatchV2(home: TeamSheet, away: TeamSheet, opts: MatchOpt
   /** joga `seconds` segundos de relógio (com a sobra do minuto anterior) */
   const play = (seconds: number): void => {
     let left = seconds + debt;
-    secInTick = 0;
+    secInTick = 0; motion = 0;
     while (left > 0) {
+      motion = 0;
       const dt = playStep();
       sampleAll(dt);
       T[poss].held += dt;

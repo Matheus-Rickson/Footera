@@ -108,6 +108,8 @@ test('Virada: rebaixados e promovidos trocam de liga por país, troféus e regis
 test('Virada: prêmios passam por makePoster e saldo = saldo inicial + lançamentos para TODOS os clubes, também na temporada seguinte', async () => {
   const { db, clubId, initial } = await setup('cycle-money');
   playSeason(db); toTurnover(db);
+  // o teste é sobre o dinheiro do clube do usuário: a diretoria não demite (demitido, o extrato do clube deixa de ser o do usuário)
+  db.prepare('UPDATE board_state SET confidence = 100').run();
   startNextSeason(db);
   assertBooksBalance(db, initial);
   // prêmios = liga (registro da temporada) + copas (recalculados dos confrontos)

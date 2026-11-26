@@ -117,3 +117,29 @@ test('v2: o técnico da IA reage ao placar no fim (perdendo, vai para o ataque) 
   }
   assert.ok(found > 0, 'nenhuma reação da IA em 40 jogos');
 });
+
+test('v2: cada quadro do trajeto sai na hora em que as posições valem (ninguém corre mais rápido que um jogador entre dois quadros)', () => {
+  // até a v0.11.0 o quadro levava a hora do início do lance com as posições do fim: na tela, saltos acima da velocidade de um jogador
+
+  let n = 0, fast = 0;
+  for (let g = 0; g < 4; g++) {
+    const o = simulateMatch(sheetOf(mid[g % mid.length]!), sheetOf(mid[(g + 3) % mid.length]!), { seed: `spd-${g}`, engine: 'v2', track: true });
+    const f = decodeTrack(o.track!);
+    for (let i = 1; i < f.length; i++) {
+      const a = f[i - 1]!, b = f[i]!, dt = b.sec - a.sec;
+      if (a.tick !== b.tick || dt <= 0 || b.kind === 'restart' || a.kind === 'goal') continue;
+      for (const t of [0, 1] as const) b.pos[t].forEach((p, k) => { const q = a.pos[t][k]; if (p && q) { n++; if (Math.hypot(p.x - q.x, p.y - q.y) / dt > 9.5) fast++; } });
+    }
+  }
+  assert.ok(n > 10000);
+  assert.ok(fast / n < 0.001, `${(100 * fast / n).toFixed(2)}% dos deslocamentos acima de 9,5 m/s`);
+});
+
+test('v2: na tela, o jogador anda em curva suave pelos quadros (passa por eles; entre eles segue os vizinhos)', () => {
+  const mk = (sec: number, x: number, y: number): TrackFrame => ({ tick: 0, sec, kind: 'pass', poss: 0, holder: 0, ball: { x, y }, pos: [[{ x, y }], [null]] });
+  const fr = [mk(0, 10, 10), mk(10, 20, 10), mk(20, 20, 20), mk(30, 30, 20)];
+  assert.deepEqual(sceneAt(fr, null, 10)!.pos[0][0], { x: 20, y: 10 }, 'passa pelo quadro');
+  const m = sceneAt(fr, null, 12.5)!;
+  assert.equal(m.ball.x, 20, 'a bola vai em linha reta');
+  assert.ok(m.pos[0][0]!.x > 20, `a curva segue o caminho (entra na curva): x ${m.pos[0][0]!.x}`);
+});
